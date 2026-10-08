@@ -349,7 +349,7 @@ class SegmentSim {
       w += laneW * lineW;
     }
     const base = w > 0 ? sum / w : 30;
-    return base + MATCH.pressDefenseBonus[def.team.tactics.press];
+    return base + MATCH.pressDefenseBonus[def.team.tactics.press] + MATCH.attackStyleDefense[def.team.tactics.attack];
   }
 
   private attackers(atk: TeamCtx, lane?: Lane): Actor[] {
@@ -415,7 +415,7 @@ class SegmentSim {
 
   private turnover(lostSide: Side, minute: number) {
     const lost = this.ctx[lostSide].team;
-    const p = MATCH.counterChance * (lost.tactics.line === "high" ? MATCH.counterLineHighMult : 1);
+    const p = MATCH.counterChance * (lost.tactics.line === "high" ? MATCH.counterLineHighMult : 1) * MATCH.attackStyleCounterExposure[lost.tactics.attack];
     if (this.rng.chance(p)) this.attack(other(lostSide), minute, true);
   }
 
@@ -546,7 +546,7 @@ class SegmentSim {
     const marker = this.pickBy(this.defenders(def, "C"), (a) => Math.max(1, this.aerialPower(a)));
     this.emit(minute, side, "longBall", [kicker.id, target.id]);
     if (this.rng.chance(sigmoid((this.aerialPower(target) - this.aerialPower(marker)) / MATCH.aerialScale))) {
-      const q = this.receiveQuality(target, marker, MATCH.longChanceQ + this.rng.range(0, 0.3));
+      const q = this.receiveQuality(target, marker, MATCH.longChanceQ + (def.team.tactics.line === "high" ? MATCH.longVsHighLineQ : 0) + this.rng.range(0, 0.3));
       this.chanceInBox(side, target, q, minute, 0);
     } else {
       this.emit(minute, side, "crossCleared", [marker.id]);
@@ -602,6 +602,7 @@ class SegmentSim {
 
   /** ボックス内のチャンス：ファウルで PK になることもある */
   chanceInBox(side: Side, shooter: Actor, q: number, minute: number, depth: number) {
+    q *= MATCH.attackStyleChanceQ[this.ctx[other(side)].team.tactics.attack];
     this.bumpMomentum(side, MATCH.momentum.chance);
     if (this.rng.chance(MATCH.pkFoulChance * (0.5 + q))) {
       const def = this.ctx[other(side)];
@@ -709,7 +710,7 @@ class SegmentSim {
     const k = MATCH.possessionExponent;
     let p0 = Math.pow(c0.mid, k) / (Math.pow(c0.mid, k) + Math.pow(c1.mid, k));
     const t = MATCH.possessionTactics;
-    const adj = (tc: Tactics) => t.attack[tc.attack] + t.press[tc.press] + t.buildUp[tc.buildUp];
+    const adj = (tc: Tactics) => t.attack[tc.attack] + t.press[tc.press] + t.buildUp[tc.buildUp] + t.line[tc.line];
     p0 += adj(c0.team.tactics) - adj(c1.team.tactics);
     p0 += this.state.momentum * MATCH.momentumPossession;
     p0 = clamp(p0, MATCH.possessionMin, MATCH.possessionMax);

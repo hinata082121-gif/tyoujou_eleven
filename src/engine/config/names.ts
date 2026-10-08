@@ -7,22 +7,77 @@ import type { Career, MajorKind, Position, PracticeKind, ReputationLevel, Square
 export const GAME_TITLE = "頂上イレブン";
 export const GAME_SUBTITLE = "高校サッカー部 監督育成ゲーム";
 
-/** 架空の地域（8） */
-export const REGION_NAMES = ["北辰", "東陽", "翠嶺", "白浜", "中原", "西風", "南洋", "瑠璃"] as const;
-export const regionLabel = (name: string) => `${name}地域`;
-
-/** 架空の県（32）。地域ごとに 4 県 */
-export const PREFECTURE_NAMES = [
-  "氷華原", "鷲ノ尾", "雪代", "朔原",
-  "朝凪", "陽向", "東雲台", "渦潮浦",
-  "翠ヶ峰", "嶺北", "霧ヶ原", "若菜野",
-  "白砂", "汐見", "浜百合", "潮騒野",
-  "中津原", "花菱", "宮守原", "楓沢",
-  "西凪野", "風早", "茜ヶ丘", "夕凪",
-  "南瑠", "珊瑚浜", "火群", "椰子ヶ浦",
-  "瑠璃沢", "玻璃野", "藍ヶ島", "紺碧",
+/**
+ * 地域区分（実在の区分。P2 の特待生スカウトの範囲に使う）
+ */
+export const REGIONS = [
+  { id: "hokkaido", name: "北海道" },
+  { id: "tohoku", name: "東北" },
+  { id: "kanto", name: "関東" },
+  { id: "hokushinetsu", name: "北信越" },
+  { id: "tokai", name: "東海" },
+  { id: "kinki", name: "近畿" },
+  { id: "chugoku", name: "中国" },
+  { id: "shikoku", name: "四国" },
+  { id: "kyushu", name: "九州" },
 ] as const;
-export const prefectureLabel = (name: string) => `${name}県`;
+export type RegionId = (typeof REGIONS)[number]["id"];
+export const regionLabel = (name: string) => (name === "北海道" ? name : `${name}地域`);
+
+/** 47 都道府県（実在の名前。学校のデータは架空） */
+export const PREFECTURES: { id: string; name: string; region: RegionId }[] = [
+  { id: "hokkaido", name: "北海道", region: "hokkaido" },
+  { id: "aomori", name: "青森県", region: "tohoku" },
+  { id: "iwate", name: "岩手県", region: "tohoku" },
+  { id: "miyagi", name: "宮城県", region: "tohoku" },
+  { id: "akita", name: "秋田県", region: "tohoku" },
+  { id: "yamagata", name: "山形県", region: "tohoku" },
+  { id: "fukushima", name: "福島県", region: "tohoku" },
+  { id: "ibaraki", name: "茨城県", region: "kanto" },
+  { id: "tochigi", name: "栃木県", region: "kanto" },
+  { id: "gunma", name: "群馬県", region: "kanto" },
+  { id: "saitama", name: "埼玉県", region: "kanto" },
+  { id: "chiba", name: "千葉県", region: "kanto" },
+  { id: "tokyo", name: "東京都", region: "kanto" },
+  { id: "kanagawa", name: "神奈川県", region: "kanto" },
+  { id: "yamanashi", name: "山梨県", region: "kanto" },
+  { id: "niigata", name: "新潟県", region: "hokushinetsu" },
+  { id: "toyama", name: "富山県", region: "hokushinetsu" },
+  { id: "ishikawa", name: "石川県", region: "hokushinetsu" },
+  { id: "fukui", name: "福井県", region: "hokushinetsu" },
+  { id: "nagano", name: "長野県", region: "hokushinetsu" },
+  { id: "gifu", name: "岐阜県", region: "tokai" },
+  { id: "shizuoka", name: "静岡県", region: "tokai" },
+  { id: "aichi", name: "愛知県", region: "tokai" },
+  { id: "mie", name: "三重県", region: "tokai" },
+  { id: "shiga", name: "滋賀県", region: "kinki" },
+  { id: "kyoto", name: "京都府", region: "kinki" },
+  { id: "osaka", name: "大阪府", region: "kinki" },
+  { id: "hyogo", name: "兵庫県", region: "kinki" },
+  { id: "nara", name: "奈良県", region: "kinki" },
+  { id: "wakayama", name: "和歌山県", region: "kinki" },
+  { id: "tottori", name: "鳥取県", region: "chugoku" },
+  { id: "shimane", name: "島根県", region: "chugoku" },
+  { id: "okayama", name: "岡山県", region: "chugoku" },
+  { id: "hiroshima", name: "広島県", region: "chugoku" },
+  { id: "yamaguchi", name: "山口県", region: "chugoku" },
+  { id: "tokushima", name: "徳島県", region: "shikoku" },
+  { id: "kagawa", name: "香川県", region: "shikoku" },
+  { id: "ehime", name: "愛媛県", region: "shikoku" },
+  { id: "kochi", name: "高知県", region: "shikoku" },
+  { id: "fukuoka", name: "福岡県", region: "kyushu" },
+  { id: "saga", name: "佐賀県", region: "kyushu" },
+  { id: "nagasaki", name: "長崎県", region: "kyushu" },
+  { id: "kumamoto", name: "熊本県", region: "kyushu" },
+  { id: "oita", name: "大分県", region: "kyushu" },
+  { id: "miyazaki", name: "宮崎県", region: "kyushu" },
+  { id: "kagoshima", name: "鹿児島県", region: "kyushu" },
+  { id: "okinawa", name: "沖縄県", region: "kyushu" },
+];
+export const DEFAULT_PREFECTURE_ID = "tokyo";
+
+/** 県ごとの区分の表示名 */
+export const PREF_TIER_NAMES = { competitive: "激戦区", normal: "普通", small: "少数" } as const;
 
 /** 学校名のパーツ（地名風の造語 + 種別） */
 export const SCHOOL_NAME_HEADS = [
@@ -55,14 +110,24 @@ export const GIVEN_NAMES = [
 
 // ---- 大会 ----
 export const COMPETITION_NAMES = {
-  winter: "冬の選手権",
-  prefQualifier: "冬の選手権 県予選",
-  national: "冬の選手権 全国大会",
+  winter: "冬の全国大会",
+  prefQualifier: "冬の全国大会 予選",
+  national: "冬の全国大会",
+  /** P2 */
+  summer: "夏の全国大会",
   practice: "練習試合",
 } as const;
 
-export function roundLabel(totalRounds: number, round: number): string {
+/** 都道府県予選の表示名（例：冬の全国大会 東京都予選） */
+export const prefQualifierName = (prefName: string) => `${COMPETITION_NAMES.winter} ${prefName}予選`;
+
+/**
+ * ラウンドの表示名。qualifiers が 2 以上（東京の予選など）のときは、最終ラウンドを「代表決定戦」と呼ぶ
+ */
+export function roundLabel(totalRounds: number, round: number, qualifiers = 1): string {
   const fromEnd = totalRounds - 1 - round;
+  if (qualifiers > 1 && fromEnd === 0) return "代表決定戦";
+  if (qualifiers > 1) return fromEnd === 1 ? "準々決勝" : `${round + 1}回戦`;
   if (fromEnd === 0) return "決勝";
   if (fromEnd === 1) return "準決勝";
   if (fromEnd === 2) return "準々決勝";
@@ -140,7 +205,7 @@ export const SQUARE_NAMES: Record<SquareType, string> = {
 export const MAJOR_NAMES: Record<MajorKind, string> = {
   entrance: "入学式",
   practiceMatch: "練習試合",
-  prefQualifier: "県予選",
+  prefQualifier: "予選",
   national: "全国大会",
   graduation: "卒業式",
   yearEnd: "年度末",

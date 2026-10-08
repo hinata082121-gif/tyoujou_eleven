@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { FORMATIONS } from "@/engine/config/formations";
 import { APTITUDE_MARKS, POSITION_NAMES } from "@/engine/config/names";
-import { defaultSetup, opponentOf, pendingMatchLabel, pendingMatchRules } from "@/engine/game";
+import { canSkipWatching, defaultSetup, opponentOf, pendingMatchLabel, pendingMatchRules } from "@/engine/game";
 import { assignToSlots, autoSetup } from "@/engine/match/lineup";
 import { isAvailable, positionRating } from "@/engine/player/rating";
 import { playerSchool } from "@/engine/season";
@@ -96,6 +96,7 @@ export function PreMatchScreen() {
             <span className="ml-auto text-xs text-gray-500">{opp.formation}</span>
           </div>
           <div className="mt-1 text-[11px] text-gray-500">{rulesText(rules)}</div>
+          {canSkipWatching(game) && <div className="mt-1 text-[11px] text-gray-500">練習試合は「結果のみ」も選べます（試合中の采配はAIの監督が行います）。</div>}
           <div className="mt-1 text-[11px] text-gray-500">
             自校のランク <RankBadge rank={school.rank} size="sm" />
           </div>
@@ -189,9 +190,20 @@ export function PreMatchScreen() {
         <Button variant="secondary" onClick={auto}>
           おまかせ
         </Button>
-        <Button className="col-span-2" disabled={!valid} onClick={() => startMatch(setup)}>
-          試合開始
-        </Button>
+        {canSkipWatching(game) ? (
+          <>
+            <Button variant="secondary" disabled={!valid} onClick={() => startMatch(setup, "auto")}>
+              結果のみ
+            </Button>
+            <Button disabled={!valid} onClick={() => startMatch(setup)}>
+              観戦する
+            </Button>
+          </>
+        ) : (
+          <Button className="col-span-2" disabled={!valid} onClick={() => startMatch(setup)}>
+            試合開始（観戦）
+          </Button>
+        )}
       </div>
     </main>
   );

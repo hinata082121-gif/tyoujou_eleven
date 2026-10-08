@@ -60,16 +60,36 @@ describe("セーブ", () => {
     await expect(mgr.importJson(1, JSON.stringify({ foo: 1 }))).rejects.toThrow(SaveVersionError);
   });
 
+  it("v1（架空の県）のセーブデータを v2（実在の都道府県）に移して、続きが遊べる", async () => {
+    const s = newGame("v1", "旧高校");
+    const data = JSON.parse(JSON.stringify(toSaveData(s)));
+    // v1 の形に戻す（32 の架空の県、区分なし）
+    data.schemaVersion = 1;
+    data.game.prefectures = data.game.prefectures.slice(0, 32).map((p: Record<string, unknown>, i: number) => {
+      const { tier: _t, reps: _r, ...rest } = p;
+      void _t;
+      void _r;
+      return { ...rest, name: `架空${i}`, regionId: `r${i % 8}` };
+    });
+    data.game.regions = Array.from({ length: 8 }, (_, i) => ({ id: `r${i}`, name: `地域${i}` }));
+    const mgr = new SaveManager(new MemoryStorageAdapter());
+    await mgr.importJson(0, JSON.stringify(data));
+    const loaded = (await mgr.load(0))!;
+    expect(loaded.prefectures.every((p) => p.name.match(/[都道府県]$/) && p.tier && p.reps === 1)).toBe(true);
+    expect(loaded.regions).toHaveLength(9);
+    expect(playCard(loaded, loaded.calendar.hand[0].id)).not.toBeNull();
+  });
+
   it("古いバージョンのセーブデータはマイグレーションで新しくなる", () => {
     const migrations = {
       1: (d: { schemaVersion: number; [k: string]: unknown }) => ({ ...d, schemaVersion: 2, added: "v2" }),
       2: (d: { schemaVersion: number; [k: string]: unknown }) => ({ ...d, schemaVersion: 3, added: `${d.added}->v3` }),
     };
-    const out = migrateSave({ schemaVersion: 1, game: {} }, migrations, 3);
+    const out = migrateSave({ schemaVersion: 1, game: {} }, migrations as never, 3);
     expect(out.schemaVersion).toBe(3);
     expect(out.added).toBe("v2->v3");
-    expect(() => migrateSave({ schemaVersion: 4 }, migrations, 3)).toThrow(SaveVersionError);
-    expect(() => migrateSave({ schemaVersion: 0 }, migrations, 3)).toThrow(SaveVersionError);
+    expect(() => migrateSave({ schemaVersion: 4 }, migrations as never, 3)).toThrow(SaveVersionError);
+    expect(() => migrateSave({ schemaVersion: 0 }, migrations as never, 3)).toThrow(SaveVersionError);
     // 現在のバージョンはそのまま
     const s = newGame("mig", "E高校");
     const data = JSON.parse(JSON.stringify(toSaveData(s)));

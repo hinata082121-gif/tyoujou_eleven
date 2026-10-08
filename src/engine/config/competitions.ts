@@ -1,6 +1,6 @@
 import type { MatchRules } from "../types";
 
-/** 冬の選手権の試合ルール（SPEC 10.2）。県予選も同じ扱い */
+/** 冬の全国大会の試合ルール（SPEC 10.2）。県予選も同じ扱い */
 export const WINTER_RULES = {
   /** 準々決勝まで */
   early: { halfMinutes: 40, extraTimeHalfMinutes: null, pkOnDraw: true, maxSubs: 5, maxSubWindows: null, benchSize: 9 } satisfies MatchRules,
@@ -18,7 +18,7 @@ export const PRACTICE_RULES: MatchRules = {
   benchSize: 9,
 };
 
-/** ラウンド番号（0 始まり）と総ラウンド数から冬の選手権のルールを決める */
+/** ラウンド番号（0 始まり）と総ラウンド数から冬の全国大会のルールを決める */
 export function winterRulesForRound(totalRounds: number, round: number): MatchRules {
   const fromEnd = totalRounds - 1 - round;
   if (fromEnd === 0) return WINTER_RULES.final;
@@ -35,14 +35,12 @@ export const PREF_QUALIFIER_DATES: [number, number][] = [
   [11, 9],
 ];
 
-/** 全国大会（32 校）の日程 */
+/** 冬の全国大会（48 校 = 6 ラウンド）の日程。ラウンド数が少なければ後ろから使う */
 export const NATIONAL_DATES: [number, number][] = [
   [12, 29],
   [12, 31],
-  [1, 3],
-  [1, 10],
-  [1, 12],
+  [1, 2],
+  [1, 4],
+  [1, 11],
+  [1, 13],
 ];
-
-/** 全国大会の出場校数（設定で 48 校にもできるよう、県の数と合わせて持つ） */
-export const NATIONAL_SIZE = 32;

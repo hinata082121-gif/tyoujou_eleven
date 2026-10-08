@@ -13,15 +13,15 @@ export const REPUTATION_TABLE: Record<ReputationLevel, { handSize: number; grade
 export const REPUTATION_GAUGE = {
   max: 100,
   /** 昇格した直後のゲージ */
-  afterPromotion: 25,
+  afterPromotion: 15,
   /** 降格した直後のゲージ */
   afterDemotion: 70,
   /** 勝利の基本値（試合の種類別） */
-  winBase: { practice: 3, prefQualifier: 5, national: 9 },
+  winBase: { practice: 7, prefQualifier: 9, national: 14 },
   /** 敗戦の基本値（試合の種類別） */
-  lossBase: { practice: 2, prefQualifier: 5, national: 4 },
+  lossBase: { practice: 3, prefQualifier: 5, national: 3 },
   /** 引き分け（練習試合）で格上相手なら少し上がる */
-  drawVsStronger: 1,
+  drawVsStronger: 2,
   /** PK 戦での敗戦は下がり幅を小さくする */
   pkLossMult: 0.7,
   /**
@@ -31,13 +31,15 @@ export const REPUTATION_GAUGE = {
   winRankMult: { [-3]: 0.2, [-2]: 0.35, [-1]: 0.6, 0: 1.0, 1: 1.7, 2: 2.5, 3: 3.4 } as Record<number, number>,
   /** ランク差ごとの敗戦の倍率。格下に負けるほど大きい */
   lossRankMult: { [-3]: 1.8, [-2]: 1.5, [-1]: 1.2, 0: 1.0, 1: 0.6, 2: 0.4, 3: 0.3 } as Record<number, number>,
+  /** 評判が低いうちは勝利で上がりやすくする（序盤のテンポ） */
+  winLevelMult: { 0: 1.8, 1: 1.45, 2: 1.15, 3: 1.05, 4: 1.0 } as Record<ReputationLevel, number>,
   /** 評判が高いほど下がり幅を大きくする（極端にはしない） */
-  lossLevelMult: { 0: 0.8, 1: 1.0, 2: 1.15, 3: 1.3, 4: 1.4 } as Record<ReputationLevel, number>,
+  lossLevelMult: { 0: 0.6, 1: 0.8, 2: 1.0, 3: 1.15, 4: 1.3 } as Record<ReputationLevel, number>,
   /** 大会の成績ボーナス */
   bonus: {
-    prefChampion: 18,
-    nationalWinPerRound: 4,
-    nationalChampion: 40,
+    prefChampion: 30,
+    nationalWinPerRound: 6,
+    nationalChampion: 50,
   },
 };
 

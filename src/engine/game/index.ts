@@ -2,9 +2,9 @@
  * ゲーム全体の進行。UI はここの関数だけを呼ぶ。
  * 関数は GameState を直接書き換える（大きな状態を毎回コピーしないため）。
  */
-import { dateToDay, findDestination, formatDay, nationalDays, newCalendar, prefQualifierDays, refillHand } from "../calendar";
+import { dateToDay, formatDay, nationalDays, newCalendar, prefQualifierDays, refillHand } from "../calendar";
 import { CPU_GROWTH } from "../config/growth";
-import { COMPETITION_NAMES, MAJOR_NAMES, PRACTICE_NAMES, REPUTATION_NAMES, prefectureLabel, roundLabel } from "../config/names";
+import { COMPETITION_NAMES, MAJOR_NAMES, PRACTICE_NAMES, REPUTATION_NAMES, prefQualifierName, roundLabel } from "../config/names";
 import { PRACTICE_MATCH } from "../config/calendar";
 import { PRACTICE_RULES, winterRulesForRound } from "../config/competitions";
 import { REPUTATION_GAUGE } from "../config/reputation";
@@ -15,13 +15,14 @@ import {
   findMatch,
   findMatchById,
   isAlive,
+  isFinished,
   recordResult,
   roundsFor,
   totalRounds,
 } from "../competition/bracket";
 import { schoolTeamInput, simulateCpuMatch } from "../competition/simulate";
 import { landOnSquare, type EventOutcome } from "../events";
-import { createMatch } from "../match/engine";
+import { createMatch, simulateToEnd } from "../match/engine";
 import { autoSetup } from "../match/lineup";
 import type { ActiveMatch } from "../match/types";
 import { runPractice } from "../practice";
@@ -45,9 +46,9 @@ function withRng<T>(state: GameState, fn: (rng: Rng) => T): T {
 
 // ================= 新しいゲーム =================
 
-export function newGame(seed: string, schoolName: string): GameState {
+export function newGame(seed: string, schoolName: string, prefectureId?: string): GameState {
   const rng = Rng.fromSeed(seed);
-  const world = generateWorld(rng, schoolName, 1);
+  const world = generateWorld(rng, schoolName, 1, prefectureId);
   const state: GameState = {
     version: GAME_STATE_VERSION,
     seed,
@@ -77,20 +78,25 @@ function ownPrefecture(state: GameState) {
 /** 年度の始まり：カレンダーと県予選の組み合わせを作る */
 function startYear(state: GameState, rng: Rng) {
   const pref = ownPrefecture(state);
-  const prefRounds = roundsFor(pref.schoolIds.length);
-  const nationalRounds = roundsFor(state.prefectures.length);
+  const prefRounds = roundsFor(pref.schoolIds.length) - Math.log2(pref.reps);
+  const nationalRounds = roundsFor(nationalSize(state));
   state.calendar = newCalendar(rng, prefRounds, nationalRounds, handSize(state.reputation));
   const seeded = [...pref.schoolIds]
     .map((id) => ({ id, s: teamStrength(state.schools[id].players, state.schools[id].formation) + rng.normal(0, 1.5) }))
     .sort((a, b) => b.s - a.s)
     .map((x) => x.id);
   state.competitions = {
-    prefQualifier: createBracket("prefQualifier", seeded, prefQualifierDays(prefRounds), rng),
+    prefQualifier: createBracket("prefQualifier", seeded, prefQualifierDays(prefRounds), rng, pref.reps),
     winterDone: false,
     practiceMatchCount: 0,
   };
   updatePlayerRank(state);
   addLog(state, `${MAJOR_NAMES.entrance}。新入生が入部した。`, "info");
+}
+
+/** 冬の全国大会の出場校数（各都道府県の代表数の合計。東京のみ 2 校で 48 校） */
+export function nationalSize(state: GameState): number {
+  return state.prefectures.reduce((n, p) => n + p.reps, 0);
 }
 
 export function updatePlayerRank(state: GameState) {
@@ -140,15 +146,16 @@ export function playCard(state: GameState, cardId: string): CardResult | null {
   const card = cal.hand[idx];
   return withRng(state, (rng) => {
     const from = cal.position;
-    const to = findDestination(cal.squares, from, card.value, (sq) => isStopSquare(state, sq));
-    const days = to - from;
+    const last = Math.min(cal.squares.length - 1, from + card.value);
     const school = playerSchool(state);
     const mult = cal.nextPracticeMult;
     cal.nextPracticeMult = 1;
-    // 1 日ずつ：練習 → 世界の進行（CPU の試合など）
+    // 1 日ずつ：練習 → 世界の進行（CPU の試合など）→ 必ず止まるマスなら止まる。
+    // 止まるかどうかはその日に判定する（前の日の試合の結果で、次のラウンドの組み合わせが決まるため）
     const gainsAll: NonNullable<GameState["calendar"]["lastGain"]>["perPlayer"] = {};
     const injured: Player[] = [];
-    for (let d = from + 1; d <= to; d++) {
+    let to = from;
+    for (let d = from + 1; d <= last; d++) {
       const r = runPractice(rng, school.players, card.practice, 1, mult);
       for (const [id, g] of Object.entries(r.gains)) {
         const acc = (gainsAll[id] ??= {});
@@ -156,8 +163,11 @@ export function playCard(state: GameState, cardId: string): CardResult | null {
       }
       injured.push(...r.injured);
       cal.position = d;
+      to = d;
       processWorldDay(state, rng, d);
+      if (cal.squares[d].major && isStopSquare(state, cal.squares[d])) break;
     }
+    const days = to - from;
     cal.lastGain = { practice: card.practice, perPlayer: gainsAll };
     for (const p of injured) addLog(state, `${p.name}が練習中にケガをした（全治${p.injuryDays}日）`, "bad");
 
@@ -195,7 +205,7 @@ function setPendingForMajor(state: GameState, rng: Rng, sq: Square) {
     const m = findMatch(b, round, state.playerSchoolId)!;
     const oppId = m.a === state.playerSchoolId ? m.b! : m.a!;
     state.pending = { type: "match", kind, opponentId: oppId, bracketMatchId: m.id, round };
-    addLog(state, `${COMPETITION_NAMES[kind]} ${roundLabel(totalRounds(b), round)}：${state.schools[oppId].name}と対戦する。`, "info");
+    addLog(state, `${kind === "prefQualifier" ? prefQualifierName(ownPrefecture(state).name) : COMPETITION_NAMES.national} ${roundLabel(totalRounds(b), round, b.qualifiers)}：${state.schools[oppId].name}と対戦する。`, "info");
   } else if (kind === "graduation") {
     state.pending = { type: "graduation" };
   } else if (kind === "yearEnd") {
@@ -233,7 +243,7 @@ function processWorldDay(state: GameState, rng: Rng, day: number) {
   }
   const c = state.competitions;
   for (const b of [c.prefQualifier, c.national]) {
-    if (!b || b.championId) continue;
+    if (!b || isFinished(b)) continue;
     const r = b.roundsDone;
     if (b.roundDays[r] !== day) continue;
     // プレイヤー校の試合が残っているラウンドは、プレイヤーの試合の後でまとめて計算する
@@ -254,46 +264,48 @@ function simulateRemainingRound(state: GameState, rng: Rng, b: Bracket) {
     recordResult(m, simulateCpuMatch(rng.fork(m.id), state.schools[m.a], state.schools[m.b], rulesFor(b, r)));
   }
   advanceRound(b, rng);
-  if (b.championId) onBracketFinished(state, rng, b);
+  if (isFinished(b)) onBracketFinished(state, rng, b);
 }
 
 function onBracketFinished(state: GameState, rng: Rng, b: Bracket) {
-  const champ = state.schools[b.championId!];
+  const qualified = b.qualifiedIds ?? [];
+  const names = qualified.map((id) => state.schools[id].name).join("・");
+  const mine = qualified.includes(state.playerSchoolId);
   if (b.kind === "prefQualifier") {
-    addLog(state, `${COMPETITION_NAMES.prefQualifier}は${champ.name}が優勝した。`, champ.isPlayer ? "good" : "info");
-    setupNational(state, rng, champ.id);
+    const pref = ownPrefecture(state);
+    addLog(state, `${prefQualifierName(pref.name)}は${names}が${qualified.length > 1 ? "代表になった" : "優勝した"}。`, mine ? "good" : "info");
+    setupNational(state, rng, qualified);
   } else {
-    addLog(state, `${COMPETITION_NAMES.national}は${champ.name}が優勝した。`, champ.isPlayer ? "good" : "info");
+    addLog(state, `${COMPETITION_NAMES.national}は${names}が優勝した。`, mine ? "good" : "info");
   }
 }
 
-/** 他県の代表を決めて、全国大会の組み合わせを作る */
-function setupNational(state: GameState, rng: Rng, ownChampionId: string) {
-  const reps: string[] = [ownChampionId];
+/** 表示しない予選（他県。同じ試合エンジンで計算）で代表を決める */
+function runHiddenQualifier(state: GameState, rng: Rng, schoolIds: string[], reps: number): string[] {
+  const ids = [...schoolIds].sort((a, b) => teamStrength(state.schools[b].players) - teamStrength(state.schools[a].players));
+  if (ids.length <= reps) return ids;
+  const mini = createBracket("prefQualifier", ids, [0, 0, 0], rng, reps);
+  while (!isFinished(mini)) {
+    const r = mini.roundsDone;
+    for (const m of mini.rounds[r]) {
+      if (m.winner !== undefined || !m.a || !m.b) continue;
+      recordResult(m, simulateCpuMatch(rng.fork(m.id), state.schools[m.a], state.schools[m.b], winterRulesForRound(totalRounds(mini), r)));
+    }
+    advanceRound(mini, rng);
+  }
+  return mini.qualifiedIds ?? [];
+}
+
+/** 他県の代表を決めて、冬の全国大会（48 校）の組み合わせを作る */
+function setupNational(state: GameState, rng: Rng, ownReps: string[]) {
+  const reps: string[] = [...ownReps];
   for (const pref of state.prefectures) {
     if (pref.isPlayerPref) continue;
-    const ids = [...pref.schoolIds].sort(
-      (a, b) => teamStrength(state.schools[b].players) - teamStrength(state.schools[a].players),
-    );
-    if (ids.length === 1) {
-      reps.push(ids[0]);
-      continue;
-    }
-    // 表示しない県予選（同じエンジンで計算）
-    const mini = createBracket("prefQualifier", ids, [0, 0], rng);
-    while (!mini.championId) {
-      const r = mini.roundsDone;
-      for (const m of mini.rounds[r]) {
-        if (m.winner !== undefined || !m.a || !m.b) continue;
-        recordResult(m, simulateCpuMatch(rng.fork(m.id), state.schools[m.a], state.schools[m.b], winterRulesForRound(totalRounds(mini), r)));
-      }
-      advanceRound(mini, rng);
-    }
-    reps.push(mini.championId);
+    reps.push(...runHiddenQualifier(state, rng, pref.schoolIds, pref.reps));
   }
   rng.shuffle(reps);
   state.competitions.national = createBracket("national", reps, nationalDays(roundsFor(reps.length)), rng);
-  if (ownChampionId === state.playerSchoolId) addLog(state, `${COMPETITION_NAMES.national}への出場が決まった！`, "good");
+  if (ownReps.includes(state.playerSchoolId)) addLog(state, `${COMPETITION_NAMES.national}への出場が決まった！`, "good");
 }
 
 // ================= 試合 =================
@@ -311,7 +323,8 @@ export function pendingMatchLabel(state: GameState): string {
   if (!p || p.type !== "match") return "";
   if (p.kind === "practice") return COMPETITION_NAMES.practice;
   const b = p.kind === "prefQualifier" ? state.competitions.prefQualifier! : state.competitions.national!;
-  return `${COMPETITION_NAMES[p.kind]} ${roundLabel(totalRounds(b), p.round ?? 0)}`;
+  const name = p.kind === "prefQualifier" ? prefQualifierName(ownPrefecture(state).name) : COMPETITION_NAMES.national;
+  return `${name} ${roundLabel(totalRounds(b), p.round ?? 0, b.qualifiers)}`;
 }
 
 /** 試合前の画面の初期値（前回の采配をもとに、出られる選手でベストの並び） */
@@ -322,9 +335,19 @@ export function defaultSetup(state: GameState): TeamSetup {
 }
 
 /** 試合を始める（試合前の画面で決めた采配を使う） */
-export function startPlayerMatch(state: GameState, setup: TeamSetup): ActiveMatch | null {
+/** その試合で「結果のみ」を選べるか（練習試合だけ。トーナメントは観戦のみ） */
+export function canSkipWatching(state: GameState): boolean {
+  return state.pending?.type === "match" && state.pending.kind === "practice";
+}
+
+/**
+ * 試合を始める（試合前の画面で決めた采配を使う）。
+ * mode = "auto"（結果のみ）は練習試合だけ。AI の監督が采配し、最後まで計算してから返す。
+ */
+export function startPlayerMatch(state: GameState, setup: TeamSetup, mode: "watch" | "auto" = "watch"): ActiveMatch | null {
   const p = state.pending;
   if (!p || p.type !== "match" || state.activeMatch) return null;
+  if (mode === "auto" && !canSkipWatching(state)) return null;
   const rules = pendingMatchRules(state)!;
   const school = playerSchool(state);
   school.formation = setup.formation;
@@ -341,7 +364,12 @@ export function startPlayerMatch(state: GameState, setup: TeamSetup): ActiveMatc
       opponentId: opp.id,
       state: createMatch(rules, rng, home, away),
       started: true,
+      mode,
     };
+    if (mode === "auto") {
+      match.state.teams[0].isUser = false;
+      simulateToEnd(match.state);
+    }
     state.activeMatch = match;
     return match;
   });
@@ -359,6 +387,10 @@ export interface MatchSummary {
   eliminated: boolean;
   champion: boolean;
   qualifiedNational: boolean;
+  /** 相手とのランク差（相手 − 自校。試合時点） */
+  rankDiff: number;
+  /** 得点の記録（結果のみの画面などで使う） */
+  goals: { minute: number; mine: boolean; name: string; pk: boolean }[];
 }
 
 /** 試合終了後の処理（評判・トーナメントの進行・引退） */
@@ -406,12 +438,12 @@ export function finishPlayerMatch(state: GameState): MatchSummary | null {
         eliminated = true;
         state.competitions.winterResult = `${label}敗退`;
         retireThirdYears(state);
-      } else if (b.championId === state.playerSchoolId) {
+      } else if (b.qualifiedIds?.includes(state.playerSchoolId)) {
         champion = true;
         if (am.kind === "prefQualifier") {
           qualifiedNational = true;
           delta += REPUTATION_GAUGE.bonus.prefChampion;
-          state.competitions.winterResult = `${prefectureLabel(ownPrefecture(state).name)}代表`;
+          state.competitions.winterResult = `${ownPrefecture(state).name}代表`;
         } else {
           delta += REPUTATION_GAUGE.bonus.nationalChampion;
           state.competitions.winterResult = `${COMPETITION_NAMES.national} 優勝`;
@@ -445,6 +477,15 @@ export function finishPlayerMatch(state: GameState): MatchSummary | null {
       eliminated,
       champion,
       qualifiedNational,
+      rankDiff: rankIndex(opp.rank) - rankIndex(school.rank),
+      goals: ms.events
+        .filter((e) => e.type === "goal" || e.type === "pkGoal")
+        .map((e) => ({
+          minute: e.minute,
+          mine: e.side === am.userSide,
+          name: ms.teams[e.side].players[e.players![0]]?.name ?? "",
+          pk: e.type === "pkGoal",
+        })),
     };
   });
 }
@@ -510,12 +551,12 @@ export function squareDisplay(state: GameState, sq: Square): { type: Square["bas
     else if (round < b.rounds.length) shown = !!findMatch(b, round, me);
     else shown = true;
     if (!shown) return { type: sq.baseType };
-    return { type: "major", label: m.kind === "prefQualifier" ? "県予選" : "全国" };
+    return { type: "major", label: m.kind === "prefQualifier" ? "予選" : "全国" };
   }
   const labels: Record<MajorKind, string> = {
     entrance: "入学式",
     practiceMatch: "練習試合",
-    prefQualifier: "県予選",
+    prefQualifier: "予選",
     national: "全国",
     graduation: "卒業式",
     yearEnd: "年度末",

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { formatDay } from "@/engine/calendar";
-import { COMPETITION_NAMES, prefectureLabel, roundLabel } from "@/engine/config/names";
+import { COMPETITION_NAMES, prefQualifierName, roundLabel } from "@/engine/config/names";
 import { totalRounds } from "@/engine/competition/bracket";
 import type { Bracket, BracketMatch } from "@/engine/types";
 import { useGameStore } from "@/store/gameStore";
@@ -21,12 +21,15 @@ export function BracketView() {
         options={["prefQualifier", "national"] as const}
         value={tab}
         onChange={setTab}
-        labels={{ prefQualifier: `${prefectureLabel(pref.name)}予選`, national: "全国大会" }}
+        labels={{ prefQualifier: `${pref.name}予選`, national: "全国大会" }}
       />
-      <h2 className="text-sm font-black">{COMPETITION_NAMES[tab]}</h2>
+      <h2 className="text-sm font-black">
+        {tab === "prefQualifier" ? prefQualifierName(pref.name) : `${COMPETITION_NAMES.national}（${game.prefectures.reduce((n, p) => n + p.reps, 0)}校）`}
+      </h2>
+      {tab === "prefQualifier" && pref.reps > 1 && <p className="text-xs text-gray-500">代表決定戦に勝った{pref.reps}校が全国大会に出場します。</p>}
       {game.competitions.winterResult && <p className="rounded-lg bg-green-50 p-2 text-sm font-bold text-pitch-dark">今年の成績：{game.competitions.winterResult}</p>}
       {!b ? (
-        <p className="text-sm text-gray-500">県予選が終わると、全国大会（{game.prefectures.length}校）の組み合わせが決まります。</p>
+        <p className="text-sm text-gray-500">予選が終わると、全国大会（{game.prefectures.reduce((n, p) => n + p.reps, 0)}校）の組み合わせが決まります。</p>
       ) : (
         <BracketRounds bracket={b} />
       )}
@@ -40,13 +43,15 @@ function BracketRounds({ bracket }: { bracket: Bracket }) {
   const rounds = Array.from({ length: total }, (_, r) => bracket.rounds[r]);
   return (
     <div className="flex flex-col gap-4">
-      {bracket.championId && (
-        <div className="rounded-xl bg-amber-100 p-3 text-center text-sm font-black text-amber-900">🏆 優勝：{game.schools[bracket.championId].name}</div>
+      {bracket.qualifiedIds && (
+        <div className="rounded-xl bg-amber-100 p-3 text-center text-sm font-black text-amber-900">
+          🏆 {bracket.qualifiedIds.length > 1 ? "代表" : "優勝"}：{bracket.qualifiedIds.map((id) => game.schools[id].name).join("・")}
+        </div>
       )}
       {rounds.map((matches, r) => (
         <section key={r}>
           <h3 className="mb-1 flex items-baseline gap-2 text-xs font-black text-gray-600">
-            {roundLabel(total, r)}
+            {roundLabel(total, r, bracket.qualifiers)}
             <span className="font-normal text-gray-400">{formatDay(bracket.roundDays[r])}</span>
           </h3>
           {!matches ? (

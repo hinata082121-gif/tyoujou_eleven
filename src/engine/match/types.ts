@@ -156,4 +156,6 @@ export interface ActiveMatch {
   state: MatchState;
   /** 試合開始前の設定が済んだか */
   started: boolean;
+  /** watch = 観戦する、auto = 結果のみ（練習試合だけ選べる。AI の監督が采配する） */
+  mode?: "watch" | "auto";
 }

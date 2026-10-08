@@ -84,8 +84,14 @@ export interface School {
 
 export interface Prefecture {
   id: string;
+  /** 実在の都道府県名（例：東京都） */
   name: string;
+  /** 地域区分（P2 の特待生スカウトの範囲に使う） */
   regionId: string;
+  /** 県予選の規模と強さの区分 */
+  tier: "competitive" | "normal" | "small";
+  /** 冬の全国大会の代表校の数（東京のみ 2） */
+  reps: number;
   schoolIds: string[];
   isPlayerPref: boolean;
 }
@@ -178,7 +184,11 @@ export interface Bracket {
   roundDays: number[];
   /** 何回戦まで終わったか */
   roundsDone: number;
+  /** 勝ち抜ける学校の数（東京の予選は 2。省略時 1） */
+  qualifiers?: number;
   championId?: string;
+  /** 勝ち抜けた学校（qualifiers 校。1 校なら championId と同じ） */
+  qualifiedIds?: string[];
 }
 
 // ================= OB・記録 =================
@@ -226,9 +236,9 @@ export interface GameState {
   competitions: {
     prefQualifier?: Bracket;
     national?: Bracket;
-    /** 冬の選手権が終わったか（引退済みか） */
+    /** 冬の全国大会が終わったか（引退済みか） */
     winterDone: boolean;
-    /** 今年の冬の選手権の成績（表示用） */
+    /** 今年の冬の全国大会の成績（表示用） */
     winterResult?: string;
     /** 今年の練習試合の回数（格上と組む頻度の調整用） */
     practiceMatchCount: number;

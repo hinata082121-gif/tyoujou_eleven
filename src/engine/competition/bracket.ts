@@ -21,7 +21,7 @@ export function roundsFor(teamCount: number): number {
  * トーナメント表を作る。
  * teamIds はシード順（強い順）。2 のべき乗に足りない分は不戦勝（null）で、上位シードに割り当てる。
  */
-export function createBracket(kind: Bracket["kind"], teamIds: string[], roundDays: number[], rng: Rng): Bracket {
+export function createBracket(kind: Bracket["kind"], teamIds: string[], roundDays: number[], rng: Rng, qualifiers = 1): Bracket {
   const rounds = roundsFor(teamIds.length);
   const size = 1 << rounds;
   const order = seedOrder(size);
@@ -32,7 +32,9 @@ export function createBracket(kind: Bracket["kind"], teamIds: string[], roundDay
     resolveBye(m);
     first.push(m);
   }
-  const bracket: Bracket = { kind, rounds: [first], roundDays: roundDays.slice(-rounds), roundsDone: 0 };
+  const total = rounds - Math.log2(qualifiers);
+  const bracket: Bracket = { kind, rounds: [first], roundDays: roundDays.slice(-total), roundsDone: 0 };
+  if (qualifiers > 1) bracket.qualifiers = qualifiers;
   return bracket;
 }
 
@@ -42,8 +44,9 @@ function resolveBye(m: BracketMatch) {
   else if (!m.a && !m.b) m.winner = null;
 }
 
+/** 行うラウンドの数（勝ち抜けが 2 校なら決勝は行わない） */
 export function totalRounds(b: Bracket): number {
-  return roundsFor(b.rounds[0].length * 2);
+  return roundsFor(b.rounds[0].length * 2) - Math.log2(b.qualifiers ?? 1);
 }
 
 /** そのラウンドの、その学校の試合（不戦勝でないもの） */
@@ -72,6 +75,11 @@ export function isAlive(b: Bracket, schoolId: string): boolean {
   return present;
 }
 
+/** 予選・大会が終わったか */
+export function isFinished(b: Bracket): boolean {
+  return !!b.qualifiedIds;
+}
+
 export function isRoundComplete(b: Bracket, round: number): boolean {
   return (b.rounds[round] ?? []).every((m) => m.winner !== undefined);
 }
@@ -94,8 +102,9 @@ export function advanceRound(b: Bracket, rng: Rng) {
   if (!isRoundComplete(b, r)) return;
   b.roundsDone = r + 1;
   const winners = b.rounds[r].map((m) => m.winner ?? null);
-  if (winners.length === 1) {
-    b.championId = winners[0] ?? undefined;
+  if (winners.length === (b.qualifiers ?? 1)) {
+    b.qualifiedIds = winners.filter((w): w is string => !!w);
+    b.championId = winners.length === 1 ? (winners[0] ?? undefined) : undefined;
     return;
   }
   const next: BracketMatch[] = [];

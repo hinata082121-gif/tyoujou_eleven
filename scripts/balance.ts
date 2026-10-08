@@ -10,7 +10,7 @@ import { Rng } from "../src/engine/rng";
 import { generateCpuRoster } from "../src/engine/school/generate";
 import { rankFromStrength, rankIndex, teamStrength } from "../src/engine/school/strength";
 import { SCHOOL_RANKS, type Player, type SchoolRank } from "../src/engine/types";
-import { simulateGrowth } from "./growthSim";
+import { simulateSeasons } from "./seasonSim";
 
 const N = Number(process.env.BALANCE_N ?? 10000);
 const rng = Rng.fromSeed(process.env.BALANCE_SEED ?? "balance");
@@ -134,5 +134,5 @@ console.log(`1試合のシュート: ${(all.shots / all.n).toFixed(1)}本 / 枠�
 console.log(`1試合あたりの試合中のPK: ${(all.inMatchPk / all.n).toFixed(3)}本`);
 console.log(`(計算時間 ${((Date.now() - t0) / 1000).toFixed(1)} 秒)`);
 
-// ---- 成長 ----
-simulateGrowth(Rng.fromSeed("growth"));
+// ---- 評判の推移と成長（うまい采配の自動プレイで何年分も進める） ----
+simulateSeasons(Number(process.env.BALANCE_SEASON_GAMES ?? 12), Number(process.env.BALANCE_SEASON_YEARS ?? 12));

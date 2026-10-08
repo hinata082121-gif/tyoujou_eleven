@@ -56,25 +56,27 @@ export function buildSquares(rng: Rng, prefRounds: number, nationalRounds: numbe
   prefQualifierDays(prefRounds).forEach((day, r) => setMajor(day, "prefQualifier", r));
   nationalDays(nationalRounds).forEach((day, r) => setMajor(day, "national", r));
 
-  // 練習試合：月に 1〜2 回
+  // 練習試合：年に 6〜8 回。月をランダムに選び、1 か月に 1 回まで
   const tooClose = (day: number) => squares.some((s) => s.major && Math.abs(s.day - day) < PRACTICE_MATCH.minGap);
+  const months: { start: number; len: number }[] = [];
   let start = 0;
   MONTH_NUMBERS.forEach((month, i) => {
-    const len = MONTH_DAYS[i];
-    if (!PRACTICE_MATCH.excludeMonths.includes(month)) {
-      const count = rng.int(PRACTICE_MATCH.perMonthMin, PRACTICE_MATCH.perMonthMax);
-      for (let c = 0; c < count; c++) {
-        for (let tries = 0; tries < 30; tries++) {
-          const day = start + rng.int(2, len - 1);
-          if (!tooClose(day)) {
-            setMajor(day, "practiceMatch");
-            break;
-          }
-        }
+    if (!PRACTICE_MATCH.excludeMonths.includes(month)) months.push({ start, len: MONTH_DAYS[i] });
+    start += MONTH_DAYS[i];
+  });
+  const target = rng.int(PRACTICE_MATCH.perYearMin, PRACTICE_MATCH.perYearMax);
+  let placed = 0;
+  for (const m of rng.shuffle([...months])) {
+    if (placed >= target) break;
+    for (let tries = 0; tries < 30; tries++) {
+      const day = m.start + rng.int(2, m.len - 1);
+      if (!tooClose(day)) {
+        setMajor(day, "practiceMatch");
+        placed++;
+        break;
       }
     }
-    start += len;
-  });
+  }
   return squares;
 }
 

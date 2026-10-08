@@ -13,17 +13,17 @@ describe("カレンダー", () => {
   });
 
   it("固定の大マス（入学式・県予選・全国大会・卒業式・年度末）と練習試合がある", () => {
-    const squares = buildSquares(Rng.fromSeed("cal"), 5, 5);
+    const squares = buildSquares(Rng.fromSeed("cal"), 5, 6);
     expect(squares).toHaveLength(365);
     const kinds = (k: string) => squares.filter((s) => s.major?.kind === k);
     expect(kinds("entrance").map((s) => s.day)).toEqual([0]);
     expect(kinds("prefQualifier")).toHaveLength(5);
-    expect(kinds("national")).toHaveLength(5);
+    expect(kinds("national")).toHaveLength(6);
     expect(kinds("graduation").map((s) => dayToDate(s.day))).toEqual([[3, 1]]);
     expect(kinds("yearEnd").map((s) => s.day)).toEqual([364]);
-    // 練習試合は月に 1〜2 回（除外月以外）
-    expect(kinds("practiceMatch").length).toBeGreaterThanOrEqual(9);
-    expect(kinds("practiceMatch").length).toBeLessThanOrEqual(18);
+    // 練習試合は年に 6〜8 回
+    expect(kinds("practiceMatch").length).toBeGreaterThanOrEqual(6);
+    expect(kinds("practiceMatch").length).toBeLessThanOrEqual(8);
     // 通常マスの種類は 5 種類
     const types = new Set(squares.map((s) => s.baseType));
     expect([...types].sort()).toEqual(["blue", "green", "red", "white", "yellow"]);

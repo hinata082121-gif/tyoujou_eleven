@@ -29,9 +29,21 @@ export function MatchResultScreen() {
           </p>
         )}
         <p className={`text-3xl font-black ${color}`}>{resultText}</p>
-        {r.qualifiedNational && <p className="rounded-xl bg-amber-100 px-4 py-2 font-black text-amber-900">🏆 県予選優勝！ 全国大会に出場！</p>}
+        {r.goals.length > 0 && (
+          <ul className="w-full rounded-xl border border-gray-200 p-3 text-left text-sm">
+            {r.goals.map((g, i) => (
+              <li key={i} className={g.mine ? "font-bold text-pitch-dark" : "text-gray-500"}>
+                <span className="mr-2 inline-block w-8 text-right font-mono text-xs">{g.minute}&apos;</span>
+                ⚽ {g.name}
+                {g.pk && "（PK）"}
+                <span className="ml-1 text-[10px]">{g.mine ? "" : `（${r.opponentName}）`}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {r.qualifiedNational && <p className="rounded-xl bg-amber-100 px-4 py-2 font-black text-amber-900">🏆 予選を勝ち抜いた！ 冬の全国大会に出場！</p>}
         {r.champion && !r.qualifiedNational && <p className="rounded-xl bg-amber-100 px-4 py-2 font-black text-amber-900">🏆 全国制覇！</p>}
-        {r.eliminated && r.kind !== "practice" && <p className="text-sm text-gray-600">冬の選手権はここで敗退。3年生は引退となる。</p>}
+        {r.eliminated && r.kind !== "practice" && <p className="text-sm text-gray-600">冬の全国大会はここで敗退。3年生は引退となる。</p>}
         <div className="w-full rounded-xl bg-gray-50 p-3 text-sm">
           評判ゲージ {r.reputationDelta >= 0 ? "+" : ""}
           {r.reputationDelta}
@@ -112,7 +124,7 @@ export function YearEndScreen() {
       <div className="flex flex-1 flex-col gap-3 p-4 text-sm">
         <div className="rounded-xl bg-gray-50 p-3">
           <div className="flex justify-between">
-            <span>冬の選手権</span>
+            <span>冬の全国大会</span>
             <span className="font-bold">{game.competitions.winterResult ?? "—"}</span>
           </div>
           <div className="mt-1 flex justify-between">

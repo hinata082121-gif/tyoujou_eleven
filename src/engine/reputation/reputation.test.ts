@@ -27,7 +27,7 @@ describe("評判", () => {
   });
 
   it("負けると下がり、評判が高いほど下がり幅が大きい（極端にはしない）", () => {
-    const low = matchReputationDelta(0, "prefQualifier", "C", "C", "loss", false);
+    const low = matchReputationDelta(1, "prefQualifier", "C", "C", "loss", false);
     const high = matchReputationDelta(4, "prefQualifier", "C", "C", "loss", false);
     expect(low).toBeLessThan(0);
     expect(high).toBeLessThan(low);

@@ -76,14 +76,15 @@ interface GameStore {
   updateSettings(patch: Partial<Settings>): void;
 
   loadSlot(slot: number): Promise<void>;
-  createGame(slot: number, schoolName: string): Promise<void>;
+  createGame(slot: number, schoolName: string, prefectureId: string): Promise<void>;
   /** エンジンで書き換えた後に呼ぶ：画面更新とオートセーブ */
   touch(save?: boolean): void;
   save(): Promise<void>;
 
   playCard(cardId: string): CardResult | null;
   clearLastCard(): void;
-  startMatch(setup: TeamSetup): void;
+  /** mode = "auto"（結果のみ）は練習試合だけ。すぐに結果画面へ進む */
+  startMatch(setup: TeamSetup, mode?: "watch" | "auto"): void;
   finishMatch(): void;
   clearLastMatch(): void;
   graduate(): void;
@@ -143,11 +144,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null });
   },
 
-  async createGame(slot, schoolName) {
+  async createGame(slot, schoolName, prefectureId) {
     const buf = new Uint32Array(2);
     crypto.getRandomValues(buf);
     const seed = `${Date.now().toString(36)}-${buf[0].toString(36)}${buf[1].toString(36)}`;
-    const game = newGame(seed, schoolName);
+    const game = newGame(seed, schoolName, prefectureId);
     set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null });
     try {
       window.localStorage.setItem(LAST_SLOT_KEY, String(slot));
@@ -186,10 +187,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ lastCard: null });
   },
 
-  startMatch(setup) {
+  startMatch(setup, mode = "watch") {
     const game = get().game;
     if (!game) return;
-    startPlayerMatch(game, setup);
+    startPlayerMatch(game, setup, mode);
+    if (mode === "auto" && game.activeMatch) {
+      get().finishMatch();
+      return;
+    }
     get().touch();
   },
   finishMatch() {

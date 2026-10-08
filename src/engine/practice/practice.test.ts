@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { GROWTH } from "../config/growth";
 import { PRACTICES } from "../config/practice";
 import { addExp, expToNext } from "../player/growth";
 import { generatePlayer } from "../player/generate";
@@ -23,7 +24,7 @@ describe("練習と成長", () => {
     const r3 = runPractice(Rng.fromSeed("a"), [three], "shoot", 3, 1);
     const g1 = r1.gains[one.id].shooting!;
     const g3 = r3.gains[three.id].shooting!;
-    expect(g1).toBeCloseTo(PRACTICES.shoot.gains.shooting!, 5);
+    expect(g1).toBeCloseTo(PRACTICES.shoot.gains.shooting! * GROWTH.practiceMult, 5);
     // 体力が少し落ちるぶん効率が下がるが、おおむね 3 倍
     expect(g3 / g1).toBeGreaterThan(2.7);
     expect(g3 / g1).toBeLessThanOrEqual(3.0001);

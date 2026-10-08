@@ -55,7 +55,7 @@ export function matchReputationDelta(
   viaPk: boolean,
 ): number {
   const diff = rankIndex(oppRank) - rankIndex(ownRank);
-  if (result === "win") return G.winBase[kind] * tableValue(G.winRankMult, diff);
+  if (result === "win") return G.winBase[kind] * tableValue(G.winRankMult, diff) * G.winLevelMult[level];
   if (result === "draw") return diff > 0 ? G.drawVsStronger * diff : 0;
   const loss = G.lossBase[kind] * tableValue(G.lossRankMult, diff) * G.lossLevelMult[level] * (viaPk ? G.pkLossMult : 1);
   return -loss;

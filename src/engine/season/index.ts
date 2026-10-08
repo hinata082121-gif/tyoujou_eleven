@@ -18,7 +18,7 @@ export function playerSchool(state: GameState) {
   return state.schools[state.playerSchoolId];
 }
 
-/** 3 年生の引退（冬の選手権で敗退した時点。優勝なら全国大会の後） */
+/** 3 年生の引退（冬の全国大会で敗退した時点。優勝なら全国大会の後） */
 export function retireThirdYears(state: GameState) {
   if (state.competitions.winterDone) return;
   state.competitions.winterDone = true;

@@ -40,10 +40,17 @@ export const MATCH = {
   possessionTactics: {
     attack: { attacking: 0.03, balanced: 0, defensive: -0.04 },
     press: { high: 0.03, mid: 0, low: -0.03 },
-    buildUp: { buildUp: 0.02, long: -0.02 },
+    buildUp: { buildUp: 0.01, long: 0 },
+    line: { high: 0.02, low: -0.03 },
   },
   /** 攻撃回数への戦術補正（自チームの攻撃回数に掛ける） */
-  attackRateTactics: { attacking: 1.12, balanced: 1.0, defensive: 0.85 },
+  attackRateTactics: { attacking: 1.12, balanced: 1.0, defensive: 0.84 },
+  /** 攻撃方針による守備の質の補正（守備的なほど人数をかけて守る） */
+  attackStyleDefense: { attacking: -2, balanced: 0, defensive: 3 },
+  /** 攻撃方針による、ボールを失ったときにカウンターを受ける確率の倍率 */
+  attackStyleCounterExposure: { attacking: 1.25, balanced: 1.0, defensive: 0.7 },
+  /** 守っている側の攻撃方針による、相手のチャンスの質の倍率 */
+  attackStyleChanceQ: { attacking: 1.05, balanced: 1.0, defensive: 0.9 },
   /** モメンタムの支配率への影響（モメンタム 100 で +0.2） */
   momentumPossession: 0.002,
   /** 3 点差以上でリードしている側は攻撃が緩む */
@@ -52,7 +59,7 @@ export const MATCH = {
   // ---- 攻撃ルート ----
   routeWeights: { center: 1.0, side: 0.85, long: 0.3, setPiece: 0.14 },
   /** ロングボール主体のときのロングボールの重み */
-  routeLongWithLongTactic: 1.0,
+  routeLongWithLongTactic: 0.6,
   /** カウンター：攻撃失敗の後に相手がカウンターを仕掛ける確率 */
   counterChance: 0.2,
   counterLineHighMult: 1.5,
@@ -97,12 +104,14 @@ export const MATCH = {
   // ---- ロングボール（7.3：パス × キック力）----
   /** 必要な飛距離（キック力で比べる） */
   longDistanceMin: 40,
-  longDistanceMax: 85,
+  longDistanceMax: 70,
   longAccScale: 12,
-  longAccBias: 45,
+  longAccBias: 38,
   aerialHeightPerCm: 0.8,
   aerialScale: 9,
-  longChanceQ: 0.42,
+  longChanceQ: 0.48,
+  /** 相手のラインが高いと、ロングボールで裏を取りやすい */
+  longVsHighLineQ: 0.12,
 
   // ---- サイド ----
   crossChance: 0.55,

@@ -1,17 +1,7 @@
 import { FRESHMAN_BASE, FRESHMAN_BASE_SD } from "../config/player";
 import { REPUTATION_TABLE } from "../config/reputation";
-import {
-  OTHER_PREF_PRESTIGE_WEIGHTS,
-  OTHER_PREF_SCHOOLS,
-  PLAYER_PREF_PRESTIGE_WEIGHTS,
-  PLAYER_PREF_SCHOOLS,
-  PLAYER_START,
-  PREFECTURE_COUNT,
-  PRESTIGE_GRADE_SIZE,
-  PRESTIGE_LEVEL_BASE,
-  REGION_COUNT,
-} from "../config/school";
-import { PREFECTURE_NAMES, REGION_NAMES, SCHOOL_NAME_HEADS, SCHOOL_NAME_TAILS } from "../config/names";
+import { PLAYER_START, PRESTIGE_GRADE_SIZE, PRESTIGE_LEVEL_BASE, prefReps, prefTier, TIER_SETTINGS } from "../config/school";
+import { DEFAULT_PREFECTURE_ID, PREFECTURES, REGIONS, SCHOOL_NAME_HEADS, SCHOOL_NAME_TAILS } from "../config/names";
 import { DEFAULT_TACTICS } from "../match/lineup";
 import { generateGradeGroup } from "../player/generate";
 import { growCpuPlayer } from "../player/growth";
@@ -117,17 +107,18 @@ export function makeCpuSchool(rng: Rng, id: string, name: string, prefectureId: 
   return school;
 }
 
-export function generateWorld(rng: Rng, playerSchoolName: string, year = 1): World {
-  const regions = REGION_NAMES.slice(0, REGION_COUNT).map((name, i) => ({ id: `r${i}`, name }));
-  const perRegion = PREFECTURE_COUNT / REGION_COUNT;
-  const prefectures: Prefecture[] = PREFECTURE_NAMES.slice(0, PREFECTURE_COUNT).map((name, i) => ({
-    id: `pf${i}`,
-    name,
-    regionId: regions[Math.floor(i / perRegion)].id,
+export function generateWorld(rng: Rng, playerSchoolName: string, year = 1, playerPrefId: string = DEFAULT_PREFECTURE_ID): World {
+  const regions = REGIONS.map((r) => ({ id: r.id, name: r.name }));
+  const prefectures: Prefecture[] = PREFECTURES.map((p) => ({
+    id: p.id,
+    name: p.name,
+    regionId: p.region,
+    tier: prefTier(p.id),
+    reps: prefReps(p.id),
     schoolIds: [],
-    isPlayerPref: false,
+    isPlayerPref: p.id === playerPrefId,
   }));
-  const playerPref = rng.pick(prefectures);
+  const playerPref = prefectures.find((p) => p.isPlayerPref) ?? prefectures[0];
   playerPref.isPlayerPref = true;
 
   const names = new NameGen(rng);
@@ -150,10 +141,10 @@ export function generateWorld(rng: Rng, playerSchoolName: string, year = 1): Wor
   schools[playerSchool.id] = playerSchool;
   playerPref.schoolIds.push(playerSchool.id);
 
-  const playerPrefCount = rng.int(PLAYER_PREF_SCHOOLS.min, PLAYER_PREF_SCHOOLS.max);
   for (const pref of prefectures) {
-    const count = pref.isPlayerPref ? playerPrefCount - 1 : OTHER_PREF_SCHOOLS;
-    const weights = pref.isPlayerPref ? PLAYER_PREF_PRESTIGE_WEIGHTS : OTHER_PREF_PRESTIGE_WEIGHTS;
+    const tier = TIER_SETTINGS[pref.tier];
+    const count = pref.isPlayerPref ? rng.int(tier.playerPrefSchools.min, tier.playerPrefSchools.max) - 1 : Math.max(tier.otherPrefSchools, pref.reps + 1);
+    const weights = pref.isPlayerPref ? tier.playerPrefPrestige : tier.otherPrefPrestige;
     for (let i = 0; i < count; i++) {
       const prestige = rng.weighted([0, 1, 2, 3, 4, 5], (p) => weights[p]);
       const id = `s${n++}`;

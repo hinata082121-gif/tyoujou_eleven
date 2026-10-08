@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { OTHER_PREF_SCHOOLS, PREFECTURE_COUNT } from "../config/school";
+import { TIER_SETTINGS } from "../config/school";
 import { overall } from "../player/rating";
 import { Rng } from "../rng";
 import { generalFreshmen, generateWorld, makeCpuSchool } from "./generate";
@@ -7,15 +7,24 @@ import { advanceCpuSchool } from "./season";
 import { rankIndex } from "./strength";
 
 describe("学校の生成", () => {
-  it("自県 16〜32 校、他県は各 3 校、全国大会に必要な県の数がある", () => {
-    const w = generateWorld(Rng.fromSeed("w"), "自校");
-    expect(w.prefectures).toHaveLength(PREFECTURE_COUNT);
+  it("47 都道府県・9 地域。自県は区分に応じた 16〜32 校、他県は区分に応じた数校", () => {
+    const w = generateWorld(Rng.fromSeed("w"), "自校", 1, "kochi");
+    expect(w.prefectures).toHaveLength(47);
+    expect(w.regions).toHaveLength(9);
+    expect(w.prefectures.reduce((n, p) => n + p.reps, 0)).toBe(48);
+    expect(w.prefectures.find((p) => p.id === "tokyo")!.reps).toBe(2);
+    const own = w.prefectures.find((p) => p.isPlayerPref)!;
+    expect(own.id).toBe("kochi");
+    expect(own.tier).toBe("small");
+    expect(own.schoolIds.length).toBeGreaterThanOrEqual(16);
+    expect(own.schoolIds.length).toBeLessThanOrEqual(19);
     for (const p of w.prefectures) {
-      if (p.isPlayerPref) {
-        expect(p.schoolIds.length).toBeGreaterThanOrEqual(16);
-        expect(p.schoolIds.length).toBeLessThanOrEqual(32);
-      } else expect(p.schoolIds).toHaveLength(OTHER_PREF_SCHOOLS);
+      if (p.isPlayerPref) continue;
+      expect(p.schoolIds.length).toBe(Math.max(TIER_SETTINGS[p.tier].otherPrefSchools, p.reps + 1));
     }
+    const big = generateWorld(Rng.fromSeed("w2"), "自校", 1, "osaka").prefectures.find((p) => p.isPlayerPref)!;
+    expect(big.schoolIds.length).toBeGreaterThanOrEqual(28);
+    expect(big.schoolIds.length).toBeLessThanOrEqual(32);
     const names = Object.values(w.schools).map((s) => s.name);
     expect(new Set(names).size).toBe(names.length);
   });

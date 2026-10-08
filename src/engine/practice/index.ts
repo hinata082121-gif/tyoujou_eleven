@@ -1,4 +1,5 @@
 import { PRACTICES, NON_TARGET_FITNESS, DAILY_RECOVERY, INJURY, CONDITION_DRIFT_CHANCE } from "../config/practice";
+import { GROWTH } from "../config/growth";
 import { addExp, practiceEfficiency } from "../player/growth";
 import type { Rng } from "../rng";
 import type { Condition, Player, PracticeKind, StatKey } from "../types";
@@ -33,7 +34,7 @@ export function practiceOneDay(rng: Rng, players: Player[], kind: PracticeKind, 
       continue;
     }
     if (isPracticeTarget(p, kind)) {
-      const eff = practiceEfficiency(p) * mult;
+      const eff = practiceEfficiency(p) * mult * GROWTH.practiceMult;
       for (const [stat, value] of Object.entries(def.gains) as [StatKey, number][]) {
         if (def.fieldOnly?.includes(stat) && p.mainPosition === "GK") continue;
         const exp = value * eff;

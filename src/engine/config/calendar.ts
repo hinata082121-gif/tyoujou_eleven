@@ -38,10 +38,10 @@ export const FIXED_DATES = {
   yearEnd: [3, 31] as const,
 };
 
-/** 練習試合：月ごとの回数（1〜2） */
+/** 練習試合：年に 6〜8 回（同じ月に 2 回は入れない） */
 export const PRACTICE_MATCH = {
-  perMonthMin: 1,
-  perMonthMax: 2,
+  perYearMin: 6,
+  perYearMax: 8,
   /** 練習試合を入れない月（大会期間など）。月の番号 */
   excludeMonths: [12, 1, 3] as number[],
   /** 他の大マスとの最低間隔（日） */
