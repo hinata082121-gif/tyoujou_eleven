@@ -13,7 +13,7 @@ import { CONDITION_MULT } from "../config/player";
 import { simulateToEnd } from "../match/engine";
 import { autoSetup } from "../match/lineup";
 import { playerSchool } from "../season";
-import { teamStrength } from "../school/strength";
+import { rankIndex, teamStrength } from "../school/strength";
 import {
   canSkipWatching,
   confirmGraduation,
@@ -74,7 +74,9 @@ export function skilledSetup(state: GameState): TeamSetup {
   let tactics: Tactics = { attack: "balanced", buildUp: "buildUp", press: "mid", line: "high" };
   if (opp) {
     const theirs = guessStyle(opp.formation, opp.tactics.attack);
-    const counter = (Object.keys(STYLE_BEATS) as TacticStyleId[]).find((s) => STYLE_BEATS[s] === theirs)!;
+    // 2 段階以上の格上には、堅守速攻で番狂わせを狙う（堅守速攻が苦手なポゼッションの相手は除く）
+    const underdog = rankIndex(opp.rank) - rankIndex(school.rank) >= 2 && theirs !== "possession";
+    const counter = underdog ? "lowBlock" : (Object.keys(STYLE_BEATS) as TacticStyleId[]).find((s) => STYLE_BEATS[s] === theirs)!;
     tactics = { ...TACTIC_STYLES[counter].tactics };
     // その型に合うフォーメーションのうち、部員に一番合うもの（全体の最善と大差なければ）
     const styled = best(TACTIC_STYLES[counter].formations);

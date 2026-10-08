@@ -12,6 +12,7 @@ import {
   matchupAdjust,
   matchupFlow,
   playSegment,
+  underdogLowBlockRanks,
   queueFormation,
   queueSubstitution,
   queueTactics,
@@ -336,5 +337,18 @@ describe("戦術の相性（循環型）", () => {
     expect(matchupFlow(styles.possession, styles.lowBlock).possession).toBeGreaterThan(0);
     expect(matchupFlow(styles.longBall, styles.highPress).rate).toBeGreaterThan(1);
     expect(matchupFlow(styles.longBall, styles.lowBlock).rate).toBeLessThan(1);
+  });
+});
+
+describe("堅守速攻の番狂わせ補正", () => {
+  const lowBlock = { attack: "defensive", buildUp: "long", press: "low", line: "low" } as const;
+  const other = { attack: "balanced", buildUp: "buildUp", press: "mid", line: "high" } as const;
+  it("堅守速攻で格上と戦うときだけ、ランク差に応じて効く（最大 3 段階）", () => {
+    expect(underdogLowBlockRanks({ tactics: lowBlock, rank: "D" }, { rank: "B" })).toBe(2);
+    expect(underdogLowBlockRanks({ tactics: lowBlock, rank: "E" }, { rank: "S" })).toBe(3);
+    // 同じランク・格下・ほかの型では効かない
+    expect(underdogLowBlockRanks({ tactics: lowBlock, rank: "C" }, { rank: "C" })).toBe(0);
+    expect(underdogLowBlockRanks({ tactics: lowBlock, rank: "B" }, { rank: "D" })).toBe(0);
+    expect(underdogLowBlockRanks({ tactics: other, rank: "D" }, { rank: "B" })).toBe(0);
   });
 });

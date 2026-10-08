@@ -1,6 +1,8 @@
 /**
- * npm run balance
+ * npm run balance:quick … 普段使う軽い版（数十秒）。試合数・年数を減らした参考値
+ * npm run balance:full  … すべての検証（4 分ほど）。PR の前に実行する
  * 大量の試合をシミュレーションして、SPEC 14章のバランス目標と比べる。
+ * 試合数などは環境変数で上書きできる（BALANCE_N など）。
  */
 import { PRESTIGE_LEVEL_BASE } from "../src/engine/config/school";
 import { WINTER_RULES } from "../src/engine/config/competitions";
@@ -13,8 +15,16 @@ import { rankFromStrength, rankIndex, teamStrength } from "../src/engine/school/
 import { SCHOOL_RANKS, type Player, type SchoolRank } from "../src/engine/types";
 import { simulateSeasons } from "./seasonSim";
 import { tacticsMatrix } from "./tacticsMatrix";
+import { underdogTable } from "./underdog";
 
-const N = Number(process.env.BALANCE_N ?? 10000);
+const MODE = process.argv[2] === "full" ? "full" : "quick";
+const PRESETS = {
+  quick: { n: 2000, tactics: 200, combos: false, underdog: 300, seasonGames: 6, seasonYears: 8 },
+  full: { n: 10000, tactics: 600, combos: true, underdog: 1500, seasonGames: 20, seasonYears: 12 },
+}[MODE];
+const env = (key: string, fallback: number) => Number(process.env[key] ?? fallback);
+const N = env("BALANCE_N", PRESETS.n);
+console.log(`npm run balance:${MODE}${MODE === "quick" ? "（軽い版。数値は参考。PR の前は balance:full を実行する）" : "（すべての検証）"}`);
 const rng = Rng.fromSeed(process.env.BALANCE_SEED ?? "balance");
 
 interface Team {
@@ -142,7 +152,10 @@ console.log(`1試合あたりの試合中のPK: ${(all.inMatchPk / all.n).toFixe
 console.log(`(計算時間 ${((Date.now() - t0) / 1000).toFixed(1)} 秒)`);
 
 // ---- 戦術の相性表 ----
-tacticsMatrix(Number(process.env.BALANCE_TACTICS_N ?? 600));
+tacticsMatrix(env("BALANCE_TACTICS_N", PRESETS.tactics), "tactics", PRESETS.combos);
+
+// ---- 格上と戦うときの型ごとの成績（堅守速攻の番狂わせ補正） ----
+underdogTable(env("BALANCE_UNDERDOG_N", PRESETS.underdog));
 
 // ---- 評判の推移と成長（うまい采配の自動プレイで何年分も進める） ----
-simulateSeasons(Number(process.env.BALANCE_SEASON_GAMES ?? 20), Number(process.env.BALANCE_SEASON_YEARS ?? 12));
+simulateSeasons(env("BALANCE_SEASON_GAMES", PRESETS.seasonGames), env("BALANCE_SEASON_YEARS", PRESETS.seasonYears));

@@ -8,6 +8,7 @@ import { FORMATIONS, type Lane, type Slot } from "../config/formations";
 import { MATCH } from "../config/match";
 import { CONDITION_MULT } from "../config/player";
 import { weightedStats } from "../player/rating";
+import { rankIndex } from "../school/strength";
 import { Rng } from "../rng";
 import { ALL_STATS, type MatchRules, type Player, type SchoolRank, type Stats, type Tactics, type TeamSetup } from "../types";
 import { decideAi } from "./ai";
@@ -279,6 +280,15 @@ export function matchupAdjust(atk: Tactics, def: Tactics, route: "pass" | "long"
   return add;
 }
 
+/**
+ * 堅守速攻（守備的・ライン低）で格上と戦うときの、ランク差（0〜maxRanks）。
+ * 0 なら補正なし（格上でない、または堅守速攻でない）
+ */
+export function underdogLowBlockRanks(me: Pick<MatchTeamState, "tactics" | "rank">, opp: Pick<MatchTeamState, "rank">): number {
+  if (me.tactics.attack !== "defensive" || me.tactics.line !== "low") return 0;
+  return clamp(rankIndex(opp.rank) - rankIndex(me.rank), 0, MATCH.underdogLowBlock.maxRanks);
+}
+
 /** 戦術の相性による、攻撃側の支配率の補正と攻撃回数の倍率 */
 export function matchupFlow(atk: Tactics, def: Tactics): { possession: number; rate: number } {
   const m = MATCH.matchup;
@@ -388,7 +398,8 @@ class SegmentSim {
     const base = w > 0 ? sum / w : 30;
     const t = def.team.tactics;
     const gap = t.press === "high" && t.line === "low" ? MATCH.pressLineGapDefense : 0;
-    return base + MATCH.pressDefenseBonus[t.press] + MATCH.lineDefenseBonus[t.line] + MATCH.attackStyleDefense[t.attack] + gap;
+    const underdog = underdogLowBlockRanks(def.team, this.ctx[other(def.side)].team) * MATCH.underdogLowBlock.defensePerRank;
+    return base + MATCH.pressDefenseBonus[t.press] + MATCH.lineDefenseBonus[t.line] + MATCH.attackStyleDefense[t.attack] + gap + underdog;
   }
 
   private attackers(atk: TeamCtx, lane?: Lane): Actor[] {
@@ -461,7 +472,8 @@ class SegmentSim {
       MATCH.counterChance *
       (lost.tactics.line === "high" ? MATCH.counterLineHighMult : 1) *
       MATCH.attackStyleCounterExposure[lost.tactics.attack] *
-      MATCH.attackStyleCounterAttack[counterer.tactics.attack];
+      MATCH.attackStyleCounterAttack[counterer.tactics.attack] *
+      (1 + underdogLowBlockRanks(counterer, lost) * MATCH.underdogLowBlock.counterPerRank);
     if (this.rng.chance(p)) this.attack(other(lostSide), minute, true);
   }
 
@@ -664,6 +676,7 @@ class SegmentSim {
     this.recordZone(side, "chances");
     const defT = this.ctx[other(side)].team.tactics;
     q *= MATCH.attackStyleChanceQ[defT.attack] * (defT.press === "high" && defT.line === "low" ? MATCH.pressLineGapChanceQ : 1);
+    q *= 1 - underdogLowBlockRanks(this.ctx[other(side)].team, this.ctx[side].team) * MATCH.underdogLowBlock.chanceQPerRank;
     this.bumpMomentum(side, MATCH.momentum.chance);
     if (this.rng.chance(MATCH.pkFoulChance * (0.5 + q))) {
       const def = this.ctx[other(side)];

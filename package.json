@@ -9,7 +9,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "balance": "tsx scripts/balance.ts"
+    "balance:quick": "tsx scripts/balance.ts quick",
+    "balance:full": "tsx scripts/balance.ts full"
   },
   "dependencies": {
     "lz-string": "^1.5.0",

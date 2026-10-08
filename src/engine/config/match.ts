@@ -85,6 +85,11 @@ export const MATCH = {
   pressDefenseBonus: { high: 1, mid: 0, low: -1 },
   /** ラインの高さによる守備の質の補正（引いて守るとゴール前が堅い） */
   lineDefenseBonus: { high: 0, low: 3 },
+  /**
+   * 堅守速攻（守備的・ライン低）で格上と戦うときの補正。相手とのランク差 1 段階ごとに効く（最大 maxRanks 段階）。
+   * 格上に番狂わせを狙う型という位置づけ。同じランクどうしでは効かない
+   */
+  underdogLowBlock: { defensePerRank: 4, chanceQPerRank: 0.07, counterPerRank: 0.25, maxRanks: 3 },
   /** プレス高なのにライン低（前と後ろの間が空く）ときの守備の質の補正と、相手のチャンスの質の倍率 */
   pressLineGapDefense: -5,
   pressLineGapChanceQ: 1.12,
