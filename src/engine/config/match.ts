@@ -194,7 +194,7 @@ export const MATCH = {
   // ---- CPU の采配 ----
   ai: {
     subFromMinute: 55,
-    subFitnessBelow: 52,
+    subFitnessBelow: 76,
     maxSubsPerSegment: 2,
     chaseFromMinute: 60,
     protectFromMinute: 72,

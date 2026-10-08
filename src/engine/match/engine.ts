@@ -211,6 +211,54 @@ function applyPending(state: MatchState, side: Side) {
   team.pending = null;
 }
 
+// ================= 判定の部品（7.3。単体テストしやすいよう切り出し） =================
+
+/**
+ * 視野の広さ × 判断：見えていても、強い相手には出せない。
+ * 1. 視野の広さで候補の数が決まる 2. 判断で出すまでの速さが決まる
+ * 3. 相手の守備の質で余裕時間が短くなる 4. 間に合う候補のうち最も価値の高いものを返す（なければ null）
+ */
+export function bestPassValue(rng: Rng, vision: number, decision: number, defQ: number): number | null {
+  const n = Math.min(MATCH.maxCandidates, 1 + Math.floor(Math.max(0, vision) / MATCH.visionPerCandidate));
+  const available = MATCH.timeT0 - (MATCH.timeTa * defQ) / 100;
+  const need = MATCH.needT0 - (MATCH.needTb * decision) / 100;
+  let best: number | null = null;
+  for (let i = 0; i < n; i++) {
+    const diff = rng.next() * MATCH.difficultyMax;
+    if (need + diff <= available) {
+      const value = MATCH.valueBase + (diff / MATCH.difficultyMax) * MATCH.valueRange;
+      if (best === null || value > best) best = value;
+    }
+  }
+  return best;
+}
+
+/** ロングパス = パス（精度）× キック力（届く距離）。キック力が足りないと届かない */
+export function longBallOutcome(rng: Rng, kickPower: number, pass: number): "ok" | "short" | "lost" {
+  const need = rng.range(MATCH.longDistanceMin, MATCH.longDistanceMax);
+  if (!rng.chance(sigmoid((kickPower - need) / 8))) return "short";
+  if (!rng.chance(sigmoid((pass - MATCH.longAccBias) / MATCH.longAccScale))) return "lost";
+  return "ok";
+}
+
+/**
+ * 枠内のシュートに対する GK の判定。
+ * 1. ポジショニングで「止めにいける範囲」 2. 範囲内ならセービング 3. キャッチングが低いとこぼれ球（parry）
+ */
+export function goalkeeperOutcome(
+  rng: Rng,
+  shot: { acc: number; power: number; q: number },
+  gk: Pick<Stats, "positioning" | "saving" | "catching">,
+): "goal" | "catch" | "parry" {
+  const placement = rng.next() * MATCH.placeSpread + (shot.acc / 100) * MATCH.placeAcc + shot.q * MATCH.placeQ;
+  const reach = MATCH.reachBase + (gk.positioning / 100) * MATCH.reachPos;
+  if (placement > reach) return "goal";
+  const saveP = sigmoid((gk.saving - shot.power * MATCH.savePowerW - shot.q * MATCH.saveQ + MATCH.saveBias) / MATCH.saveScale);
+  if (!rng.chance(saveP)) return "goal";
+  const catchP = sigmoid((gk.catching - shot.power * MATCH.catchPowerW + MATCH.catchBias) / MATCH.catchScale);
+  return rng.chance(catchP) ? "catch" : "parry";
+}
+
 // ================= 区間の計算 =================
 
 interface Actor {
@@ -361,20 +409,8 @@ class SegmentSim {
     return this.setPiece(side, minute);
   }
 
-  /** 視野の広さ × 判断（7.3）：出せるパスのうち最も価値の高いものを返す。出せなければ null */
   visionDecision(passer: Actor, defQ: number): number | null {
-    const n = Math.min(MATCH.maxCandidates, 1 + Math.floor(passer.e.vision / MATCH.visionPerCandidate));
-    const available = MATCH.timeT0 - (MATCH.timeTa * defQ) / 100;
-    const need = MATCH.needT0 - (MATCH.needTb * passer.e.decision) / 100;
-    let best: number | null = null;
-    for (let i = 0; i < n; i++) {
-      const diff = this.rng.next() * MATCH.difficultyMax;
-      if (need + diff <= available) {
-        const value = MATCH.valueBase + (diff / MATCH.difficultyMax) * MATCH.valueRange;
-        if (best === null || value > best) best = value;
-      }
-    }
-    return best;
+    return bestPassValue(this.rng, passer.e.vision, passer.e.decision, defQ);
   }
 
   private turnover(lostSide: Side, minute: number) {
@@ -502,13 +538,9 @@ class SegmentSim {
     const fromGk = atk.team.tactics.buildUp === "long" && this.rng.chance(0.5);
     const kicker = fromGk ? atk.gk : this.pickBy(this.defenders(atk), (a) => a.e.kickPower + a.e.pass);
     const target = this.pickBy(this.attackers(atk, "C"), (a) => Math.max(1, this.aerialPower(a)));
-    const need = this.rng.range(MATCH.longDistanceMin, MATCH.longDistanceMax);
-    if (!this.rng.chance(sigmoid((kicker.e.kickPower - need) / 8))) {
-      this.emit(minute, side, "longBallShort", [kicker.id]);
-      return this.turnover(side, minute);
-    }
-    if (!this.rng.chance(sigmoid((kicker.e.pass - MATCH.longAccBias) / MATCH.longAccScale))) {
-      this.emit(minute, side, "longBallLost", [kicker.id]);
+    const lb = longBallOutcome(this.rng, kicker.e.kickPower, kicker.e.pass);
+    if (lb !== "ok") {
+      this.emit(minute, side, lb === "short" ? "longBallShort" : "longBallLost", [kicker.id]);
       return this.turnover(side, minute);
     }
     const marker = this.pickBy(this.defenders(def, "C"), (a) => Math.max(1, this.aerialPower(a)));
@@ -655,15 +687,9 @@ class SegmentSim {
     atk.team.stats.onTarget++;
     this.bumpMomentum(side, MATCH.momentum.onTarget);
     const gk = def.gk;
-    // 1. ポジショニングで「止めにいける範囲」
-    const placement = this.rng.next() * MATCH.placeSpread + (acc / 100) * MATCH.placeAcc + q * MATCH.placeQ;
-    const reach = MATCH.reachBase + (gk.e.positioning / 100) * MATCH.reachPos;
-    if (placement > reach) return this.goal(side, shooter, minute);
-    // 2. セービング
-    const saveP = sigmoid((gk.e.saving - power * MATCH.savePowerW - q * MATCH.saveQ + MATCH.saveBias) / MATCH.saveScale);
-    if (!this.rng.chance(saveP)) return this.goal(side, shooter, minute);
-    // 3. キャッチング：低いとこぼれ球
-    if (this.rng.chance(sigmoid((gk.e.catching - power * MATCH.catchPowerW + MATCH.catchBias) / MATCH.catchScale))) {
+    const outcome = goalkeeperOutcome(this.rng, { acc, power, q }, gk.e);
+    if (outcome === "goal") return this.goal(side, shooter, minute);
+    if (outcome === "catch") {
       this.emit(minute, other(side), "catch", [gk.id, shooter.id]);
       return;
     }
