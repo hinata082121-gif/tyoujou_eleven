@@ -25,6 +25,7 @@
 - 表示名（大会名・地名など）は `src/engine/config/names.ts` に集約する。
 - 試合の結果はエンジンが確率で決める。表示（テキスト・2D・3D）は、エンジンが出したイベントを再生するだけにする。
 - 状態管理はZustand。保存は `src/lib/save/` に置く（localStorage、スキーマのバージョン管理、JSONの書き出し・読み込み）。
+  - セーブデータの形を変えたら、`src/lib/save/migrations.ts` の `SCHEMA_VERSION` を上げてマイグレーション関数を足す。
 - UIはスマホ縦画面を最優先にする。
 
 ## コーディング規約
@@ -35,8 +36,10 @@
 
 ## コマンド
 
-<!-- Phase 1で確定したら、Claude Codeが記入する -->
-- `npm run dev`
-- `npm run test`
-- `npm run balance`
-- `npm run build`
+- `npm install`：依存パッケージを入れる
+- `npm run dev`：開発サーバー（http://localhost:3000）
+- `npm run lint`：ESLint（`src/engine` から React・ブラウザ API・`Math.random` を使うとエラー）
+- `npm run typecheck`：TypeScript の型チェック
+- `npm run test`：Vitest の単体テスト（`src/**/*.test.ts`）
+- `npm run balance`：大量の試合をシミュレーションして、SPEC 14章の目標値を表で出す（`BALANCE_N=2000 npm run balance` で試合数を変更）
+- `npm run build`：静的書き出し（`out/` に出力。Vercel はこれを配信する）

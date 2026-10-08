@@ -112,9 +112,9 @@ rows.push(["1試合の総得点（平均）", avgGoals.toFixed(2), "2.5〜3.5", 
 const pkRate = all.pk / all.n;
 rows.push(["トーナメントでPK戦になる割合（80分）", pct(pkRate), "15〜25%", check(pkRate, 0.15, 0.25)]);
 const sameWin = (same.aWin + same.aLoss) / 2 / same.n; // 同格は対称なので両側の平均
-rows.push(["同格の相手への勝率（90分内）", pct(sameWin), "40〜50%", check(sameWin, 0.4, 0.5)]);
+rows.push(["同格の相手への勝率（試合時間内）", pct(sameWin), "40〜50%", check(sameWin, 0.4, 0.5)]);
 const up2Win = plus2.aWin / plus2.n;
-rows.push(["ランクが2段階上の相手への勝率（90分内）", pct(up2Win), "15〜25%", check(up2Win, 0.15, 0.25)]);
+rows.push(["ランクが2段階上の相手への勝率（試合時間内）", pct(up2Win), "15〜25%", check(up2Win, 0.15, 0.25)]);
 
 console.log("| 項目 | 結果 | 目標 | 判定 |");
 console.log("|---|---|---|---|");

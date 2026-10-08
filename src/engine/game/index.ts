@@ -121,13 +121,6 @@ function matchDecided(b: Bracket, round: number, schoolId: string) {
   return !m || m.winner !== undefined;
 }
 
-/** 表示用のマスの種類（無効な大マスは通常マスとして扱う） */
-export function effectiveSquareType(state: GameState, sq: Square) {
-  if (sq.major && (isStopSquare(state, sq) || sq.major.kind === "entrance")) return "major" as const;
-  if (sq.major && sq.day < state.calendar.position && sq.major.kind !== "prefQualifier" && sq.major.kind !== "national") return "major" as const;
-  return sq.baseType;
-}
-
 export interface CardResult {
   from: number;
   to: number;
@@ -500,4 +493,32 @@ export function opponentOf(state: GameState): School | undefined {
 
 export function isPlayerAlive(state: GameState, b: Bracket | undefined): boolean {
   return !!b && isAlive(b, state.playerSchoolId);
+}
+
+/** カレンダーの表示用：マスの見た目（大会の大マスは、まだ勝ち残っていれば表示する） */
+export function squareDisplay(state: GameState, sq: Square): { type: Square["baseType"] | "major"; label?: string } {
+  const m = sq.major;
+  if (!m) return { type: sq.baseType };
+  const me = state.playerSchoolId;
+  const c = state.competitions;
+  if (m.kind === "prefQualifier" || m.kind === "national") {
+    const b = m.kind === "prefQualifier" ? c.prefQualifier : c.national;
+    const round = m.round ?? 0;
+    let shown: boolean;
+    if (!b) shown = m.kind === "national" && !!c.prefQualifier && isAlive(c.prefQualifier, me) && !c.winterDone;
+    else if (!isAlive(b, me)) shown = false;
+    else if (round < b.rounds.length) shown = !!findMatch(b, round, me);
+    else shown = true;
+    if (!shown) return { type: sq.baseType };
+    return { type: "major", label: m.kind === "prefQualifier" ? "県予選" : "全国" };
+  }
+  const labels: Record<MajorKind, string> = {
+    entrance: "入学式",
+    practiceMatch: "練習試合",
+    prefQualifier: "県予選",
+    national: "全国",
+    graduation: "卒業式",
+    yearEnd: "年度末",
+  };
+  return { type: "major", label: labels[m.kind] };
 }
