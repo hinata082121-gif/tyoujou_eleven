@@ -66,7 +66,7 @@ function makeTeam(input: TeamInput, benchSize: number, form: number): MatchTeamS
     subWindowsUsed: 0,
     form,
     pending: null,
-    stats: { shots: 0, onTarget: 0, possessionSum: 0, segments: 0, corners: 0 },
+    stats: { shots: 0, onTarget: 0, possessionSum: 0, segments: 0, corners: 0, zones: { attacks: [0, 0, 0], chances: [0, 0, 0] } },
   };
 }
 
@@ -259,6 +259,41 @@ export function goalkeeperOutcome(
   return rng.chance(catchP) ? "catch" : "parry";
 }
 
+/**
+ * 戦術の相性によるチャンスの質の補正（循環型。config の matchup を参照）。
+ * route = "pass" はつないで崩す攻撃（中央・サイド）、"long" はロングボール。
+ * pass は倍率、long は足し引きする値を返す。
+ */
+export function matchupAdjust(atk: Tactics, def: Tactics, route: "pass" | "long"): number {
+  const m = MATCH.matchup;
+  if (route === "pass") {
+    if (atk.buildUp !== "buildUp") return 1;
+    let mult = 1;
+    if (def.press === "high") mult *= m.buildUpVsHighPressQ;
+    if (def.line === "low") mult *= m.buildUpVsLowLineQ;
+    return mult;
+  }
+  let add = def.line === "high" ? MATCH.longVsHighLineQ : 0;
+  if (def.press === "high") add += m.longVsHighPressQ;
+  if (def.line === "low") add -= m.longVsLowLineQ;
+  return add;
+}
+
+/** 戦術の相性による、攻撃側の支配率の補正と攻撃回数の倍率 */
+export function matchupFlow(atk: Tactics, def: Tactics): { possession: number; rate: number } {
+  const m = MATCH.matchup;
+  let possession = 0;
+  let rate = 1;
+  if (atk.buildUp === "buildUp") {
+    if (def.press === "high") possession += m.buildUpVsHighPressPossession;
+    if (def.line === "low") possession += m.buildUpVsLowLinePossession;
+  } else {
+    if (def.press === "high") rate *= m.longVsHighPressRate;
+    if (def.line === "low") rate *= m.longVsLowLineRate;
+  }
+  return { possession, rate };
+}
+
 // ================= 区間の計算 =================
 
 interface Actor {
@@ -295,6 +330,8 @@ class SegmentSim {
   readonly ctx: [TeamCtx, TeamCtx];
   readonly events: MatchEvent[] = [];
   private momentumDelta = 0;
+  /** 今の攻撃のレーン（ゾーン別の集計用） */
+  private currentLane: Lane = "C";
 
   constructor(
     private state: MatchState,
@@ -349,7 +386,9 @@ class SegmentSim {
       w += laneW * lineW;
     }
     const base = w > 0 ? sum / w : 30;
-    return base + MATCH.pressDefenseBonus[def.team.tactics.press] + MATCH.attackStyleDefense[def.team.tactics.attack];
+    const t = def.team.tactics;
+    const gap = t.press === "high" && t.line === "low" ? MATCH.pressLineGapDefense : 0;
+    return base + MATCH.pressDefenseBonus[t.press] + MATCH.lineDefenseBonus[t.line] + MATCH.attackStyleDefense[t.attack] + gap;
   }
 
   private attackers(atk: TeamCtx, lane?: Lane): Actor[] {
@@ -380,6 +419,7 @@ class SegmentSim {
 
   /** 攻撃 1 回 */
   attack(side: Side, minute: number, counter = false) {
+    this.currentLane = "C";
     const atk = this.ctx[side];
     const def = this.ctx[other(side)];
     // ビルドアップ重視：相手のプレスに引っかかると自陣ゴール前で奪われる（7.3）
@@ -398,6 +438,7 @@ class SegmentSim {
         }
       }
     }
+    this.recordZone(side, "attacks");
     if (counter) return this.counterAttack(side, minute);
     const longW = atk.team.tactics.buildUp === "long" ? MATCH.routeLongWithLongTactic : MATCH.routeWeights.long;
     const route = this.rng.weighted(["center", "side", "long", "setPiece"] as const, (r) =>
@@ -415,7 +456,12 @@ class SegmentSim {
 
   private turnover(lostSide: Side, minute: number) {
     const lost = this.ctx[lostSide].team;
-    const p = MATCH.counterChance * (lost.tactics.line === "high" ? MATCH.counterLineHighMult : 1) * MATCH.attackStyleCounterExposure[lost.tactics.attack];
+    const counterer = this.ctx[other(lostSide)].team;
+    const p =
+      MATCH.counterChance *
+      (lost.tactics.line === "high" ? MATCH.counterLineHighMult : 1) *
+      MATCH.attackStyleCounterExposure[lost.tactics.attack] *
+      MATCH.attackStyleCounterAttack[counterer.tactics.attack];
     if (this.rng.chance(p)) this.attack(other(lostSide), minute, true);
   }
 
@@ -442,7 +488,7 @@ class SegmentSim {
       return this.turnover(side, minute);
     }
     const marker = this.pickBy(this.defenders(def, receiver.slot.lane), (a) => this.defScore(a));
-    const q = this.receiveQuality(receiver, marker, value);
+    const q = this.receiveQuality(receiver, marker, value) * matchupAdjust(atk.team.tactics, def.team.tactics, "pass");
     this.emit(minute, side, "pass", [passer.id, receiver.id]);
     this.chanceInBox(side, receiver, q, minute, 0);
   }
@@ -472,6 +518,8 @@ class SegmentSim {
     const atk = this.ctx[side];
     const def = this.ctx[other(side)];
     const lane: Lane = this.rng.chance(0.5) ? "L" : "R";
+    this.currentLane = lane;
+    this.recordZone(side, "attacks");
     const wide = atk.actors.filter((a) => a.slot.lane === lane && a.slot.line !== "GK");
     const carrier = wide.length > 0 ? this.pickBy(wide, (a) => a.e.speed + a.e.dribble + (a.slot.line === "DF" ? -20 : 0)) : this.pickBy(this.attackers(atk), (a) => a.e.speed);
     const defWide = def.actors.filter((a) => a.slot.lane === lane && a.slot.line !== "GK" && a.slot.line !== "FW");
@@ -493,7 +541,7 @@ class SegmentSim {
     const receiver = this.pickBy(this.attackers(atk, "C").filter((a) => a.id !== carrier.id), (a) => this.atkScore(a));
     const cb = this.pickBy(this.defenders(def, "C"), (a) => this.defScore(a));
     this.emit(minute, side, "pass", [carrier.id, receiver.id]);
-    this.chanceInBox(side, receiver, this.receiveQuality(receiver, cb, value), minute, 0);
+    this.chanceInBox(side, receiver, this.receiveQuality(receiver, cb, value) * matchupAdjust(atk.team.tactics, def.team.tactics, "pass"), minute, 0);
   }
 
   /** クロス：GK のハイボール → キャッチング、届かなければ空中戦（7.3） */
@@ -545,8 +593,10 @@ class SegmentSim {
     }
     const marker = this.pickBy(this.defenders(def, "C"), (a) => Math.max(1, this.aerialPower(a)));
     this.emit(minute, side, "longBall", [kicker.id, target.id]);
-    if (this.rng.chance(sigmoid((this.aerialPower(target) - this.aerialPower(marker)) / MATCH.aerialScale))) {
-      const q = this.receiveQuality(target, marker, MATCH.longChanceQ + (def.team.tactics.line === "high" ? MATCH.longVsHighLineQ : 0) + this.rng.range(0, 0.3));
+    const deepBonus = def.team.tactics.line === "low" ? MATCH.matchup.longVsLowLineAerial : 0;
+    if (this.rng.chance(sigmoid((this.aerialPower(target) - this.aerialPower(marker) - deepBonus) / MATCH.aerialScale))) {
+      const base = MATCH.longChanceQ + matchupAdjust(atk.team.tactics, def.team.tactics, "long");
+      const q = this.receiveQuality(target, marker, Math.max(0.05, base + this.rng.range(0, 0.3)));
       this.chanceInBox(side, target, q, minute, 0);
     } else {
       this.emit(minute, side, "crossCleared", [marker.id]);
@@ -601,8 +651,19 @@ class SegmentSim {
   }
 
   /** ボックス内のチャンス：ファウルで PK になることもある */
+  private recordZone(side: Side, kind: "attacks" | "chances") {
+    const stats = this.ctx[side].team.stats;
+    if (!stats.zones) stats.zones = { attacks: [0, 0, 0], chances: [0, 0, 0] };
+    const lane = this.currentLane;
+    const i = lane === "L" ? 0 : lane === "C" ? 1 : 2;
+    if (kind === "attacks" && lane !== "C") stats.zones.attacks[1]--; // サイド攻撃は中央から付け替える
+    stats.zones[kind][i]++;
+  }
+
   chanceInBox(side: Side, shooter: Actor, q: number, minute: number, depth: number) {
-    q *= MATCH.attackStyleChanceQ[this.ctx[other(side)].team.tactics.attack];
+    this.recordZone(side, "chances");
+    const defT = this.ctx[other(side)].team.tactics;
+    q *= MATCH.attackStyleChanceQ[defT.attack] * (defT.press === "high" && defT.line === "low" ? MATCH.pressLineGapChanceQ : 1);
     this.bumpMomentum(side, MATCH.momentum.chance);
     if (this.rng.chance(MATCH.pkFoulChance * (0.5 + q))) {
       const def = this.ctx[other(side)];
@@ -712,6 +773,10 @@ class SegmentSim {
     const t = MATCH.possessionTactics;
     const adj = (tc: Tactics) => t.attack[tc.attack] + t.press[tc.press] + t.buildUp[tc.buildUp] + t.line[tc.line];
     p0 += adj(c0.team.tactics) - adj(c1.team.tactics);
+    const flow0 = matchupFlow(c0.team.tactics, c1.team.tactics);
+    const flow1 = matchupFlow(c1.team.tactics, c0.team.tactics);
+    p0 += flow0.possession - flow1.possession;
+    const flowRate = [flow0.rate, flow1.rate];
     p0 += this.state.momentum * MATCH.momentumPossession;
     p0 = clamp(p0, MATCH.possessionMin, MATCH.possessionMax);
     const ps = [p0, 1 - p0];
@@ -727,7 +792,7 @@ class SegmentSim {
       const team = this.ctx[side].team;
       const myLead = side === 0 ? lead : -lead;
       const relax = myLead >= 3 ? MATCH.bigLeadRelax : 1;
-      const lambda = MATCH.attacksPerSegment * scale * ps[side] * MATCH.attackRateTactics[team.tactics.attack] * relax;
+      const lambda = MATCH.attacksPerSegment * scale * ps[side] * MATCH.attackRateTactics[team.tactics.attack] * relax * flowRate[side];
       const n = this.rng.poisson(lambda);
       for (let i = 0; i < n; i++) attacks.push({ side, minute: this.segStart + this.rng.int(0, Math.max(0, segMinutes - 1)) + 1 });
     }

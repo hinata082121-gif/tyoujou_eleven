@@ -9,6 +9,8 @@ import {
   goalkeeperOutcome,
   isBreakPhase,
   longBallOutcome,
+  matchupAdjust,
+  matchupFlow,
   playSegment,
   queueFormation,
   queueSubstitution,
@@ -20,6 +22,7 @@ import {
 } from "./engine";
 import { autoSetup, DEFAULT_TACTICS } from "./lineup";
 import { pkDecided, resolvePkKick, setPkOrder } from "./pk";
+import { halfReport } from "./report";
 
 const team = (seed: string, prestige: number, isUser = false): TeamInput => {
   const players = generateCpuRoster(Rng.fromSeed(seed), prestige, 1);
@@ -295,3 +298,43 @@ describe("CPU の采配", () => {
   });
 });
 
+
+describe("ハーフタイムの集計", () => {
+  it("支配率・シュート・ゾーン別の攻撃が集計され、相手のゾーンは左右を入れ替えて比べる", () => {
+    const s = match(WINTER_RULES.early, "half");
+    while (s.phase === "H1") playSegment(s);
+    const r = halfReport(s, 0);
+    const r1 = halfReport(s, 1);
+    expect(r.possession + r1.possession).toBeCloseTo(1, 5);
+    expect(r.shots[0]).toBe(s.teams[0].stats.shots);
+    const z0 = s.teams[0].stats.zones!;
+    const z1 = s.teams[1].stats.zones!;
+    expect(r.zones.map((z) => z.ourAttacks)).toEqual(z0.attacks);
+    expect(r.zones[0].theirAttacks).toBe(z1.attacks[2]);
+    expect(r.zones[2].theirAttacks).toBe(z1.attacks[0]);
+    expect(z0.attacks.reduce((a, b) => a + b, 0)).toBeGreaterThan(0);
+    for (const z of r.zones) expect(["優勢", "互角", "押されている"]).toContain(z.verdict);
+  });
+});
+
+describe("戦術の相性（循環型）", () => {
+  it("どの戦術にも、相性で上回る戦術がある", () => {
+    const styles = {
+      possession: { attack: "balanced", buildUp: "buildUp", press: "mid", line: "high" },
+      highPress: { attack: "attacking", buildUp: "buildUp", press: "high", line: "high" },
+      longBall: { attack: "balanced", buildUp: "long", press: "mid", line: "high" },
+      lowBlock: { attack: "defensive", buildUp: "long", press: "low", line: "low" },
+    } as const;
+    // つなぐ攻撃は、ハイプレスには不利、引いた相手には有利
+    expect(matchupAdjust(styles.possession, styles.highPress, "pass")).toBeLessThan(1);
+    expect(matchupAdjust(styles.possession, styles.lowBlock, "pass")).toBeGreaterThan(1);
+    // ロングボールは、ハイプレスには有利、引いた相手には不利
+    expect(matchupAdjust(styles.longBall, styles.highPress, "long")).toBeGreaterThan(matchupAdjust(styles.longBall, styles.possession, "long"));
+    expect(matchupAdjust(styles.longBall, styles.lowBlock, "long")).toBeLessThan(0);
+    // 流れ：ハイプレス相手のビルドアップは支配率が下がり、引いた相手には上がる
+    expect(matchupFlow(styles.possession, styles.highPress).possession).toBeLessThan(0);
+    expect(matchupFlow(styles.possession, styles.lowBlock).possession).toBeGreaterThan(0);
+    expect(matchupFlow(styles.longBall, styles.highPress).rate).toBeGreaterThan(1);
+    expect(matchupFlow(styles.longBall, styles.lowBlock).rate).toBeLessThan(1);
+  });
+});

@@ -3,10 +3,11 @@ import { REPUTATION_TABLE } from "../config/reputation";
 import { PLAYER_START, PRESTIGE_GRADE_SIZE, PRESTIGE_LEVEL_BASE, prefReps, prefTier, TIER_SETTINGS } from "../config/school";
 import { DEFAULT_PREFECTURE_ID, PREFECTURES, REGIONS, SCHOOL_NAME_HEADS, SCHOOL_NAME_TAILS } from "../config/names";
 import { DEFAULT_TACTICS } from "../match/lineup";
+import { STYLE_WEIGHTS, TACTIC_STYLE_IDS, TACTIC_STYLES } from "../config/tactics";
 import { generateGradeGroup } from "../player/generate";
 import { growCpuPlayer } from "../player/growth";
 import type { Rng } from "../rng";
-import { FORMATION_IDS, type FormationId, type Player, type Prefecture, type ReputationLevel, type School, type Tactics } from "../types";
+import { type FormationId, type Player, type Prefecture, type ReputationLevel, type School, type Tactics } from "../types";
 import { rankFromStrength, teamStrength } from "./strength";
 
 export interface World {
@@ -16,15 +17,10 @@ export interface World {
   playerSchoolId: string;
 }
 
-const FORMATION_WEIGHTS: Record<FormationId, number> = { "4-4-2": 30, "4-2-3-1": 25, "4-3-3": 20, "3-5-2": 13, "5-3-2": 12 };
-
-function randomTactics(rng: Rng): Tactics {
-  return {
-    attack: rng.weighted(["attacking", "balanced", "defensive"] as const, (a) => (a === "balanced" ? 3 : 1)),
-    buildUp: rng.chance(0.6) ? "buildUp" : "long",
-    press: rng.weighted(["high", "mid", "low"] as const, (p) => (p === "mid" ? 3 : 1)),
-    line: rng.chance(0.55) ? "high" : "low",
-  };
+/** CPU 校の戦術の型（ポゼッション・ハイプレス・ロングボール・堅守速攻）と、その型に合うフォーメーション */
+function randomStyle(rng: Rng): { formation: FormationId; tactics: Tactics } {
+  const style = TACTIC_STYLES[rng.weighted(TACTIC_STYLE_IDS, (id) => STYLE_WEIGHTS[id])];
+  return { formation: rng.pick(style.formations), tactics: { ...style.tactics } };
 }
 
 /** CPU 校の新入生の人数と基準値 */
@@ -91,7 +87,7 @@ class NameGen {
 
 export function makeCpuSchool(rng: Rng, id: string, name: string, prefectureId: string, prestige: number, year: number): School {
   const players = generateCpuRoster(rng, prestige, year);
-  const formation = rng.weighted(FORMATION_IDS, (f) => FORMATION_WEIGHTS[f]);
+  const { formation, tactics } = randomStyle(rng);
   const school: School = {
     id,
     name,
@@ -101,7 +97,7 @@ export function makeCpuSchool(rng: Rng, id: string, name: string, prefectureId: 
     rank: "E",
     prestige,
     formation,
-    tactics: randomTactics(rng),
+    tactics,
   };
   school.rank = rankFromStrength(teamStrength(players, formation));
   return school;

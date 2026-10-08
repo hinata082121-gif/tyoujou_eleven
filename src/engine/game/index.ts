@@ -355,7 +355,7 @@ export function startPlayerMatch(state: GameState, setup: TeamSetup, mode: "watc
   const opp = state.schools[p.opponentId];
   return withRng(state, (rng) => {
     const home = { ...schoolTeamInput(school, rules, true), setup };
-    const away = schoolTeamInput(opp, rules, false);
+    const away = schoolTeamInput(opp, rules, false, rng);
     const match: ActiveMatch = {
       kind: p.kind,
       round: p.round,

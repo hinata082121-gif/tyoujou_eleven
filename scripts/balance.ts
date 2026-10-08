@@ -5,12 +5,14 @@
 import { PRESTIGE_LEVEL_BASE } from "../src/engine/config/school";
 import { WINTER_RULES } from "../src/engine/config/competitions";
 import { createMatch, simulateToEnd } from "../src/engine/match/engine";
-import { autoSetup, DEFAULT_TACTICS } from "../src/engine/match/lineup";
+import { autoSetup } from "../src/engine/match/lineup";
+import { STYLE_WEIGHTS, TACTIC_STYLE_IDS, TACTIC_STYLES } from "../src/engine/config/tactics";
 import { Rng } from "../src/engine/rng";
 import { generateCpuRoster } from "../src/engine/school/generate";
 import { rankFromStrength, rankIndex, teamStrength } from "../src/engine/school/strength";
 import { SCHOOL_RANKS, type Player, type SchoolRank } from "../src/engine/types";
 import { simulateSeasons } from "./seasonSim";
+import { tacticsMatrix } from "./tacticsMatrix";
 
 const N = Number(process.env.BALANCE_N ?? 10000);
 const rng = Rng.fromSeed(process.env.BALANCE_SEED ?? "balance");
@@ -35,13 +37,18 @@ function buildPool(): Map<SchoolRank, Team[]> {
   return pool;
 }
 
+/** CPU 校と同じく、戦術の型をランダムに選ぶ（型に合うフォーメーションで） */
+function randomStyleSetup(players: Player[]) {
+  const style = TACTIC_STYLES[rng.weighted(TACTIC_STYLE_IDS, (id) => STYLE_WEIGHTS[id])];
+  return autoSetup(players, rng.pick(style.formations), { ...style.tactics });
+}
+
 function play(a: Team, b: Team, rules = WINTER_RULES.early) {
-  const tactics = { ...DEFAULT_TACTICS };
   const s = createMatch(
     rules,
     rng,
-    { schoolId: "a", name: "A", rank: a.rank, isUser: false, players: a.players, setup: autoSetup(a.players, "4-4-2", tactics) },
-    { schoolId: "b", name: "B", rank: b.rank, isUser: false, players: b.players, setup: autoSetup(b.players, "4-4-2", tactics) },
+    { schoolId: "a", name: "A", rank: a.rank, isUser: false, players: a.players, setup: randomStyleSetup(a.players) },
+    { schoolId: "b", name: "B", rank: b.rank, isUser: false, players: b.players, setup: randomStyleSetup(b.players) },
   );
   return simulateToEnd(s);
 }
@@ -134,5 +141,8 @@ console.log(`1試合のシュート: ${(all.shots / all.n).toFixed(1)}本 / 枠�
 console.log(`1試合あたりの試合中のPK: ${(all.inMatchPk / all.n).toFixed(3)}本`);
 console.log(`(計算時間 ${((Date.now() - t0) / 1000).toFixed(1)} 秒)`);
 
+// ---- 戦術の相性表 ----
+tacticsMatrix(Number(process.env.BALANCE_TACTICS_N ?? 600));
+
 // ---- 評判の推移と成長（うまい采配の自動プレイで何年分も進める） ----
-simulateSeasons(Number(process.env.BALANCE_SEASON_GAMES ?? 12), Number(process.env.BALANCE_SEASON_YEARS ?? 12));
+simulateSeasons(Number(process.env.BALANCE_SEASON_GAMES ?? 20), Number(process.env.BALANCE_SEASON_YEARS ?? 12));

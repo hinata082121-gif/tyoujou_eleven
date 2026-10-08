@@ -15,6 +15,7 @@ import {
   resumeFromBreak,
   subsRemaining,
 } from "@/engine/match/engine";
+import { halfReport } from "@/engine/match/report";
 import { describeEvent, isHighlight, isMinorEvent } from "@/engine/match/text";
 import type { MatchState, Side } from "@/engine/match/types";
 import { FORMATION_IDS } from "@/engine/types";
@@ -222,6 +223,7 @@ function OrdersPanel({ side, opp, onClose, breakAction }: { side: Side; opp: Sid
         <div className="rounded-lg bg-gray-50 p-2 text-xs text-gray-600">
           相手：{ms.teams[opp].name}（{ms.teams[opp].formation}）・交代 残り{subsRemaining(team, ms.rules)}人
         </div>
+        {breakAction && <HalfTimeReport side={side} />}
 
         <section>
           <h3 className="mb-1 text-sm font-black">フォーメーション</h3>
@@ -319,5 +321,57 @@ function OrdersPanel({ side, opp, onClose, breakAction }: { side: Side; opp: Sid
         )}
       </div>
     </Sheet>
+  );
+}
+
+/** ハーフタイムの状況：支配率・シュート数・ゾーン別の優劣（どこで押されているか） */
+function HalfTimeReport({ side }: { side: Side }) {
+  const game = useGameStore((s) => s.game)!;
+  const ms = game.activeMatch!.state;
+  const r = halfReport(ms, side);
+  const pct = Math.round(r.possession * 100);
+  const color = { 優勢: "text-emerald-700", 互角: "text-gray-600", 押されている: "text-red-600" } as const;
+  return (
+    <section className="rounded-lg border border-gray-200 p-2 text-xs">
+      <h3 className="mb-1 text-sm font-black">{ms.phase === "HT" ? "前半" : "ここまで"}の状況</h3>
+      <div className="mb-1 flex items-center gap-2">
+        <span className="w-14 shrink-0 font-bold">支配率</span>
+        <span className="w-8 text-right">{pct}%</span>
+        <div className="flex h-2 flex-1 overflow-hidden rounded-full bg-sky-300">
+          <div className="h-full bg-amber-400" style={{ width: `${pct}%` }} />
+        </div>
+        <span className="w-8">{100 - pct}%</span>
+      </div>
+      <div className="mb-2 flex gap-2">
+        <span className="w-14 shrink-0 whitespace-nowrap font-bold">シュート</span>
+        <span>
+          自校 {r.shots[0]}本（枠内{r.onTarget[0]}） ／ 相手 {r.shots[1]}本（枠内{r.onTarget[1]}）
+        </span>
+      </div>
+      <table className="w-full text-center">
+        <thead className="text-[10px] text-gray-500">
+          <tr>
+            <th className="text-left">ゾーン</th>
+            <th>自校の攻撃</th>
+            <th>相手の攻撃</th>
+            <th>優劣</th>
+          </tr>
+        </thead>
+        <tbody>
+          {r.zones.map((z) => (
+            <tr key={z.zone}>
+              <td className="text-left font-bold">{z.zone}</td>
+              <td>
+                {z.ourAttacks}回（好機{z.ourChances}）
+              </td>
+              <td>
+                {z.theirAttacks}回（好機{z.theirChances}）
+              </td>
+              <td className={`font-bold ${color[z.verdict]}`}>{z.verdict}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
   );
 }

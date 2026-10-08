@@ -10,7 +10,7 @@ import { packGame, unpackGame, type PackedGameState } from "./codec";
 import { migrateSave, SCHEMA_VERSION, SaveVersionError, type RawSave } from "./migrations";
 import { LocalStorageAdapter, type StorageAdapter } from "./storage";
 
-export { SCHEMA_VERSION, SaveVersionError, migrateSave } from "./migrations";
+export { OLD_FORMAT_MESSAGE, SCHEMA_VERSION, SaveVersionError, migrateSave } from "./migrations";
 export type { StorageAdapter } from "./storage";
 export { LocalStorageAdapter, MemoryStorageAdapter } from "./storage";
 

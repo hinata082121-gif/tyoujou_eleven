@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { newGame, playCard } from "@/engine/game";
 import { autoplayYears } from "@/engine/game/autoplay";
-import { MemoryStorageAdapter, SaveManager, SaveVersionError, migrateSave, toSaveData } from ".";
+import { MemoryStorageAdapter, OLD_FORMAT_MESSAGE, SaveManager, SaveVersionError, fromRawSave, migrateSave, toSaveData } from ".";
 import { packPlayer, unpackPlayer } from "./codec";
 
 describe("セーブ", () => {
@@ -60,24 +60,17 @@ describe("セーブ", () => {
     await expect(mgr.importJson(1, JSON.stringify({ foo: 1 }))).rejects.toThrow(SaveVersionError);
   });
 
-  it("v1（架空の県）のセーブデータを v2（実在の都道府県）に移して、続きが遊べる", async () => {
+  it("古い形式（v1）のセーブは「古い形式のため読み込めません」になる", async () => {
     const s = newGame("v1", "旧高校");
     const data = JSON.parse(JSON.stringify(toSaveData(s)));
-    // v1 の形に戻す（32 の架空の県、区分なし）
     data.schemaVersion = 1;
-    data.game.prefectures = data.game.prefectures.slice(0, 32).map((p: Record<string, unknown>, i: number) => {
-      const { tier: _t, reps: _r, ...rest } = p;
-      void _t;
-      void _r;
-      return { ...rest, name: `架空${i}`, regionId: `r${i % 8}` };
-    });
-    data.game.regions = Array.from({ length: 8 }, (_, i) => ({ id: `r${i}`, name: `地域${i}` }));
     const mgr = new SaveManager(new MemoryStorageAdapter());
-    await mgr.importJson(0, JSON.stringify(data));
-    const loaded = (await mgr.load(0))!;
-    expect(loaded.prefectures.every((p) => p.name.match(/[都道府県]$/) && p.tier && p.reps === 1)).toBe(true);
-    expect(loaded.regions).toHaveLength(9);
-    expect(playCard(loaded, loaded.calendar.hand[0].id)).not.toBeNull();
+    await expect(mgr.importJson(0, JSON.stringify(data))).rejects.toThrow(OLD_FORMAT_MESSAGE);
+    // localStorage に残っていた古いセーブも同じ
+    await mgr.save(1, s);
+    const raw = JSON.parse(JSON.stringify(toSaveData(s)));
+    raw.schemaVersion = 1;
+    expect(() => fromRawSave(raw)).toThrow(OLD_FORMAT_MESSAGE);
   });
 
   it("古いバージョンのセーブデータはマイグレーションで新しくなる", () => {

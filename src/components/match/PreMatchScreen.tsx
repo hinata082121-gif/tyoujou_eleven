@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { FORMATIONS } from "@/engine/config/formations";
-import { APTITUDE_MARKS, POSITION_NAMES } from "@/engine/config/names";
+import { APTITUDE_MARKS, POSITION_NAMES, TACTICS_LABELS } from "@/engine/config/names";
 import { canSkipWatching, defaultSetup, opponentOf, pendingMatchLabel, pendingMatchRules } from "@/engine/game";
 import { assignToSlots, autoSetup } from "@/engine/match/lineup";
 import { isAvailable, positionRating } from "@/engine/player/rating";
@@ -93,7 +93,9 @@ export function PreMatchScreen() {
           <div className="mt-1 flex items-center gap-2">
             <span className="text-base font-black">vs {opp.name}</span>
             <RankBadge rank={opp.rank} size="sm" />
-            <span className="ml-auto text-xs text-gray-500">{opp.formation}</span>
+          </div>
+          <div className="mt-1 text-[11px] text-gray-600">
+            相手の傾向：基本フォーメーション <b>{opp.formation}</b>・攻撃方針 <b>{TACTICS_LABELS.attack[opp.tactics.attack]}</b>
           </div>
           <div className="mt-1 text-[11px] text-gray-500">{rulesText(rules)}</div>
           {canSkipWatching(game) && <div className="mt-1 text-[11px] text-gray-500">練習試合は「結果のみ」も選べます（試合中の采配はAIの監督が行います）。</div>}

@@ -38,19 +38,21 @@ export const MATCH = {
   possessionMin: 0.25,
   possessionMax: 0.75,
   possessionTactics: {
-    attack: { attacking: 0.03, balanced: 0, defensive: -0.04 },
-    press: { high: 0.03, mid: 0, low: -0.03 },
+    attack: { attacking: 0.02, balanced: 0, defensive: -0.02 },
+    press: { high: 0.01, mid: 0, low: -0.01 },
     buildUp: { buildUp: 0.01, long: 0 },
-    line: { high: 0.02, low: -0.03 },
+    line: { high: 0.01, low: -0.01 },
   },
   /** 攻撃回数への戦術補正（自チームの攻撃回数に掛ける） */
-  attackRateTactics: { attacking: 1.12, balanced: 1.0, defensive: 0.84 },
+  attackRateTactics: { attacking: 1.08, balanced: 1.0, defensive: 0.85 },
   /** 攻撃方針による守備の質の補正（守備的なほど人数をかけて守る） */
   attackStyleDefense: { attacking: -2, balanced: 0, defensive: 3 },
   /** 攻撃方針による、ボールを失ったときにカウンターを受ける確率の倍率 */
   attackStyleCounterExposure: { attacking: 1.25, balanced: 1.0, defensive: 0.7 },
+  /** 攻撃方針による、相手のボールを奪ったときにカウンターを仕掛ける確率の倍率（守って速攻） */
+  attackStyleCounterAttack: { attacking: 0.9, balanced: 1.0, defensive: 1.35 },
   /** 守っている側の攻撃方針による、相手のチャンスの質の倍率 */
-  attackStyleChanceQ: { attacking: 1.05, balanced: 1.0, defensive: 0.9 },
+  attackStyleChanceQ: { attacking: 1.05, balanced: 1.0, defensive: 0.94 },
   /** モメンタムの支配率への影響（モメンタム 100 で +0.2） */
   momentumPossession: 0.002,
   /** 3 点差以上でリードしている側は攻撃が緩む */
@@ -59,14 +61,14 @@ export const MATCH = {
   // ---- 攻撃ルート ----
   routeWeights: { center: 1.0, side: 0.85, long: 0.3, setPiece: 0.14 },
   /** ロングボール主体のときのロングボールの重み */
-  routeLongWithLongTactic: 0.6,
+  routeLongWithLongTactic: 0.8,
   /** カウンター：攻撃失敗の後に相手がカウンターを仕掛ける確率 */
   counterChance: 0.2,
   counterLineHighMult: 1.5,
 
   // ---- ビルドアップ（7.3）----
   /** ビルドアップ重視で、相手のプレスに引っかかって自陣ゴール前で奪われる基本確率 */
-  buildUpErrorBase: 0.05,
+  buildUpErrorBase: 0.08,
   buildUpErrorScale: 9,
   buildUpPressMult: { high: 1.0, mid: 0.5, low: 0 },
   /** 奪われたときの相手のチャンスの質 */
@@ -80,7 +82,12 @@ export const MATCH = {
   timeT0: 2.55,
   timeTa: 1.55,
   /** プレスの強さによる守備の質の補正 */
-  pressDefenseBonus: { high: 7, mid: 0, low: -6 },
+  pressDefenseBonus: { high: 1, mid: 0, low: -1 },
+  /** ラインの高さによる守備の質の補正（引いて守るとゴール前が堅い） */
+  lineDefenseBonus: { high: 0, low: 3 },
+  /** プレス高なのにライン低（前と後ろの間が空く）ときの守備の質の補正と、相手のチャンスの質の倍率 */
+  pressLineGapDefense: -5,
+  pressLineGapChanceQ: 1.12,
   /** 必要時間 t = t0 - tb × 判断 / 100 + 難しさ */
   needT0: 1.55,
   needTb: 0.9,
@@ -112,6 +119,32 @@ export const MATCH = {
   longChanceQ: 0.48,
   /** 相手のラインが高いと、ロングボールで裏を取りやすい */
   longVsHighLineQ: 0.12,
+
+  // ---- 戦術の相性（循環型。どの戦術にも苦手な相手がいる）----
+  //   ハイプレス → つなぐ（ビルドアップ）に強い
+  //   ロングボール → ハイプレス（前がかり）に強い
+  //   引いて守る（ライン低） → ロングボールに強い
+  //   つなぐ（ビルドアップ） → 引いて守る相手に強い
+  matchup: {
+    /** 相手のプレスが高いとき、ビルドアップの攻撃のチャンスの質の倍率 */
+    buildUpVsHighPressQ: 0.8,
+    /** 相手のラインが低いとき、ビルドアップの攻撃のチャンスの質の倍率（崩す時間がある） */
+    buildUpVsLowLineQ: 1.4,
+    /** 相手のプレスが高いとき、ロングボールのチャンスの質に足す値（前がかりの裏） */
+    longVsHighPressQ: 0.4,
+    /** 相手のラインが低いとき、ロングボールのチャンスの質から引く値（ゴール前に人数がいる） */
+    longVsLowLineQ: 0.32,
+    /** 相手のラインが低いとき、ロングボールの競り合いで守備側に足す値 */
+    longVsLowLineAerial: 8,
+    /** 支配率への補正：ビルドアップ側が、相手のハイプレスに押し込まれる */
+    buildUpVsHighPressPossession: -0.07,
+    /** 支配率への補正：ビルドアップ側が、引いた相手にボールを持たせてもらう */
+    buildUpVsLowLinePossession: 0.07,
+    /** 攻撃回数の倍率：ロングボール側が、相手のハイプレスの裏を狙える */
+    longVsHighPressRate: 1.2,
+    /** 攻撃回数の倍率：ロングボール側が、引いた相手に蹴り込んでも跳ね返される */
+    longVsLowLineRate: 0.82,
+  },
 
   // ---- サイド ----
   crossChance: 0.55,
@@ -178,7 +211,7 @@ export const MATCH = {
   drainBase: 2.25,
   drainStamA: 1.35,
   drainStamB: 0.7,
-  drainPress: { high: 1.3, mid: 1.0, low: 0.82 },
+  drainPress: { high: 1.4, mid: 1.0, low: 0.82 },
   gkDrainMult: 0.35,
 
   // ---- モメンタム ----

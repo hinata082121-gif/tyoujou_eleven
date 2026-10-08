@@ -104,3 +104,18 @@ export const PRESTIGE_DRIFT = {
   chance: 0.15,
   /** 全国大会で好成績なら上がりやすい */
 };
+
+/**
+ * CPU 校の試合のときの部員の状態（試合ごとに決める。保存はしない）。
+ * プレイヤー校はすごろくで体力・調子・ケガが変わるので、CPU 校にも同じ程度の変動を持たせる。
+ * 値は「うまい采配の自動プレイ」での自校の試合時の平均（体力 76 前後、調子はやや良い、ケガ 1 試合 0.2 人程度）に合わせた。
+ */
+export const CPU_MATCH_CONDITION = {
+  fitnessMean: 76,
+  fitnessSd: 9,
+  fitnessMin: 40,
+  /** 調子 -2〜2 の出やすさ */
+  conditionWeights: [4, 16, 48, 24, 8],
+  /** ケガなどで出られない確率（1 人あたり） */
+  unavailableChance: 0.008,
+};

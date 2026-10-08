@@ -46,7 +46,15 @@ export interface MatchTeamState {
   /** その日の出来（試合開始時に決まる倍率） */
   form: number;
   pending: PendingOrders | null;
-  stats: { shots: number; onTarget: number; possessionSum: number; segments: number; corners: number };
+  stats: {
+    shots: number;
+    onTarget: number;
+    possessionSum: number;
+    segments: number;
+    corners: number;
+    /** ゾーン別（自チームから見た 左・中央・右）の攻撃回数とチャンスの数。ハーフタイムの表示用 */
+    zones?: { attacks: [number, number, number]; chances: [number, number, number] };
+  };
 }
 
 export type MatchPhase = "H1" | "HT" | "H2" | "ET_BREAK" | "ET1" | "ET_HT" | "ET2" | "PK" | "END";

@@ -41,6 +41,8 @@
 - `npm run lint`：ESLint（`src/engine` から React・ブラウザ API・`Math.random` を使うとエラー）
 - `npm run typecheck`：TypeScript の型チェック
 - `npm run test`：Vitest の単体テスト（`src/**/*.test.ts`）
-- `npm run balance`：SPEC 14章の目標値を表で出す（2分ほどかかる）
-  - 大量の試合（`BALANCE_N`、既定 10000）と、うまい采配の自動プレイで何年分も進めた評判の推移・成長（`BALANCE_SEASON_GAMES` 校 × `BALANCE_SEASON_YEARS` 年、既定 12 × 12）
+- `npm run balance`：SPEC 14章の目標値を表で出す（6分ほどかかる）
+  - 大量の試合（`BALANCE_N`、既定 10000）
+  - 戦術の相性表（`BALANCE_TACTICS_N`、既定 600）
+  - うまい采配の自動プレイで何年分も進めた評判の推移・同じランクへの勝率・成長（`BALANCE_SEASON_GAMES` 校 × `BALANCE_SEASON_YEARS` 年、既定 20 × 12）
 - `npm run build`：静的書き出し（`out/` に出力。Vercel はこれを配信する）

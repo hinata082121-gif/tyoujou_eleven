@@ -32,7 +32,7 @@ export const REPUTATION_GAUGE = {
   /** ランク差ごとの敗戦の倍率。格下に負けるほど大きい */
   lossRankMult: { [-3]: 1.8, [-2]: 1.5, [-1]: 1.2, 0: 1.0, 1: 0.6, 2: 0.4, 3: 0.3 } as Record<number, number>,
   /** 評判が低いうちは勝利で上がりやすくする（序盤のテンポ） */
-  winLevelMult: { 0: 1.8, 1: 1.45, 2: 1.15, 3: 1.05, 4: 1.0 } as Record<ReputationLevel, number>,
+  winLevelMult: { 0: 1.8, 1: 1.3, 2: 0.8, 3: 0.6, 4: 1.0 } as Record<ReputationLevel, number>,
   /** 評判が高いほど下がり幅を大きくする（極端にはしない） */
   lossLevelMult: { 0: 0.6, 1: 0.8, 2: 1.0, 3: 1.15, 4: 1.3 } as Record<ReputationLevel, number>,
   /** 大会の成績ボーナス */
