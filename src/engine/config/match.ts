@@ -180,20 +180,20 @@ export const MATCH = {
     /** ボックス外のファウルが、直接狙えるフリーキック・セットプレーになる確率 */
     freeKickDanger: 0.3,
     /** ファウル 1 回でイエローが出る確率（ボックス内は inBox） */
-    yellow: 0.17,
+    yellow: 0.2,
     yellowInBox: 0.45,
     /** 一発レッド */
-    red: 0.0015,
-    redInBox: 0.04,
+    red: 0.0008,
+    redInBox: 0.03,
     /** イエローを受けている選手は、ファウルを控える（選ばれる重み）・カードが出にくい */
-    bookedFoulMult: 0.5,
-    bookedYellowMult: 0.6,
+    bookedFoulMult: 0.3,
+    bookedYellowMult: 0.5,
   },
 
   // ---- 試合中のケガ（P2a）----
   injury: {
     /** 区間（5 分）あたり・ピッチ上の選手 1 人あたりの確率 */
-    perSegment: 0.00018,
+    perSegment: 0.00015,
     /** 体力が低いほど上がる：× (1 + fatigue × (1 − 体力/100)) */
     fatigue: 1.5,
     /** ファウルを受けたときのケガの確率 */
