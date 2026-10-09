@@ -1,4 +1,9 @@
 import type { RngState } from "../rng";
+import type { CpuStaff, StaffProfile, StaffState } from "./staff";
+import type { TacticsNote } from "./note";
+
+export * from "./staff";
+export * from "./note";
 
 // ================= 選手 =================
 
@@ -50,8 +55,19 @@ export interface Player {
   condition: Condition;
   /** ケガの残り日数（0 なら健康） */
   injuryDays: number;
-  /** 入部の種類。P2 で特待生を追加する */
+  /** 入部の種類。P2b で特待生を追加する */
   admission: "general";
+  /** 出場停止の残り試合数（公式戦のみ数える。レッドカードで 1） */
+  suspended: number;
+  /** 在学中の成績（OB の記録に引き継ぐ） */
+  record: PlayerRecord;
+}
+
+export interface PlayerRecord {
+  apps: number;
+  goals: number;
+  officialApps: number;
+  officialGoals: number;
 }
 
 // ================= 学校 =================
@@ -80,6 +96,10 @@ export interface School {
   prestige: number;
   formation: FormationId;
   tactics: Tactics;
+  /** 主将（自校のみ。毎年 4 月に 3 年生から決める） */
+  captainId?: string;
+  /** CPU 校の簡略化したスタッフの値（自校は GameState.staff を使う） */
+  cpuStaff?: CpuStaff;
 }
 
 export interface Prefecture {
@@ -108,7 +128,7 @@ export interface Square {
   major?: { kind: MajorKind; round?: number };
 }
 
-export const PRACTICE_KINDS = ["shoot", "pass", "dribble", "defense", "physical", "run", "tactics", "gk", "setPiece", "rest"] as const;
+export const PRACTICE_KINDS = ["shoot", "pass", "dribble", "defense", "physical", "run", "tactics", "gk", "setPiece", "pk", "rest"] as const;
 export type PracticeKind = (typeof PRACTICE_KINDS)[number];
 
 export interface MoveCard {
@@ -202,8 +222,16 @@ export interface Alumnus {
   position: Position;
   overall: number;
   career: Career;
-  /** 現役最後の能力（P2 のスタッフ制度で使う） */
+  /** 現役最後の能力（スタッフ制度で使う） */
   stats: Stats;
+  /** 架空の OB（ゲーム開始時・マイグレーションで生成） */
+  fictional?: boolean;
+  /** 主将だったか（戦術眼の素地に効く） */
+  wasCaptain: boolean;
+  /** 在学中の成績。winterResults は在学中の冬の全国大会の成績（古い順） */
+  record: PlayerRecord & { winterResults: string[] };
+  /** スタッフとしての素質（隠し） */
+  staffProfile: StaffProfile;
 }
 
 export interface SeasonRecord {
@@ -248,6 +276,12 @@ export interface GameState {
   /** 次に処理を待っているもの（試合前・年度末など） */
   pending?: PendingAction;
   alumni: Alumnus[];
+  /** 自校のスタッフ（SPEC 9章） */
+  staff: StaffState;
+  /** 作戦ノート（最大 3 冊。SPEC 10.5） */
+  notes: TacticsNote[];
+  /** 前回の試合前に選んだノート */
+  selectedNoteId?: string;
   history: SeasonRecord[];
   log: LogEntry[];
 }
@@ -255,4 +289,6 @@ export interface GameState {
 export type PendingAction =
   | { type: "match"; kind: MatchKind; opponentId: string; bracketMatchId?: string; round?: number }
   | { type: "graduation" }
+  /** スタッフの編成（ゲーム開始時と年度初め） */
+  | { type: "staff" }
   | { type: "yearEnd" };

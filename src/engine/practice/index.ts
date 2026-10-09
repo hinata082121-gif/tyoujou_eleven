@@ -19,22 +19,33 @@ export function shiftCondition(p: Player, amount: number) {
   p.condition = Math.max(-2, Math.min(2, p.condition + amount)) as Condition;
 }
 
+/** スタッフの効果（SPEC 9章）。省略時は効果なし */
+export interface PracticeStaffOptions {
+  /** 選手ごとの練習効率の倍率（ヘッドコーチ・GK コーチ） */
+  staffMult?: (p: Player) => number;
+  /** 毎日の自然回復の倍率（フィジカルコーチ） */
+  recoveryMult?: number;
+  /** ケガの確率の倍率（フィジカルコーチ） */
+  injuryMult?: number;
+}
+
 /**
  * 1 日分の練習。経験点 = 練習 1 日あたりの値 × 効率（体力・調子）× 補正。
  * gains に実際に入れた経験点（伸びしろ補正前）を足し込む。
  */
-export function practiceOneDay(rng: Rng, players: Player[], kind: PracticeKind, mult: number, gains: GainMap): Player[] {
+export function practiceOneDay(rng: Rng, players: Player[], kind: PracticeKind, mult: number, gains: GainMap, opts: PracticeStaffOptions = {}): Player[] {
   const def = PRACTICES[kind];
   const injured: Player[] = [];
+  const recovery = DAILY_RECOVERY * (opts.recoveryMult ?? 1);
   for (const p of players) {
     if (p.status !== "active") continue;
     if (p.injuryDays > 0) {
       p.injuryDays--;
-      p.fitness = clampFit(p.fitness + DAILY_RECOVERY);
+      p.fitness = clampFit(p.fitness + recovery);
       continue;
     }
     if (isPracticeTarget(p, kind)) {
-      const eff = practiceEfficiency(p) * mult * GROWTH.practiceMult;
+      const eff = practiceEfficiency(p) * mult * GROWTH.practiceMult * (opts.staffMult?.(p) ?? 1);
       for (const [stat, value] of Object.entries(def.gains) as [StatKey, number][]) {
         if (def.fieldOnly?.includes(stat) && p.mainPosition === "GK") continue;
         const exp = value * eff;
@@ -42,13 +53,13 @@ export function practiceOneDay(rng: Rng, players: Player[], kind: PracticeKind, 
         const g = (gains[p.id] ??= {});
         g[stat] = (g[stat] ?? 0) + exp;
       }
-      p.fitness = clampFit(p.fitness + def.fitness + DAILY_RECOVERY);
+      p.fitness = clampFit(p.fitness + def.fitness + recovery);
     } else {
-      p.fitness = clampFit(p.fitness + NON_TARGET_FITNESS + DAILY_RECOVERY);
+      p.fitness = clampFit(p.fitness + NON_TARGET_FITNESS + recovery);
     }
     // 体力が低いとケガをしやすい
     if (p.fitness < INJURY.safeFitness) {
-      const risk = INJURY.maxDailyChance * (1 - p.fitness / INJURY.safeFitness);
+      const risk = INJURY.maxDailyChance * (1 - p.fitness / INJURY.safeFitness) * (opts.injuryMult ?? 1);
       if (rng.chance(risk)) {
         p.injuryDays = rng.int(INJURY.minDays, INJURY.maxDays);
         injured.push(p);
@@ -60,10 +71,10 @@ export function practiceOneDay(rng: Rng, players: Player[], kind: PracticeKind, 
 }
 
 /** 複数日の練習 */
-export function runPractice(rng: Rng, players: Player[], kind: PracticeKind, days: number, mult: number) {
+export function runPractice(rng: Rng, players: Player[], kind: PracticeKind, days: number, mult: number, opts: PracticeStaffOptions = {}) {
   const gains: GainMap = {};
   const injured: Player[] = [];
-  for (let d = 0; d < days; d++) injured.push(...practiceOneDay(rng, players, kind, mult, gains));
+  for (let d = 0; d < days; d++) injured.push(...practiceOneDay(rng, players, kind, mult, gains, opts));
   return { gains, injured };
 }
 

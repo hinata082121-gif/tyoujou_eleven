@@ -1,12 +1,12 @@
 import type { ReputationLevel, SchoolRank } from "../types";
 
 /** 評判ごとの手札・1学年の人数（SPEC 6章） */
-export const REPUTATION_TABLE: Record<ReputationLevel, { handSize: number; gradeSize: number; scholarshipSlots: number }> = {
-  0: { handSize: 4, gradeSize: 9, scholarshipSlots: 2 },
-  1: { handSize: 5, gradeSize: 10, scholarshipSlots: 3 },
-  2: { handSize: 6, gradeSize: 11, scholarshipSlots: 3 },
-  3: { handSize: 7, gradeSize: 13, scholarshipSlots: 4 },
-  4: { handSize: 8, gradeSize: 14, scholarshipSlots: 5 },
+export const REPUTATION_TABLE: Record<ReputationLevel, { handSize: number; gradeSize: number; scholarshipSlots: number; staffSlots: number }> = {
+  0: { handSize: 4, gradeSize: 9, scholarshipSlots: 2, staffSlots: 1 },
+  1: { handSize: 5, gradeSize: 10, scholarshipSlots: 3, staffSlots: 1 },
+  2: { handSize: 6, gradeSize: 11, scholarshipSlots: 3, staffSlots: 2 },
+  3: { handSize: 7, gradeSize: 13, scholarshipSlots: 4, staffSlots: 2 },
+  4: { handSize: 8, gradeSize: 14, scholarshipSlots: 5, staffSlots: 3 },
 };
 
 /** 評判ゲージ（0〜100）の動き */

@@ -28,6 +28,7 @@ const PRACTICE_ICON: Record<PracticeKind, string> = {
   run: "🏃",
   tactics: "📋",
   gk: "🧤",
+  pk: "⚽",
   setPiece: "🚩",
   rest: "😴",
 };

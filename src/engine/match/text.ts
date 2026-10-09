@@ -116,6 +116,22 @@ export function describeEvent(state: MatchState, e: MatchEvent): string {
     }
     case "formation":
       return `${team}：フォーメーションを${e.note}に変更`;
+    case "position":
+      return `${team}：${p0}のポジションを変更`;
+    case "foul":
+      return `${team}：${p0}が${p1}を倒してファウル`;
+    case "yellow":
+      return `🟨 ${team}：${p0}にイエローカード`;
+    case "secondYellow":
+      return `🟥 ${team}：${p0}に2枚目のイエロー、退場！`;
+    case "red":
+      return `🟥 ${team}：${p0}に一発レッド、退場！`;
+    case "injury":
+      return `✚ ${team}：${p0}が痛んでピッチの外へ${e.note === "severe" ? "（重傷か）" : ""}`;
+    case "shortHanded":
+      return `${team}：交代できず、人数が減ったまま戦う`;
+    case "note":
+      return `${team}：作戦ノート：${e.note}を実行`;
   }
 }
 
@@ -126,4 +142,9 @@ export function isMinorEvent(e: MatchEvent): boolean {
 
 export function isHighlight(e: MatchEvent): boolean {
   return e.type === "goal" || e.type === "pkGoal" || e.type === "fullTime" || e.type === "halfTime" || e.type === "pkShootout";
+}
+
+/** カード・退場・ケガ（スコアボードの近くに目立たせて出す） */
+export function isIncident(e: MatchEvent): boolean {
+  return e.type === "yellow" || e.type === "secondYellow" || e.type === "red" || e.type === "injury" || e.type === "shortHanded" || e.type === "note";
 }

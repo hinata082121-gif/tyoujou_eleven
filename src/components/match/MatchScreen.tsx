@@ -4,20 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { FORMATIONS } from "@/engine/config/formations";
 import { POSITION_NAMES } from "@/engine/config/names";
 import { pendingMatchLabel } from "@/engine/game";
-import {
-  cancelSubstitution,
-  isBreakPhase,
-  isPlayingPhase,
-  playSegment,
-  queueFormation,
-  queueSubstitution,
-  queueTactics,
-  resumeFromBreak,
-  subsRemaining,
-} from "@/engine/match/engine";
+import { cancelSubstitution, injuredAwaitingSub, isBreakPhase, isOut, isPlayingPhase, playersShort, playSegment, resumeFromBreak, subsRemaining } from "@/engine/match/engine";
+import { manualFormation, manualSubstitution, manualTactics } from "@/engine/match/orders";
 import { halfReport } from "@/engine/match/report";
-import { describeEvent, isHighlight, isMinorEvent } from "@/engine/match/text";
-import type { MatchState, Side } from "@/engine/match/types";
+import { describeEvent, isHighlight, isIncident, isMinorEvent } from "@/engine/match/text";
+import type { MatchState, MatchTeamState, Side } from "@/engine/match/types";
 import { FORMATION_IDS } from "@/engine/types";
 import { useGameStore } from "@/store/gameStore";
 import { Bar, Button, fitnessColor, Segmented, Sheet } from "../ui";
@@ -66,6 +57,9 @@ export function MatchScreen() {
   const displayRef = useRef<number>(display);
   const [paused, setPaused] = useState(false);
   const [panel, setPanel] = useState(false);
+  /** ケガ人が出たときに、交代で下げる選手として最初から選んでおく */
+  const [presetOut, setPresetOut] = useState<string | null>(null);
+  const prompted = useRef(new Set<string>());
   const label = pendingMatchLabel(game);
 
   const caughtUp = display >= ms.minute;
@@ -92,6 +86,20 @@ export function MatchScreen() {
     return () => clearInterval(id);
   }, [paused, panel, inBreak, inPk, ended, speed]);
 
+  // 自校にケガ人が出たら一時停止して、交代を選べるようにする（選ばずに閉じれば自動で交代）
+  useEffect(() => {
+    if (panel) return;
+    const team = ms.teams[side];
+    if (subsRemaining(team, ms.rules) <= 0 || team.bench.length === 0) return;
+    const hurt = ms.events.find(
+      (e) => e.type === "injury" && e.side === side && e.minute <= display && !prompted.current.has(e.players![0]) && injuredAwaitingSub(team).includes(e.players![0]),
+    );
+    if (!hurt) return;
+    prompted.current.add(hurt.players![0]);
+    setPresetOut(hurt.players![0]);
+    setPanel(true);
+  }, [display, panel, ms, side]);
+
   const score = visibleScore(ms, display);
   const events = ms.events.filter((e) => e.minute <= display && !isMinorEvent(e)).slice(-80).reverse();
   const momentum = ms.momentumHistory.slice(0, Math.floor(display / 5));
@@ -110,6 +118,7 @@ export function MatchScreen() {
           </span>
           <span className="flex-1 truncate text-sm font-bold">{ms.teams[1].name}</span>
         </div>
+        <TeamStatusRow ms={ms} display={display} />
         <div className="mt-1 text-center text-xs">
           {phaseLabel(ms, display)} {!ended && !inBreak && `${Math.floor(display)}分`}
           {ms.pk && ` PK ${ms.pk.score[0]}-${ms.pk.score[1]}`}
@@ -137,7 +146,7 @@ export function MatchScreen() {
         {events.map((e, i) => (
           <li
             key={`${e.minute}-${i}-${e.type}`}
-            className={`border-b border-gray-100 py-1 ${isHighlight(e) ? "font-black" : ""} ${e.type === "goal" || e.type === "pkGoal" ? (e.side === side ? "bg-amber-50 text-amber-900" : "bg-sky-50 text-sky-900") : ""}`}
+            className={`border-b border-gray-100 py-1 ${isHighlight(e) ? "font-black" : ""} ${e.type === "goal" || e.type === "pkGoal" ? (e.side === side ? "bg-amber-50 text-amber-900" : "bg-sky-50 text-sky-900") : isIncident(e) ? (e.type === "note" ? "bg-emerald-50 font-bold text-emerald-900" : "font-bold text-red-800") : ""}`}
           >
             <span className="mr-2 inline-block w-8 text-right font-mono text-xs text-gray-400">{e.minute}&apos;</span>
             {describeEvent(ms, e)}
@@ -173,7 +182,11 @@ export function MatchScreen() {
         <OrdersPanel
           side={side}
           opp={opp}
-          onClose={() => setPanel(false)}
+          presetOut={presetOut}
+          onClose={() => {
+            setPanel(false);
+            setPresetOut(null);
+          }}
           breakAction={
             inBreak
               ? {
@@ -192,13 +205,78 @@ export function MatchScreen() {
   );
 }
 
-function OrdersPanel({ side, opp, onClose, breakAction }: { side: Side; opp: Side; onClose: () => void; breakAction?: { label: string; run: () => void } }) {
+/** 両チームの人数（減っているときだけ）と退場者・ケガ人 */
+function TeamStatusRow({ ms, display }: { ms: MatchState; display: number }) {
+  const info = (t: MatchTeamState, side: Side) => {
+    // まだ表示していない時間のイベントは出さない
+    const shown = new Set(ms.events.filter((e) => e.side === side && e.minute <= display && (e.type === "red" || e.type === "secondYellow" || e.type === "injury")).map((e) => e.players![0]));
+    const out = t.onPitch.filter((id) => isOut(t.players[id]) && shown.has(id));
+    const short = out.length > 0 ? playersShort(t) : 0;
+    return { short, out: out.map((id) => `${t.players[id].sentOff ? "🟥" : "✚"}${t.players[id].name.split(" ")[0]}`) };
+  };
+  const a = info(ms.teams[0], 0);
+  const b = info(ms.teams[1], 1);
+  if (a.short === 0 && b.short === 0 && a.out.length === 0 && b.out.length === 0) return null;
+  return (
+    <div className="mt-1 flex gap-2 text-[10px]">
+      <span className="flex-1 truncate text-right">
+        {a.short > 0 && <b className="mr-1 rounded bg-red-600 px-1">{11 - a.short}人</b>}
+        {a.out.join(" ")}
+      </span>
+      <span className="w-20" />
+      <span className="flex-1 truncate">
+        {b.short > 0 && <b className="mr-1 rounded bg-red-600 px-1">{11 - b.short}人</b>}
+        {b.out.join(" ")}
+      </span>
+    </div>
+  );
+}
+
+/** 作戦ノートのルールごとの状態（待機中／実行済み／停止中） */
+function NoteStatus({ team }: { team: MatchTeamState }) {
+  const note = team.note;
+  if (!note) return <div className="rounded-lg bg-gray-50 p-2 text-[11px] text-gray-500">作戦ノート：なし</div>;
+  return (
+    <section className="rounded-lg border border-gray-200 p-2">
+      <h3 className="mb-1 text-xs font-black">作戦ノート「{note.noteName}」</h3>
+      <ul className="flex flex-col gap-0.5 text-[11px]">
+        {note.rules
+          .filter((r) => r.enabled)
+          .map((r) => {
+            const st = note.fired.includes(r.id) ? "実行済み" : note.stopped.includes(r.id) ? "停止中" : "待機中";
+            const color = st === "実行済み" ? "text-emerald-700" : st === "停止中" ? "text-gray-400" : "text-gray-700";
+            return (
+              <li key={r.id} className="flex justify-between">
+                <span className="truncate">{r.name}</span>
+                <span className={`font-bold ${color}`}>{st}</span>
+              </li>
+            );
+          })}
+      </ul>
+      <p className="mt-1 text-[10px] text-gray-500">自分で交代・戦術変更をすると、関係するルールはこの試合では止まります。</p>
+    </section>
+  );
+}
+
+function OrdersPanel({
+  side,
+  opp,
+  onClose,
+  breakAction,
+  presetOut,
+}: {
+  side: Side;
+  opp: Side;
+  onClose: () => void;
+  breakAction?: { label: string; run: () => void };
+  presetOut?: string | null;
+}) {
   const game = useGameStore((s) => s.game)!;
   useGameStore((s) => s.rev);
   const touch = useGameStore((s) => s.touch);
   const ms = game.activeMatch!.state;
   const team = ms.teams[side];
-  const [selOut, setSelOut] = useState<string | null>(null);
+  const [selOut, setSelOut] = useState<string | null>(presetOut ?? null);
   const [error, setError] = useState<string | null>(null);
   const pending = team.pending;
   const formation = pending?.formation ?? team.formation;
@@ -209,7 +287,7 @@ function OrdersPanel({ side, opp, onClose, breakAction }: { side: Side; opp: Sid
 
   const sub = (inId: string) => {
     if (!selOut) return;
-    const err = queueSubstitution(ms, side, selOut, inId);
+    const err = manualSubstitution(ms, side, selOut, inId);
     setError(err);
     if (!err) {
       setSelOut(null);
@@ -223,7 +301,13 @@ function OrdersPanel({ side, opp, onClose, breakAction }: { side: Side; opp: Sid
         <div className="rounded-lg bg-gray-50 p-2 text-xs text-gray-600">
           相手：{ms.teams[opp].name}（{ms.teams[opp].formation}）・交代 残り{subsRemaining(team, ms.rules)}人
         </div>
+        {presetOut && team.players[presetOut]?.injury && (
+          <p className="rounded-lg bg-red-50 p-2 text-xs font-bold text-red-800">
+            {team.players[presetOut].name}がケガでプレーを続けられない。入れる選手を選んでください（選ばずに閉じると、位置に合う控えが自動で入ります）。
+          </p>
+        )}
         {breakAction && <HalfTimeReport side={side} />}
+        <NoteStatus team={team} />
 
         <section>
           <h3 className="mb-1 text-sm font-black">フォーメーション</h3>
@@ -233,7 +317,7 @@ function OrdersPanel({ side, opp, onClose, breakAction }: { side: Side; opp: Sid
                 key={f}
                 type="button"
                 onClick={() => {
-                  queueFormation(ms, side, f);
+                  manualFormation(ms, side, f);
                   touch(true);
                 }}
                 className={`min-h-10 rounded-lg text-xs font-bold ${formation === f ? "bg-pitch text-white" : "bg-gray-100"}`}
@@ -247,7 +331,7 @@ function OrdersPanel({ side, opp, onClose, breakAction }: { side: Side; opp: Sid
         <TacticsEditor
           tactics={tactics}
           onChange={(t) => {
-            queueTactics(ms, side, t);
+            manualTactics(ms, side, t);
             touch(true);
           }}
         />
@@ -258,17 +342,21 @@ function OrdersPanel({ side, opp, onClose, breakAction }: { side: Side; opp: Sid
             {team.onPitch.map((id, i) => {
               const p = team.players[id];
               const out = pendingOut.has(id);
+              const gone = !!p.sentOff;
               return (
                 <li key={id}>
                   <button
                     type="button"
-                    disabled={out}
+                    disabled={out || gone}
                     onClick={() => setSelOut(selOut === id ? null : id)}
                     className={`flex min-h-10 w-full items-center gap-2 rounded-lg px-2 text-left ${selOut === id ? "bg-amber-100 ring-2 ring-amber-400" : "bg-gray-50"} ${out ? "opacity-50" : ""}`}
                   >
-                    <span className="w-9 text-[11px] font-black text-pitch-dark">{POSITION_NAMES[slots[i].pos]}</span>
+                    <span className="w-9 text-[11px] font-black text-pitch-dark">{gone ? "—" : POSITION_NAMES[slots[i].pos]}</span>
                     <span className="flex-1 truncate text-sm font-bold">{p.name}</span>
                     {out && <span className="text-[10px] text-amber-700">交代予定</span>}
+                    {gone && <span className="text-[10px] text-red-700">退場</span>}
+                    {!gone && p.injury && <span className="text-[10px] text-red-700">ケガ</span>}
+                    {!gone && (p.yellow ?? 0) > 0 && <span className="text-[10px]">🟨</span>}
                     {p.goals > 0 && <span className="text-xs">⚽×{p.goals}</span>}
                     <Bar value={p.stamina} color={fitnessColor(p.stamina)} className="!h-1.5 !w-12" />
                   </button>

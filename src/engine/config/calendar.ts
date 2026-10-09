@@ -28,6 +28,7 @@ export const CARD_PRACTICE_WEIGHTS: Record<PracticeKind, number> = {
   tactics: 9,
   gk: 7,
   setPiece: 8,
+  pk: 2,
   rest: 8,
 };
 

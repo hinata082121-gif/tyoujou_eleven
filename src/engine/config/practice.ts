@@ -12,7 +12,7 @@ export interface PracticeDef {
   fitness: number;
 }
 
-/** 練習カード（SPEC 5章。PK 練習は P2） */
+/** 練習カード（SPEC 5章） */
 export const PRACTICES: Record<PracticeKind, PracticeDef> = {
   shoot: { target: "field", gains: { shooting: 3.2, kickPower: 2.0 }, fitness: -5 },
   pass: { target: "all", gains: { pass: 3.2, vision: 2.0 }, fitness: -4 },
@@ -23,6 +23,7 @@ export const PRACTICES: Record<PracticeKind, PracticeDef> = {
   tactics: { target: "all", gains: { decision: 2.8, vision: 2.2 }, fieldOnly: ["decision"], fitness: -1 },
   gk: { target: "gk", gains: { saving: 2.8, highBall: 2.2, positioning: 2.4, catching: 2.4 }, fitness: -5 },
   setPiece: { target: "field", gains: { kickPower: 2.6, aerial: 2.4 }, fitness: -4 },
+  pk: { target: "all", gains: { pkSkill: 3.0 }, fitness: -3 },
   rest: { target: "all", gains: {}, fitness: 14 },
 };
 

@@ -4,6 +4,8 @@ import { autoplayYears } from "../src/engine/game/autoplay";
 import { statRank } from "../src/engine/player/rank";
 import { rankIndex } from "../src/engine/school/strength";
 import { SCHOOL_RANKS, type ReputationLevel } from "../src/engine/types";
+import { staffAge } from "../src/engine/staff";
+import { STAFF_LIFE } from "../src/engine/config/staff";
 
 /**
  * 何年分も自動で遊んで、評判の推移と成長を測る（SPEC 14章）。
@@ -21,6 +23,8 @@ export function simulateSeasons(games: number, years: number) {
   const winter: Record<string, number> = {};
   const graduatesOverall: number[] = [];
   let practiceMatchesPerYear = 0;
+  // スタッフの入れ替わり（自動プレイは空き枠に一番合う OB を入れる）
+  const turnover = { hired: 0, retired: 0, poached: 0, other: 0, tempYears: 0, staffYears: 0, maxAbility: 0 };
 
   for (let g = 0; g < games; g++) {
     // 県の区分がばらけるように、都道府県を順番に使う
@@ -28,7 +32,20 @@ export function simulateSeasons(games: number, years: number) {
     const state = newGame(`season-${g}`, "検証高校", pref);
     const reached: (number | null)[] = [null, null, null, null];
     for (let y = 0; y < years; y++) {
+      const before = new Map(state.staff.members.filter((m) => !m.temporary).map((m) => [m.id, m]));
       const stats = autoplayYears(state, 1, "skilled");
+      const after = new Set(state.staff.members.map((m) => m.id));
+      // 年度の途中に雇った人も数えるため、在任した人は記録から数える
+      for (const m of state.staff.members) if (!m.temporary && m.hiredYear >= state.year - 1 && !before.has(m.id)) turnover.hired++;
+      for (const [id, m] of before) {
+        if (after.has(id)) continue;
+        if (m.poachNotice) turnover.poached++;
+        else if (staffAge(m, state.year - 1) >= STAFF_LIFE.retireFromAge) turnover.retired++;
+        else turnover.other++;
+      }
+      turnover.staffYears++;
+      if (state.staff.members.some((m) => m.role === "head" && m.temporary)) turnover.tempYears++;
+      for (const m of state.staff.members) turnover.maxAbility = Math.max(turnover.maxAbility, ...Object.values(m.abilities));
       const lv = state.history.at(-1)!.reputationLevel;
       levelByYear[y].push(lv);
       for (let l = 1; l <= 4; l++) if (lv >= l && reached[l - 1] === null) reached[l - 1] = y + 1;
@@ -86,6 +103,9 @@ export function simulateSeasons(games: number, years: number) {
   }
   console.log("冬の全国大会の成績（全年度）：");
   for (const [k, v] of Object.entries(winter).sort((a, b) => b[1] - a[1])) console.log(`  ${k}: ${v}`);
+
+  console.log(`\nスタッフの入れ替わり（${games}校 × ${years}年）：雇用 ${turnover.hired}回・勇退 ${turnover.retired}回・引き抜き ${turnover.poached}回・入れ替え/解任 ${turnover.other}回`);
+  console.log(`  年度替わりの時点でヘッドコーチが臨時コーチだった割合 ${pct(turnover.tempYears / turnover.staffYears)}（すぐ OB を雇うので、編成前の一瞬だけ）・スタッフの能力の最高 ${turnover.maxAbility.toFixed(0)}`);
 
   const share = (f: (x: number) => boolean) => pct(graduatesOverall.filter(f).length / Math.max(1, graduatesOverall.length));
   console.log(`\n=== 成長（一般入部の卒業生 ${graduatesOverall.length}人。卒業時の総合値） ===`);

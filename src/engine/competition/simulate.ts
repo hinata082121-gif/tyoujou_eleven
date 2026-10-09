@@ -8,9 +8,10 @@ import type { MatchOutcome } from "./bracket";
 /** CPU 校の、その試合での部員の状態（体力・調子・出られない選手）。元のデータは変えない */
 export function cpuMatchSquad(rng: Rng, players: Player[]): Player[] {
   const c = CPU_MATCH_CONDITION;
+  const mean = rng.chance(c.tiredChance) ? c.tiredMean : c.fitnessMean;
   return players.map((p) => ({
     ...p,
-    fitness: Math.max(c.fitnessMin, Math.min(100, Math.round(rng.normal(c.fitnessMean, c.fitnessSd)))),
+    fitness: Math.max(c.fitnessMin, Math.min(100, Math.round(rng.normal(mean, c.fitnessSd)))),
     condition: rng.weighted([-2, -1, 0, 1, 2] as const, (v) => c.conditionWeights[v + 2]),
     injuryDays: rng.chance(c.unavailableChance) ? 1 : 0,
   }));
@@ -28,6 +29,7 @@ export function schoolTeamInput(school: School, rules: MatchRules, isUser: boole
     isUser,
     players,
     setup: autoSetup(players, school.formation, school.tactics, rules.benchSize),
+    ...(school.cpuStaff ? { scouting: school.cpuStaff.scouting, aiQuality: school.cpuStaff.tactics / 100 } : {}),
   };
 }
 

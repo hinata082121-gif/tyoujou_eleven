@@ -8,6 +8,7 @@ import { generalFreshmen } from "../school/generate";
 import { advanceCpuSchool } from "../school/season";
 import type { Alumnus, Career, GameState, LogEntry, Player } from "../types";
 import { CAREER_KEYS } from "./careers";
+import { makeStaffProfile } from "../staff/profile";
 
 export function addLog(state: GameState, text: string, tone: LogEntry["tone"] = "info") {
   state.log.push({ day: state.calendar.position, year: state.year, text, tone });
@@ -36,15 +37,25 @@ export function decideCareer(rng: Rng, p: Player): Career {
 export function graduate(state: GameState, rng: Rng): Alumnus[] {
   const school = playerSchool(state);
   const grads = school.players.filter((p) => p.grade === 3);
-  const alumni: Alumnus[] = grads.map((p) => ({
-    id: p.id,
-    name: p.name,
-    graduatedYear: state.year,
-    position: p.mainPosition,
-    overall: Math.round(overall(p)),
-    career: decideCareer(rng, p),
-    stats: { ...p.stats },
-  }));
+  const alumni: Alumnus[] = grads.map((p) => {
+    const winterResults = state.history.filter((h) => h.year >= p.enrolledYear).map((h) => h.winterResult);
+    winterResults.push(state.competitions.winterResult ?? "—");
+    const basics = {
+      stats: { ...p.stats },
+      position: p.mainPosition,
+      overall: Math.round(overall(p)),
+      career: decideCareer(rng, p),
+      graduatedYear: state.year,
+      wasCaptain: school.captainId === p.id,
+    };
+    return {
+      id: p.id,
+      name: p.name,
+      ...basics,
+      record: { ...p.record, winterResults },
+      staffProfile: makeStaffProfile(rng, basics),
+    };
+  });
   school.players = school.players.filter((p) => p.grade !== 3);
   state.alumni.push(...alumni);
   for (const a of alumni) addLog(state, `${a.name}が卒業（${CAREER_NAMES[a.career]}）`, "info");
@@ -65,6 +76,19 @@ export function rolloverPlayerSchool(state: GameState, rng: Rng): Player[] {
   const freshmen = generalFreshmen(rng, gradeSize(state.reputation), state.year);
   school.players.push(...freshmen);
   return freshmen;
+}
+
+/** 主将を決める（毎年 4 月。3 年生から総合と判断が最も高い選手。いなければ 2 年生から） */
+export function chooseCaptain(state: GameState) {
+  const school = playerSchool(state);
+  const score = (p: Player) => overall(p) + p.stats.decision * 0.5;
+  for (const grade of [3, 2, 1] as const) {
+    const cands = school.players.filter((p) => p.grade === grade && p.status === "active");
+    if (cands.length === 0) continue;
+    school.captainId = cands.reduce((b, p) => (score(p) > score(b) ? p : b), cands[0]).id;
+    return;
+  }
+  school.captainId = undefined;
 }
 
 export function rolloverCpuSchools(state: GameState, rng: Rng) {

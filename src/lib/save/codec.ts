@@ -4,13 +4,37 @@
  */
 import { ALL_STATS, POSITIONS, type Aptitude, type Condition, type Foot, type GameState, type Player, type School, type StatKey } from "@/engine/types";
 
-/** [id, name, grade, enrolledYear, retired, mainPos, height, heightLeft, foot, aptitude, stats, exp, potential, fitness, condition, injuryDays] */
-export type PackedPlayer = [string, string, number, number, 0 | 1, number, number, number, Foot, string, number[], number[], number, number, number, number];
+/**
+ * [id, name, grade, enrolledYear, retired, mainPos, height, heightLeft, foot, aptitude, stats, exp, potential, fitness, condition, injuryDays,
+ *  suspended, [apps, goals, officialApps, officialGoals]]
+ * 末尾の 2 つはスキーマ v3 で追加（v2 のデータには無い）
+ */
+export type PackedPlayer = [
+  string,
+  string,
+  number,
+  number,
+  0 | 1,
+  number,
+  number,
+  number,
+  Foot,
+  string,
+  number[],
+  number[],
+  number,
+  number,
+  number,
+  number,
+  number?,
+  number[]?,
+];
 
 const round1 = (v: number) => Math.round(v * 10) / 10;
 
 export function packPlayer(p: Player): PackedPlayer {
-  return [
+  const r = p.record;
+  const packed: PackedPlayer = [
     p.id,
     p.name,
     p.grade,
@@ -28,10 +52,13 @@ export function packPlayer(p: Player): PackedPlayer {
     p.condition,
     p.injuryDays,
   ];
+  // CPU 校の部員（数千人）は記録が空なので、容量のために省く
+  if (p.suspended || r.apps || r.goals || r.officialApps || r.officialGoals) packed.push(p.suspended, [r.apps, r.goals, r.officialApps, r.officialGoals]);
+  return packed;
 }
 
 export function unpackPlayer(a: PackedPlayer): Player {
-  const [id, name, grade, enrolledYear, retired, pos, height, heightLeft, foot, apt, stats, exp, potential, fitness, condition, injuryDays] = a;
+  const [id, name, grade, enrolledYear, retired, pos, height, heightLeft, foot, apt, stats, exp, potential, fitness, condition, injuryDays, suspended, rec] = a;
   const aptitude = {} as Record<(typeof POSITIONS)[number], Aptitude>;
   POSITIONS.forEach((p, i) => (aptitude[p] = Number(apt[i]) as Aptitude));
   const s = {} as Record<StatKey, number>;
@@ -58,6 +85,8 @@ export function unpackPlayer(a: PackedPlayer): Player {
     condition: condition as Condition,
     injuryDays,
     admission: "general",
+    suspended: suspended ?? 0,
+    record: { apps: rec?.[0] ?? 0, goals: rec?.[1] ?? 0, officialApps: rec?.[2] ?? 0, officialGoals: rec?.[3] ?? 0 },
   };
 }
 

@@ -13,6 +13,8 @@ import { MenuView } from "../play/MenuView";
 import { PlayerDetail } from "../play/PlayerDetail";
 import { RecordsView } from "../play/RecordsView";
 import { SquadView } from "../play/SquadView";
+import { NotesScreen } from "../notes/NotesScreen";
+import { StaffReviewScreen } from "../staff/StaffView";
 import { RankBadge } from "../ui";
 
 const TABS: { view: PlayView; label: string; icon: string }[] = [
@@ -34,6 +36,7 @@ export function PlayScreen() {
   const lastFreshmen = useGameStore((s) => s.lastFreshmen);
   const moving = useGameStore((s) => s.moving);
   const saveError = useGameStore((s) => s.saveError);
+  const notesOpen = useGameStore((s) => s.notesOpen);
 
   if (!game) return null;
 
@@ -42,6 +45,8 @@ export function PlayScreen() {
   if (lastAlumni) return <AlumniScreen />;
   if (lastFreshmen) return <FreshmenScreen />;
   if (game.activeMatch) return <MatchScreen />;
+  if (notesOpen) return <NotesScreen />;
+  if (!moving && game.pending?.type === "staff") return <StaffReviewScreen />;
   if (!moving && game.pending?.type === "match") return <PreMatchScreen />;
   if (!moving && game.pending?.type === "graduation") return <GraduationScreen />;
   if (!moving && game.pending?.type === "yearEnd") return <YearEndScreen />;

@@ -6,7 +6,7 @@ export function careerWeights(overall: number): Record<Career, number> {
     pro: overall >= 72 ? 30 + (overall - 72) * 6 : overall >= 65 ? 3 : 0,
     university: 40 + Math.max(0, overall - 50),
     worker: 20,
-    coach: 8,
+    coach: 14,
     other: Math.max(5, 40 - overall / 2),
   };
 }

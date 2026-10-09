@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FORMATIONS } from "@/engine/config/formations";
 import { APTITUDE_MARKS, POSITION_NAMES, TACTICS_LABELS } from "@/engine/config/names";
-import { canSkipWatching, defaultSetup, opponentOf, pendingMatchLabel, pendingMatchRules } from "@/engine/game";
+import { canSkipWatching, defaultSetup, eligiblePlayers, opponentOf, pendingIsOfficial, pendingMatchLabel, pendingMatchRules } from "@/engine/game";
+import { analystScouting } from "@/engine/staff";
 import { assignToSlots, autoSetup } from "@/engine/match/lineup";
 import { isAvailable, positionRating } from "@/engine/player/rating";
 import { playerSchool } from "@/engine/season";
@@ -25,16 +26,34 @@ export function rulesText(r: MatchRules): string {
 export function PreMatchScreen() {
   const game = useGameStore((s) => s.game)!;
   const startMatch = useGameStore((s) => s.startMatch);
+  const setNotesOpen = useGameStore((s) => s.setNotesOpen);
   const school = playerSchool(game);
   const opp = opponentOf(game)!;
   const rules = pendingMatchRules(game)!;
-  const [setup, setSetup] = useState<TeamSetup>(() => defaultSetup(game));
+  const setMatchDraft = useGameStore((s) => s.setMatchDraft);
+  // 作戦ノートを開いて戻ったときは、組んでいた並びを使う（同じ試合のときだけ）
+  const p = game.pending;
+  const draftKey = p?.type === "match" ? `${game.year}-${game.calendar.position}-${p.opponentId}` : "";
+  const draft = useGameStore.getState().matchDraft;
+  const fromDraft = draft && draft.key === draftKey ? draft : null;
+  const [setup, setSetup] = useState<TeamSetup>(() => fromDraft?.setup ?? defaultSetup(game));
   const [sel, setSel] = useState<Sel>(null);
+  const [noteId, setNoteId] = useState<string | null>(() => {
+    const id = fromDraft ? fromDraft.noteId : (game.selectedNoteId ?? null);
+    return id && game.notes.some((n) => n.id === id) ? id : null;
+  });
+  useEffect(() => {
+    setMatchDraft({ key: draftKey, setup, noteId });
+  }, [draftKey, setup, noteId, setMatchDraft]);
   const byId = new Map(school.players.map((p) => [p.id, p]));
+  const pool = eligiblePlayers(game);
+  const poolIds = new Set(pool.map((p) => p.id));
+  const official = pendingIsOfficial(game);
+  const hasAnalyst = analystScouting(game.staff) > 0;
   const slots = FORMATIONS[setup.formation];
   const used = new Set([...setup.lineup, ...setup.bench]);
-  const reserves = school.players.filter((p) => isAvailable(p) && !used.has(p.id));
-  const unavailable = school.players.filter((p) => !isAvailable(p) && p.status === "active");
+  const reserves = pool.filter((p) => isAvailable(p) && !used.has(p.id));
+  const unavailable = school.players.filter((p) => (!isAvailable(p) || !poolIds.has(p.id)) && p.status === "active");
 
   const update = (patch: Partial<TeamSetup>) => setSetup((s) => ({ ...s, ...patch }));
 
@@ -77,11 +96,11 @@ export function PreMatchScreen() {
   };
 
   const auto = () => {
-    setSetup(autoSetup(school.players, setup.formation, setup.tactics, rules.benchSize));
+    setSetup(autoSetup(pool, setup.formation, setup.tactics, rules.benchSize));
     setSel(null);
   };
 
-  const valid = setup.lineup.length === 11 && setup.lineup.every((id) => byId.get(id) && isAvailable(byId.get(id)!));
+  const valid = setup.lineup.length === 11 && setup.lineup.every((id) => byId.get(id) && isAvailable(byId.get(id)!) && poolIds.has(id));
   const isSel = (s: NonNullable<Sel>) => JSON.stringify(sel) === JSON.stringify(s);
 
   return (
@@ -97,6 +116,13 @@ export function PreMatchScreen() {
           <div className="mt-1 text-[11px] text-gray-600">
             相手の傾向：基本フォーメーション <b>{opp.formation}</b>・攻撃方針 <b>{TACTICS_LABELS.attack[opp.tactics.attack]}</b>
           </div>
+          {hasAnalyst ? (
+            <div className="mt-1 text-[11px] text-gray-600">
+              分析担当の報告：プレス <b>{TACTICS_LABELS.press[opp.tactics.press]}</b>・ライン <b>{TACTICS_LABELS.line[opp.tactics.line]}</b>
+            </div>
+          ) : (
+            <div className="mt-1 text-[11px] text-gray-400">分析担当がいれば、相手のプレスとラインもわかります。</div>
+          )}
           <div className="mt-1 text-[11px] text-gray-500">{rulesText(rules)}</div>
           {canSkipWatching(game) && <div className="mt-1 text-[11px] text-gray-500">練習試合は「結果のみ」も選べます（試合中の采配はAIの監督が行います）。</div>}
           <div className="mt-1 text-[11px] text-gray-500">
@@ -121,6 +147,28 @@ export function PreMatchScreen() {
         </section>
 
         <TacticsEditor tactics={setup.tactics} onChange={(t) => update({ tactics: t })} />
+
+        <section>
+          <div className="mb-1 flex items-center justify-between">
+            <h2 className="text-sm font-black">作戦ノート</h2>
+            <button type="button" className="min-h-9 px-2 text-xs font-bold text-pitch-dark" onClick={() => setNotesOpen(true)}>
+              編集する
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {[null, ...game.notes].map((n) => (
+              <button
+                key={n?.id ?? "none"}
+                type="button"
+                onClick={() => setNoteId(n?.id ?? null)}
+                className={`min-h-10 rounded-lg px-3 text-xs font-bold ${noteId === (n?.id ?? null) ? "bg-pitch text-white" : "bg-gray-100"}`}
+              >
+                {n ? n.name : "なし"}
+              </button>
+            ))}
+          </div>
+          {game.notes.length === 0 && <p className="mt-1 text-[11px] text-gray-500">ノートを作ると、観戦中に自動で交代や戦術変更ができます。</p>}
+        </section>
 
         <section>
           <div className="mb-1 flex items-center justify-between">
@@ -181,7 +229,7 @@ export function PreMatchScreen() {
               <PlayerRow key={p.id} label="外" p={p} selected={isSel({ kind: "res", id: p.id })} onTap={() => tap({ kind: "res", id: p.id })} />
             ))}
             {unavailable.map((p) => (
-              <PlayerRow key={p.id} label="ケガ" p={p} disabled />
+              <PlayerRow key={p.id} label={official && p.suspended > 0 ? "停止" : "ケガ"} p={p} disabled />
             ))}
             {reserves.length === 0 && unavailable.length === 0 && <li className="text-xs text-gray-400">なし</li>}
           </ul>
@@ -194,15 +242,15 @@ export function PreMatchScreen() {
         </Button>
         {canSkipWatching(game) ? (
           <>
-            <Button variant="secondary" disabled={!valid} onClick={() => startMatch(setup, "auto")}>
+            <Button variant="secondary" disabled={!valid} onClick={() => startMatch(setup, "auto", noteId)}>
               結果のみ
             </Button>
-            <Button disabled={!valid} onClick={() => startMatch(setup)}>
+            <Button disabled={!valid} onClick={() => startMatch(setup, "watch", noteId)}>
               観戦する
             </Button>
           </>
         ) : (
-          <Button className="col-span-2" disabled={!valid} onClick={() => startMatch(setup)}>
+          <Button className="col-span-2" disabled={!valid} onClick={() => startMatch(setup, "watch", noteId)}>
             試合開始（観戦）
           </Button>
         )}
