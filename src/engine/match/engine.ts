@@ -16,6 +16,8 @@ import { ALL_STATS, type MatchKind, type MatchRules, type Player, type SchoolRan
 import { decideAi } from "./ai";
 import { assignToSlots } from "./lineup";
 import { evaluateNote } from "./note";
+import { fatigueFactor } from "./fatigue";
+export { fatigueFactor };
 import { activeIds, isOut, pendingOf } from "./orders";
 import { autoPkOrder, pkDecided, resolvePkKick } from "./pk";
 export { cancelSubstitution, queueFormation, queueSubstitution, queueTactics, subsRemaining, activeIds, isOut } from "./orders";
@@ -385,10 +387,11 @@ function buildActors(team: MatchTeamState): Actor[] {
     if (!p || isOut(p)) return;
     const slot = slots[i];
     const apt = MATCH.aptitudeMult[p.aptitude[slot.pos]];
-    const fat = MATCH.fatigueFloor + (1 - MATCH.fatigueFloor) * (p.stamina / 100);
-    const m = apt * fat * (CONDITION_MULT[p.condition] ?? 1) * team.form;
+    // 疲労は能力差の圧縮の後に掛ける（疲れの影響を圧縮で薄めない）
+    const fat = fatigueFactor(p.stamina);
+    const m = apt * (CONDITION_MULT[p.condition] ?? 1) * team.form;
     const e = {} as Stats;
-    for (const k of ALL_STATS) e[k] = MATCH.skillPivot + (p.stats[k] * m - MATCH.skillPivot) * MATCH.skillCompression;
+    for (const k of ALL_STATS) e[k] = (MATCH.skillPivot + (p.stats[k] * m - MATCH.skillPivot) * MATCH.skillCompression) * fat;
     actors.push({ id, slot, e, height: p.heightCm });
   });
   return actors;

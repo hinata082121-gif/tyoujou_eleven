@@ -10,7 +10,7 @@ import { STYLE_BEATS, TACTIC_STYLES, type TacticStyleId } from "../config/tactic
 import { PRACTICES } from "../config/practice";
 import { MATCH } from "../config/match";
 import { CONDITION_MULT } from "../config/player";
-import { simulateToEnd } from "../match/engine";
+import { fatigueFactor, simulateToEnd } from "../match/engine";
 import { templateNote } from "../note";
 import { Rng } from "../rng";
 import { ROLE_ABILITIES } from "../config/staff";
@@ -33,6 +33,7 @@ import {
   playCard,
   startPlayerMatch,
   defaultSetup,
+  squareDisplay,
   type MatchSummary,
 } from ".";
 
@@ -113,6 +114,9 @@ export const newAutoplayStats = (): AutoplayStats => ({ cards: 0, matches: [], g
 /** 練習カードの役に立つ度合い（対象の広さ） */
 const PRACTICE_USEFULNESS = { all: 1, field: 0.9, gk: 0.35 } as const;
 
+/** うまい采配の自動プレイが、試合の前に休ませる目安（何マス先まで見るか・平均の体力） */
+const SKILLED_REST = { lookAhead: 7, beforeMatch: 78 };
+
 function chooseCard(state: GameState, policy: AutoPolicy) {
   const players = playerSchool(state).players.filter((x) => x.status === "active");
   const avgFit = players.reduce((s, x) => s + x.fitness, 0) / Math.max(1, players.length);
@@ -122,6 +126,13 @@ function chooseCard(state: GameState, policy: AutoPolicy) {
     return avgFit < 55 && rest ? rest : ([...hand].filter((c) => c.practice !== "rest").sort((a, b) => b.value - a.value)[0] ?? hand[0]);
   }
   if (avgFit < 62 && rest) return rest;
+  // 試合が近ければ、体力を戻しておく（終盤の疲れが試合を左右するため）
+  const pos = state.calendar.position;
+  const matchSoon = state.calendar.squares.slice(pos + 1, pos + 1 + SKILLED_REST.lookAhead).some((sq) => {
+    const kind = sq.major?.kind;
+    return (kind === "practiceMatch" || kind === "prefQualifier" || kind === "national") && squareDisplay(state, sq).type === "major";
+  });
+  if (matchSoon && avgFit < SKILLED_REST.beforeMatch && rest) return rest;
   const score = (c: (typeof hand)[number]) => (c.practice === "rest" ? 0.1 : c.value * PRACTICE_USEFULNESS[PRACTICES[c.practice].target]);
   return [...hand].sort((a, b) => score(b) - score(a))[0];
 }
@@ -155,7 +166,11 @@ export function skilledSetup(state: GameState): TeamSetup {
     if (teamStrength(school.players, styled) >= teamStrength(school.players, formation) - 1) formation = styled;
   }
   // 調子と体力も見て選ぶ（画面に出ている情報。CPU は能力だけで選ぶ）
-  const fitFactor = (fit: number) => MATCH.fatigueFloor + (1 - MATCH.fatigueFloor) * ((MATCH.startStaminaBase + MATCH.startStaminaFromFitness * fit) / 100);
+  // 試合の前半（開始時）と終盤（体力が 35 減ったころ）の疲労係数の平均で見積もる
+  const fitFactor = (fit: number) => {
+    const start = MATCH.startStaminaBase + MATCH.startStaminaFromFitness * fit;
+    return (fatigueFactor(start) + fatigueFactor(start - 35)) / 2;
+  };
   const judged = school.players.map((p) => {
     const m = (CONDITION_MULT[p.condition] ?? 1) * fitFactor(p.fitness);
     const stats = { ...p.stats };

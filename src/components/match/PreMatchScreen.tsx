@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FORMATIONS } from "@/engine/config/formations";
 import { APTITUDE_MARKS, POSITION_NAMES, TACTICS_LABELS } from "@/engine/config/names";
 import { canSkipWatching, defaultSetup, eligiblePlayers, opponentOf, pendingIsOfficial, pendingMatchLabel, pendingMatchRules } from "@/engine/game";
@@ -30,9 +30,21 @@ export function PreMatchScreen() {
   const school = playerSchool(game);
   const opp = opponentOf(game)!;
   const rules = pendingMatchRules(game)!;
-  const [setup, setSetup] = useState<TeamSetup>(() => defaultSetup(game));
+  const setMatchDraft = useGameStore((s) => s.setMatchDraft);
+  // 作戦ノートを開いて戻ったときは、組んでいた並びを使う（同じ試合のときだけ）
+  const p = game.pending;
+  const draftKey = p?.type === "match" ? `${game.year}-${game.calendar.position}-${p.opponentId}` : "";
+  const draft = useGameStore.getState().matchDraft;
+  const fromDraft = draft && draft.key === draftKey ? draft : null;
+  const [setup, setSetup] = useState<TeamSetup>(() => fromDraft?.setup ?? defaultSetup(game));
   const [sel, setSel] = useState<Sel>(null);
-  const [noteId, setNoteId] = useState<string | null>(() => (game.notes.some((n) => n.id === game.selectedNoteId) ? game.selectedNoteId! : null));
+  const [noteId, setNoteId] = useState<string | null>(() => {
+    const id = fromDraft ? fromDraft.noteId : (game.selectedNoteId ?? null);
+    return id && game.notes.some((n) => n.id === id) ? id : null;
+  });
+  useEffect(() => {
+    setMatchDraft({ key: draftKey, setup, noteId });
+  }, [draftKey, setup, noteId, setMatchDraft]);
   const byId = new Map(school.players.map((p) => [p.id, p]));
   const pool = eligiblePlayers(game);
   const poolIds = new Set(pool.map((p) => p.id));

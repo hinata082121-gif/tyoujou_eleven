@@ -6,7 +6,7 @@ import { abilityGrade, bestRole, staffComment } from "../staff/comment";
 describe("作戦ノートの文章", () => {
   it("テンプレートを 1 行の文章にする", () => {
     const nameOf = () => undefined;
-    expect(describeRule(templateRule("powerPlay", "r"), nameOf)).toBe("1点以上ビハインド・残り10分なら、スタミナが最も低い選手を下げて控えの長身FWを入れる、ロングボール主体・攻撃的にする");
+    expect(describeRule(templateRule("powerPlay", "r"), nameOf)).toBe("1点以上ビハインド・残り10分なら、スタミナが最も低い選手を下げて控えの長身FWを入れる、ロングボール主体・攻撃的・プレス高・ライン高にする");
     expect(describeRule(templateRule("pkPrep", "r"), nameOf)).toContain("予選・全国大会の試合・同点・残り3分なら");
   });
 

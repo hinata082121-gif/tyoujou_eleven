@@ -14,7 +14,7 @@ describe("スタッフの 1 サイクル（自動プレイで 6 年）", () => {
     const head = headCoach(s.staff)!;
     // 勇退が近い年齢にしておく（遅くとも 68 歳で必ず勇退）
     head.age18Year = s.year - (STAFF_LIFE.forceRetireAge - 4 - STAFF_LIFE.graduateAge);
-    const heads = new Map<string, number>();
+    const heads = new Map<string, number>([[head.id, head.abilities.coaching]]);
     let grew = false;
     for (let y = 0; y < 6; y++) {
       autoplayYears(s, 1, "skilled");

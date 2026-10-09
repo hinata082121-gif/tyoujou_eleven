@@ -8,8 +8,8 @@ import { NOTE_LIMITS, type GameState, type NoteRule, type TacticsNote } from "..
 export type NoteTemplateId = keyof typeof NOTE_TEMPLATE_NAMES;
 export const NOTE_TEMPLATE_IDS = Object.keys(NOTE_TEMPLATE_NAMES) as NoteTemplateId[];
 
-/** 疲労交代のしきい値の初期値（SPEC 10.5。今の試合エンジンでは 5% まで下がらないため 60%） */
-export const FATIGUE_SUB_DEFAULT = 60;
+/** 疲労交代のしきい値の初期値（SPEC 10.5。2026-10-09 に 60% → 70%） */
+export const FATIGUE_SUB_DEFAULT = 70;
 
 /** テンプレート（SPEC 10.5 の表のとおり） */
 export function templateRule(id: NoteTemplateId, ruleId: string): NoteRule {
@@ -26,7 +26,8 @@ export function templateRule(id: NoteTemplateId, ruleId: string): NoteRule {
         ],
         actions: [
           { type: "sub", out: { kind: "auto", pick: "lowestStamina" }, in: { kind: "auto", pick: "tallestForward" } },
-          { type: "tactics", change: { buildUp: "long", attack: "attacking" } },
+          // 前に人数をかける：得点の機会が増える代わりに、カウンターで失点しやすくなる
+          { type: "tactics", change: { buildUp: "long", attack: "attacking", press: "high", line: "high" } },
         ],
       };
     case "holdLead":
@@ -36,11 +37,12 @@ export function templateRule(id: NoteTemplateId, ruleId: string): NoteRule {
         enabled: true,
         conditions: [
           { type: "score", state: "lead", by: 1 },
-          { type: "minutesLeft", minutes: 5 },
+          { type: "minutesLeft", minutes: 10 },
         ],
         actions: [
           { type: "sub", out: { kind: "auto", pick: "lowestStamina" }, in: { kind: "auto", pick: "bestForSlot" } },
-          { type: "formation", formation: "5-3-2" },
+          // 守りを固める（5-3-2 への変更は、並び替えで適性の低い位置に入る選手が出て逆効果だったので入れない）：失点しにくくなる代わりに、得点の機会も減る
+          { type: "tactics", change: { attack: "defensive", line: "low" } },
         ],
       };
     case "fatigueSub":

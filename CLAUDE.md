@@ -47,5 +47,5 @@
   - 戦術の相性表（`BALANCE_TACTICS_N`。quick 200／full 600。full は戦術の全36通りの確認つき）
   - 格上と戦うときの型ごとの成績（`BALANCE_UNDERDOG_N`。quick 300／full 1500）
   - うまい采配の自動プレイで何年分も進めた評判の推移・同じランクへの勝率・成長・スタッフの入れ替わり（`BALANCE_SEASON_GAMES` 校 × `BALANCE_SEASON_YEARS` 年。quick 6×8／full 20×12）
-  - Phase 2a：カード・ケガ（`BALANCE_CARDS_N`）、PK 戦とスカウティング（`BALANCE_PK_N`）、作戦ノートあり・なし（`BALANCE_NOTES_N`）、スタッフなし／最高のスタッフでの成長（`BALANCE_GROWTH_GAMES` × `BALANCE_GROWTH_YEARS`）
+  - Phase 2a：カード・ケガ（`BALANCE_CARDS_N`）、PK 戦とスカウティング（`BALANCE_PK_N`）、作戦ノートあり・なし（`BALANCE_NOTES_N`）、場面の比較：逃げ切り・パワープレイ・疲れた選手の交代（`BALANCE_SCENES_N`）、スタッフなし／最高のスタッフでの成長（`BALANCE_GROWTH_GAMES` × `BALANCE_GROWTH_YEARS`）
 - `npm run build`：静的書き出し（`out/` に出力。Vercel はこれを配信する）

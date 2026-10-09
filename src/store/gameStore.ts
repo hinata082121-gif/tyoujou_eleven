@@ -72,6 +72,9 @@ interface GameStore {
   saveError: string | null;
   /** 作戦ノートの画面を開いている（メニュー・試合前から開く） */
   notesOpen: boolean;
+  /** 試合前の画面で組んだ並び（作戦ノートを開いて戻っても保つ。試合を始めたら消す） */
+  matchDraft: { key: string; setup: TeamSetup; noteId: string | null } | null;
+  setMatchDraft(d: GameStore["matchDraft"]): void;
   setNotesOpen(v: boolean): void;
   /** すごろくの移動演出中（演出が終わるまで次の画面に進まない） */
   moving: boolean;
@@ -123,6 +126,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
   saveError: null,
   moving: false,
   notesOpen: false,
+  matchDraft: null,
+  setMatchDraft(d) {
+    set({ matchDraft: d });
+  },
   setNotesOpen(v) {
     set({ notesOpen: v });
   },
@@ -160,7 +167,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     } catch {
       // 無視
     }
-    set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null, notesOpen: false });
+    set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null, notesOpen: false, matchDraft: null });
   },
 
   async createGame(slot, schoolName, prefectureId) {
@@ -168,7 +175,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     crypto.getRandomValues(buf);
     const seed = `${Date.now().toString(36)}-${buf[0].toString(36)}${buf[1].toString(36)}`;
     const game = newGame(seed, schoolName, prefectureId);
-    set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null, notesOpen: false });
+    set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null, notesOpen: false, matchDraft: null });
     try {
       window.localStorage.setItem(LAST_SLOT_KEY, String(slot));
     } catch {
@@ -209,6 +216,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   startMatch(setup, mode = "watch", noteId) {
     const game = get().game;
     if (!game) return;
+    set({ matchDraft: null });
     startPlayerMatch(game, setup, mode, noteId);
     if (mode === "auto" && game.activeMatch) {
       get().finishMatch();

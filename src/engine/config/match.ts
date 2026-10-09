@@ -14,8 +14,12 @@ export const MATCH = {
   matchDayFormSd: 0.1,
   /** 適性係数（◎/○/△） */
   aptitudeMult: { 3: 1.0, 2: 0.9, 1: 0.75 } as Record<number, number>,
-  /** 疲労係数 = fatigueFloor + (1 - fatigueFloor) × (体力/100) */
-  fatigueFloor: 0.72,
+  /**
+   * 疲労係数（能力に掛ける）：体力が fatigue.from 以上なら 1。下回ると、
+   * 1 − scale × ((from − 体力) / range)^power で急に下がる（最低 floor）。
+   * 体力 70% 前後から低下がはっきり出て、終盤に元気な選手を入れる意味がある程度にする（P2a で変更。以前は直線）
+   */
+  fatigue: { from: 80, range: 20, power: 1.4, scale: 0.32, floor: 0.55 },
   /** 試合開始時の体力 = startBase + startFromFitness × 普段の体力 */
   startStaminaBase: 72,
   startStaminaFromFitness: 0.28,
@@ -32,7 +36,7 @@ export const MATCH = {
 
   // ---- 区間ごとの攻撃回数・支配率 ----
   /** 1 区間（5 分）の両チーム合計の攻撃回数の期待値 */
-  attacksPerSegment: 2.25,
+  attacksPerSegment: 2.37,
   /** 支配率 = mid^k / (mid_A^k + mid_B^k) */
   possessionExponent: 1.6,
   possessionMin: 0.25,
@@ -44,15 +48,15 @@ export const MATCH = {
     line: { high: 0.01, low: -0.01 },
   },
   /** 攻撃回数への戦術補正（自チームの攻撃回数に掛ける） */
-  attackRateTactics: { attacking: 1.08, balanced: 1.0, defensive: 0.85 },
+  attackRateTactics: { attacking: 1.22, balanced: 1.0, defensive: 0.78 },
   /** 攻撃方針による守備の質の補正（守備的なほど人数をかけて守る） */
-  attackStyleDefense: { attacking: -2, balanced: 0, defensive: 3 },
+  attackStyleDefense: { attacking: -3, balanced: 0, defensive: 6 },
   /** 攻撃方針による、ボールを失ったときにカウンターを受ける確率の倍率 */
-  attackStyleCounterExposure: { attacking: 1.25, balanced: 1.0, defensive: 0.7 },
+  attackStyleCounterExposure: { attacking: 1.45, balanced: 1.0, defensive: 0.6 },
   /** 攻撃方針による、相手のボールを奪ったときにカウンターを仕掛ける確率の倍率（守って速攻） */
   attackStyleCounterAttack: { attacking: 0.9, balanced: 1.0, defensive: 1.35 },
   /** 守っている側の攻撃方針による、相手のチャンスの質の倍率 */
-  attackStyleChanceQ: { attacking: 1.05, balanced: 1.0, defensive: 0.94 },
+  attackStyleChanceQ: { attacking: 1.08, balanced: 1.0, defensive: 0.86 },
   /** モメンタムの支配率への影響（モメンタム 100 で +0.2） */
   momentumPossession: 0.002,
   /** 3 点差以上でリードしている側は攻撃が緩む */

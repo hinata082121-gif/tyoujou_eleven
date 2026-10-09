@@ -8,6 +8,7 @@ import { MATCH } from "../config/match";
 import { positionRating } from "../player/rating";
 import type { MatchState, Side } from "./types";
 import { isOut, queueSubstitution, queueTactics, subsRemaining } from "./orders";
+import { fatigueFactor } from "./fatigue";
 
 export function decideAi(state: MatchState, side: Side) {
   if (state.phase === "PK" || state.phase === "END") return;
@@ -35,7 +36,7 @@ export function decideAi(state: MatchState, side: Side) {
       if (candidates.length === 0) break;
       const best = candidates.reduce((b, id) => (positionRating(team.players[id], pos) > positionRating(team.players[b], pos) ? id : b), candidates[0]);
       // 控えの方が今の状態より良いときだけ代える
-      const current = positionRating(team.players[t.id], pos) * (MATCH.fatigueFloor + (1 - MATCH.fatigueFloor) * (t.stamina / 100));
+      const current = positionRating(team.players[t.id], pos) * fatigueFactor(t.stamina);
       if (positionRating(team.players[best], pos) * 0.95 < current) continue;
       if (queueSubstitution(state, side, t.id, best) === null) made++;
     }
