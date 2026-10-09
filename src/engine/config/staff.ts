@@ -108,20 +108,20 @@ export const STAFF_EFFECTS = {
   /** 練習効率 = +(能力 − effectFrom) / effectRange × perRole（effectFrom 以下は 0） */
   effectFrom: 20,
   effectRange: 80,
-  /** ヘッドコーチの指導力による全体の練習効率 */
-  headPractice: 0.1,
+  /** ヘッドコーチの指導力による全体の練習効率（初期案 0.1。最高のスタッフで総合 B 以上が 12% 程度になるよう調整） */
+  headPractice: 0.07,
   /** GK コーチの GK 指導による、GK の練習効率（GK 練習・PK 練習） */
   gkPractice: 0.1,
   /** GK コーチによる、PK 練習での GK の PK 駆け引きの伸び */
   gkPkPractice: 0.15,
   /** 1 人の選手にかかる練習効率の補正の合計の上限（インフレ防止） */
   practiceCap: 0.15,
-  /** フィジカルコーチ：毎日の自然回復 +(体力管理/100) × recovery */
-  recovery: 0.3,
+  /** フィジカルコーチ：毎日の自然回復 +(体力管理/100) × recovery（初期案 0.3。同上） */
+  recovery: 0.15,
   /** フィジカルコーチ：練習中・試合中のケガの確率 −(体力管理/100) × injuryReduce */
   injuryReduce: 0.4,
-  /** 分析担当：PK の読みに足す値 = スカウティング × pkScouting */
-  pkScouting: 0.25,
+  /** 分析担当：PK の読みに足す値 = スカウティング × pkScouting（初期案 0.25。差が最大で PK 戦の勝率 57% 前後になるよう調整） */
+  pkScouting: 0.04,
 };
 
 /** CPU 校のスタッフの値（格 prestige 0〜5 に応じてばらつかせる） */

@@ -120,14 +120,14 @@ describe("PK のスカウティング（SPEC 10.6）", () => {
     const reads = (ks: number, gs: number) => {
       const rng = Rng.fromSeed("read");
       let won = 0;
-      for (let i = 0; i < 4000; i++) if (resolvePkKick(rng, k, g, ks, gs).kickerWonRead) won++;
-      return won / 4000;
+      for (let i = 0; i < 40000; i++) if (resolvePkKick(rng, k, g, ks, gs).kickerWonRead) won++;
+      return won / 40000;
     };
     const none = reads(0, 0);
     const kickerScout = reads(100 * STAFF_EFFECTS.pkScouting, 0);
     const gkScout = reads(0, 100 * STAFF_EFFECTS.pkScouting);
-    expect(kickerScout).toBeGreaterThan(none + 0.05);
-    expect(gkScout).toBeLessThan(none - 0.05);
+    expect(kickerScout).toBeGreaterThan(none + 0.015);
+    expect(gkScout).toBeLessThan(none - 0.015);
   });
 
   it("試合中の PK と PK 戦の両方で、チームのスカウティングを使う", () => {

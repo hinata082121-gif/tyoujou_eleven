@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { autoplayYears } from "./autoplay";
+import { autoManageStaff, autoplayYears } from "./autoplay";
 import { defaultSetup, eligiblePlayers, finishStaff, hire, newGame, pendingIsOfficial } from ".";
 import { headCoach } from "../staff";
 import { STAFF_LIFE } from "../config/staff";
@@ -29,7 +29,9 @@ describe("スタッフの 1 サイクル（自動プレイで 6 年）", () => {
     expect(s.staff.departedIds).toContain(ob.id);
     expect(heads.size).toBeGreaterThanOrEqual(2);
     expect(grew).toBe(true);
-    // 評判が上がれば枠が増え、ほかの役割も埋まる
+    // 評判が上がれば枠が増え、ほかの役割も埋まる（年度初めの編成を終えてから数える）
+    autoManageStaff(s);
+    finishStaff(s);
     if (s.reputation.level >= 2) expect(s.staff.members.length).toBeGreaterThanOrEqual(2);
   }, 60_000);
 });

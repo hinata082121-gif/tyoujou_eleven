@@ -48,8 +48,12 @@ export interface AutoplayOptions {
   notes?: boolean;
 }
 
+/**
+ * skilled の初期値はスタッフを雇い、作戦ノートは使わない（ノートの効果は balance で別に測る。
+ * ノートを入れると自分の采配と重なり、同じランクへの勝率が少し下がるため）
+ */
 const defaultOptions = (policy: AutoPolicy): Required<AutoplayOptions> =>
-  policy === "skilled" ? { staff: "auto", notes: true } : { staff: "none", notes: false };
+  policy === "skilled" ? { staff: "auto", notes: false } : { staff: "none", notes: false };
 
 /** 役割に合う度合い（主な能力の平均） */
 function roleValue(abilities: Record<string, number>, role: StaffRole) {

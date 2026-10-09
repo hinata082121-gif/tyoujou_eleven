@@ -16,11 +16,12 @@ import { SCHOOL_RANKS, type Player, type SchoolRank } from "../src/engine/types"
 import { simulateSeasons } from "./seasonSim";
 import { tacticsMatrix } from "./tacticsMatrix";
 import { underdogTable } from "./underdog";
+import { cardTable, notesTable, pkTable, staffGrowthTable } from "./phase2a";
 
 const MODE = process.argv[2] === "full" ? "full" : "quick";
 const PRESETS = {
-  quick: { n: 2000, tactics: 200, combos: false, underdog: 300, seasonGames: 6, seasonYears: 8 },
-  full: { n: 10000, tactics: 600, combos: true, underdog: 1500, seasonGames: 20, seasonYears: 12 },
+  quick: { n: 2000, tactics: 200, combos: false, underdog: 300, seasonGames: 6, seasonYears: 8, cards: 1000, pk: 2000, notes: 500, growthGames: 3, growthYears: 6 },
+  full: { n: 10000, tactics: 600, combos: true, underdog: 1500, seasonGames: 20, seasonYears: 12, cards: 5000, pk: 10000, notes: 3000, growthGames: 12, growthYears: 10 },
 }[MODE];
 const env = (key: string, fallback: number) => Number(process.env[key] ?? fallback);
 const N = env("BALANCE_N", PRESETS.n);
@@ -159,3 +160,9 @@ underdogTable(env("BALANCE_UNDERDOG_N", PRESETS.underdog));
 
 // ---- 評判の推移と成長（うまい采配の自動プレイで何年分も進める） ----
 simulateSeasons(env("BALANCE_SEASON_GAMES", PRESETS.seasonGames), env("BALANCE_SEASON_YEARS", PRESETS.seasonYears));
+
+// ---- Phase 2a（docs/PHASE2A_PLAN.md 10.2） ----
+cardTable(env("BALANCE_CARDS_N", PRESETS.cards));
+pkTable(env("BALANCE_PK_N", PRESETS.pk));
+notesTable(env("BALANCE_NOTES_N", PRESETS.notes));
+staffGrowthTable(env("BALANCE_GROWTH_GAMES", PRESETS.growthGames), env("BALANCE_GROWTH_YEARS", PRESETS.growthYears));
