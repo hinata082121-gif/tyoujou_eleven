@@ -43,12 +43,16 @@ describe("カレンダー", () => {
 
   it("進行カードは数字 1〜5 で、手札は評判の枚数にそろう", () => {
     const rng = Rng.fromSeed("cards");
+    let pk = 0;
     for (let i = 0; i < 200; i++) {
       const c = drawCard(rng);
       expect(c.value).toBeGreaterThanOrEqual(1);
       expect(c.value).toBeLessThanOrEqual(5);
-      expect(c.practice).not.toBe("pk");
+      if (c.practice === "pk") pk++;
     }
+    // PK 練習（P2a）は他の練習の半分くらいの出やすさ
+    expect(pk).toBeGreaterThan(0);
+    expect(pk).toBeLessThan(20);
     const cal = newCalendar(rng, 5, 5, 4);
     expect(cal.hand).toHaveLength(4);
     refillHand(rng, cal, 6);

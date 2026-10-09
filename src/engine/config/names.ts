@@ -2,7 +2,7 @@
  * 表示名はすべてここに集約する（SPEC 3章）。
  * 県名・地域名・大会名は架空の仮の名前。実在の名称・商標は使わない。
  */
-import type { Career, MajorKind, Position, PracticeKind, ReputationLevel, SquareType } from "../types";
+import type { Career, MajorKind, Position, PracticeKind, ReputationLevel, SquareType, StaffAbility, StaffRole } from "../types";
 
 export const GAME_TITLE = "頂上イレブン";
 export const GAME_SUBTITLE = "高校サッカー部 監督育成ゲーム";
@@ -190,6 +190,7 @@ export const PRACTICE_NAMES: Record<PracticeKind, string> = {
   tactics: "戦術ミーティング",
   gk: "GK練習",
   setPiece: "セットプレー",
+  pk: "PK練習",
   rest: "休養",
 };
 
@@ -218,6 +219,30 @@ export const CAREER_NAMES: Record<Career, string> = {
   coach: "指導者の道",
   other: "その他の進路",
 };
+
+export const ROLE_NAMES: Record<StaffRole, string> = {
+  head: "ヘッドコーチ",
+  gk: "GKコーチ",
+  physical: "フィジカルコーチ",
+  analyst: "分析担当",
+};
+
+export const STAFF_ABILITY_NAMES: Record<StaffAbility, string> = {
+  coaching: "指導力",
+  tactics: "戦術眼",
+  gkCoaching: "GK指導",
+  conditioning: "体力管理",
+  scouting: "スカウティング",
+};
+
+export const TEMP_COACH_LABEL = "臨時コーチ";
+
+export const NOTE_TEMPLATE_NAMES = {
+  powerPlay: "パワープレイ",
+  holdLead: "逃げ切り",
+  fatigueSub: "疲労交代",
+  pkPrep: "PK準備",
+} as const;
 
 export const TACTICS_LABELS = {
   attack: { attacking: "攻撃的", balanced: "バランス", defensive: "守備的" },

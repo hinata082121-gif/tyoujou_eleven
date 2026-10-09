@@ -28,6 +28,7 @@ export function schoolTeamInput(school: School, rules: MatchRules, isUser: boole
     isUser,
     players,
     setup: autoSetup(players, school.formation, school.tactics, rules.benchSize),
+    ...(school.cpuStaff ? { scouting: school.cpuStaff.scouting, aiQuality: school.cpuStaff.tactics / 100 } : {}),
   };
 }
 

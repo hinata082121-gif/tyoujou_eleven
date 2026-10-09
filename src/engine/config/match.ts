@@ -167,6 +167,51 @@ export const MATCH = {
   /** チャンス（ボックス内）1 回あたりのファウルで PK の確率 */
   pkFoulChance: 0.012,
 
+  // ---- ファウル・カード（SPEC 10.2。P2a）----
+  fouls: {
+    /** 1 対 1 で抜かれた守備側が、ファウルで止める確率 */
+    duelFoul: 0.1,
+    /** 守備側の判断が低いほどファウルしやすい（判断 50 で 1 倍。判断 1 ポイントあたり） */
+    duelDecisionSlope: 0.012,
+    /** プレスの強さによるファウルの多さ */
+    pressMult: { high: 1.3, mid: 1.0, low: 0.8 },
+    /** 中盤での（攻撃の判定に現れない）ファウル：チームごと、区間あたりの期待値（相手の支配率 50% のとき） */
+    backgroundPerSegment: 0.32,
+    /** ボックス外のファウルが、直接狙えるフリーキック・セットプレーになる確率 */
+    freeKickDanger: 0.3,
+    /** ファウル 1 回でイエローが出る確率（ボックス内は inBox） */
+    yellow: 0.17,
+    yellowInBox: 0.45,
+    /** 一発レッド */
+    red: 0.0015,
+    redInBox: 0.04,
+    /** イエローを受けている選手は、ファウルを控える（選ばれる重み）・カードが出にくい */
+    bookedFoulMult: 0.5,
+    bookedYellowMult: 0.6,
+  },
+
+  // ---- 試合中のケガ（P2a）----
+  injury: {
+    /** 区間（5 分）あたり・ピッチ上の選手 1 人あたりの確率 */
+    perSegment: 0.00018,
+    /** 体力が低いほど上がる：× (1 + fatigue × (1 − 体力/100)) */
+    fatigue: 1.5,
+    /** ファウルを受けたときのケガの確率 */
+    onFoul: 0.004,
+    severityWeights: { light: 6, medium: 3, severe: 1 },
+    /** 試合後に離脱する日数 */
+    days: { light: [3, 7], medium: [8, 20], severe: [21, 45] } as Record<string, [number, number]>,
+  },
+
+  // ---- 人数が減ったとき（退場・交代できないケガ）。1 人あたり ----
+  manDown: {
+    possession: 0.05,
+    defense: 4,
+    attackRate: 0.9,
+    /** 残りの選手の疲労の増え方 */
+    drain: 0.1,
+  },
+
   // ---- シュート ----
   /** シュートを打つ確率 = sigmoid((Q - shotQBias)/shotQScale) */
   shotQBias: 0.18,
@@ -245,5 +290,13 @@ export const MATCH = {
     maxSubsPerSegment: 2,
     chaseFromMinute: 60,
     protectFromMinute: 72,
+    /** 上の数値はこの質（0〜1）のときの値。スタッフを持たないチームもこの値 */
+    baseQuality: 0.6,
+    /** 質が 1 違うと、交代を始める分・交代する体力・方針を切り替える分がこれだけ変わる */
+    qualitySubMinute: 25,
+    qualitySubFitness: 10,
+    qualityTacticsMinute: 20,
+    /** この質より低いと、2 区間に 1 回しか動かない */
+    sluggishBelow: 0.35,
   },
 };

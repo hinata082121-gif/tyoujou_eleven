@@ -89,6 +89,8 @@ export function generatePlayer(rng: Rng, opts: GenerateOptions): Player {
     condition: 0,
     injuryDays: 0,
     admission: "general",
+    suspended: 0,
+    record: { apps: 0, goals: 0, officialApps: 0, officialGoals: 0 },
   };
 }
 

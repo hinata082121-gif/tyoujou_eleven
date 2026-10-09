@@ -1,5 +1,5 @@
 import type { RngState } from "../rng";
-import type { Aptitude, Condition, FormationId, MatchKind, MatchRules, Position, SchoolRank, Stats, Tactics } from "../types";
+import type { Aptitude, Condition, FormationId, MatchKind, MatchRules, NoteRule, Position, SchoolRank, Stats, Tactics } from "../types";
 
 export type Side = 0 | 1;
 
@@ -14,7 +14,15 @@ export interface MatchPlayer {
   /** 試合中の体力 0〜100 */
   stamina: number;
   goals: number;
+  /** イエローカードの枚数（2 枚目で退場） */
+  yellow?: number;
+  /** 退場した（その枠は空きになる） */
+  sentOff?: boolean;
+  /** 試合中のケガ（ピッチを離れる。交代するまで枠は空き） */
+  injury?: { minute: number; severity: InjurySeverity };
 }
+
+export type InjurySeverity = "light" | "medium" | "severe";
 
 export interface Substitution {
   out: string;
@@ -26,6 +34,22 @@ export interface PendingOrders {
   subs: Substitution[];
   formation?: FormationId;
   tactics?: Tactics;
+  /** ポジション変更（選手を指定した枠へ。元の枠の選手と入れ替え） */
+  positions?: { id: string; slot: number }[];
+}
+
+/** 作戦ノートの、その試合での状態 */
+export interface NoteMatchState {
+  noteName: string;
+  rules: NoteRule[];
+  /** 発動したルール（1 試合 1 回） */
+  fired: string[];
+  /** 手動の采配で止まったルール */
+  stopped: string[];
+  /** 大会の種類（条件「大会の種類」用） */
+  kind: MatchKind;
+  /** ノートが戦術を変えた（AI はその試合では戦術を変えない） */
+  tacticsLocked?: boolean;
 }
 
 export interface MatchTeamState {
@@ -46,12 +70,23 @@ export interface MatchTeamState {
   /** その日の出来（試合開始時に決まる倍率） */
   form: number;
   pending: PendingOrders | null;
+  /** 分析担当のスカウティング（PK の読み）。0 は分析担当なし */
+  scouting?: number;
+  /** AI の采配の質（0〜1。自校はヘッドコーチ、CPU 校は cpuStaff の戦術眼） */
+  aiQuality?: number;
+  /** ケガの確率の倍率（フィジカルコーチ） */
+  injuryMult?: number;
+  note?: NoteMatchState;
   stats: {
     shots: number;
     onTarget: number;
     possessionSum: number;
     segments: number;
     corners: number;
+    fouls?: number;
+    yellows?: number;
+    reds?: number;
+    injuries?: number;
     /** ゾーン別（自チームから見た 左・中央・右）の攻撃回数とチャンスの数。ハーフタイムの表示用 */
     zones?: { attacks: [number, number, number]; chances: [number, number, number] };
   };
@@ -101,7 +136,15 @@ export type MatchEventType =
   | "pkSaved"
   | "sub"
   | "tactics"
-  | "formation";
+  | "formation"
+  | "foul"
+  | "yellow"
+  | "secondYellow"
+  | "red"
+  | "injury"
+  | "shortHanded"
+  | "note"
+  | "position";
 
 export interface MatchEvent {
   minute: number;
@@ -150,6 +193,8 @@ export interface MatchState {
   events: MatchEvent[];
   pk?: PkState;
   winner?: Side | null;
+  /** 大会の種類（作戦ノートの条件用） */
+  kind?: MatchKind;
 }
 
 /** ゲームの中で進行中の試合 */

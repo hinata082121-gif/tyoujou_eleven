@@ -11,6 +11,11 @@ import { PRACTICES } from "../config/practice";
 import { MATCH } from "../config/match";
 import { CONDITION_MULT } from "../config/player";
 import { simulateToEnd } from "../match/engine";
+import { templateNote } from "../note";
+import { Rng } from "../rng";
+import { ROLE_ABILITIES } from "../config/staff";
+import { hasVacancy, isStaffWindow, staffByRole, staffCandidates, staffOverSlots, staffSlots } from "../staff";
+import { STAFF_ABILITIES, type StaffMember, type StaffRole } from "../types";
 import { autoSetup } from "../match/lineup";
 import { playerSchool } from "../season";
 import { rankIndex, teamStrength } from "../school/strength";
@@ -18,7 +23,11 @@ import {
   canSkipWatching,
   confirmGraduation,
   confirmYearEnd,
+  dismiss,
   finishPlayerMatch,
+  finishStaff,
+  hire,
+  release,
   opponentOf,
   pendingMatchRules,
   playCard,
@@ -28,6 +37,65 @@ import {
 } from ".";
 
 export type AutoPolicy = "simple" | "skilled";
+
+/**
+ * スタッフの扱い：none = 雇わない（臨時コーチのまま）、auto = 空き枠に一番合う OB を入れる、
+ * best = 最高のスタッフ（全能力 100 の 3 人。バランス検証用）
+ */
+export interface AutoplayOptions {
+  staff?: "none" | "auto" | "best";
+  /** 作戦ノート（4 種類のテンプレート）を使う */
+  notes?: boolean;
+}
+
+const defaultOptions = (policy: AutoPolicy): Required<AutoplayOptions> =>
+  policy === "skilled" ? { staff: "auto", notes: true } : { staff: "none", notes: false };
+
+/** 役割に合う度合い（主な能力の平均） */
+function roleValue(abilities: Record<string, number>, role: StaffRole) {
+  const ks = ROLE_ABILITIES[role];
+  return ks.reduce((s, k) => s + abilities[k], 0) / ks.length;
+}
+
+/** 空き枠に一番合う OB を入れる。ヘッドコーチを最優先にし、残りは GK コーチ → 分析担当 → フィジカルコーチの順で探す */
+export function autoManageStaff(state: GameState) {
+  const window = isStaffWindow(state);
+  // 枠を超えていれば、役割に合わない人から外す
+  while (staffOverSlots(state) > 0) {
+    const nonHead = state.staff.members.filter((m) => m.role !== "head" && !m.temporary);
+    if (nonHead.length === 0) break;
+    const worst = nonHead.reduce((b, m) => (roleValue(m.abilities, m.role) < roleValue(b.abilities, b.role) ? m : b), nonHead[0]);
+    release(state, worst.id);
+  }
+  const pick = (role: StaffRole) => {
+    const cands = staffCandidates(state).filter((c) => c.availability.ok);
+    if (cands.length === 0) return null;
+    return cands.reduce((b, c) => (roleValue(c.alumnus.staffProfile.base, role) > roleValue(b.alumnus.staffProfile.base, role) ? c : b), cands[0]).alumnus;
+  };
+  const head = staffByRole(state.staff, "head");
+  const bestHead = pick("head");
+  if (bestHead && (!head || head.temporary || (window && roleValue(bestHead.staffProfile.base, "head") > roleValue(head.abilities, "head") + 5))) {
+    if (head && !head.temporary) dismiss(state, head.id);
+    hire(state, bestHead.id, "head");
+  }
+  for (const role of ["gk", "analyst", "physical"] as StaffRole[]) {
+    if (!hasVacancy(state) && !staffByRole(state.staff, role)) continue;
+    if (staffByRole(state.staff, role)) continue;
+    if (state.staff.members.filter((m) => !m.temporary).length >= staffSlots(state.reputation)) break;
+    const c = pick(role);
+    if (c) hire(state, c.id, role);
+  }
+}
+
+/** 最高のスタッフ（全能力 100 の 3 人。枠を無視する。バランス検証用） */
+export function installBestStaff(state: GameState) {
+  const rng = Rng.fromSeed(`${state.seed}:best-staff:${state.year}`);
+  const make = (role: StaffRole): StaffMember => {
+    const full = Object.fromEntries(STAFF_ABILITIES.map((k) => [k, 100])) as StaffMember["abilities"];
+    return { id: rng.id("st"), alumnusId: null, name: `検証${role}`, role, abilities: { ...full }, caps: { ...full }, specialties: [], growthMult: 0, age18Year: state.year - 22, hiredYear: state.year };
+  };
+  state.staff.members = (["head", "gk", "physical"] as StaffRole[]).map(make);
+}
 
 export interface AutoplayStats {
   cards: number;
@@ -94,19 +162,45 @@ export function skilledSetup(state: GameState): TeamSetup {
 }
 
 /** 次の操作を 1 つ行う */
-export function autoStep(state: GameState, stats: AutoplayStats, policy: AutoPolicy = "simple") {
+export function autoStep(state: GameState, stats: AutoplayStats, policy: AutoPolicy = "simple", options: AutoplayOptions = {}) {
+  const opts = { ...defaultOptions(policy), ...options };
   if (state.activeMatch) {
-    // skilled は試合中も AI の監督に任せる（疲れた選手の交代など）
-    if (policy === "skilled") state.activeMatch.state.teams[state.activeMatch.userSide].isUser = false;
+    // skilled は試合中も AI の監督に任せる（疲れた選手の交代など）。
+    // 観戦する試合はうまい監督自身の采配なので、ヘッドコーチの戦術眼ではなく Phase 1 と同じ質で動かす
+    if (policy === "skilled") {
+      const me = state.activeMatch.state.teams[state.activeMatch.userSide];
+      me.isUser = false;
+      if (state.activeMatch.mode !== "auto") me.aiQuality = MATCH.ai.baseQuality;
+    }
     simulateToEnd(state.activeMatch.state);
     const s = finishPlayerMatch(state);
     if (s) stats.matches.push(s);
     return;
   }
   const p = state.pending;
+  if (p?.type === "staff") {
+    if (opts.staff === "auto") autoManageStaff(state);
+    if (opts.staff === "best") {
+      installBestStaff(state);
+      state.staff.needsReview = false;
+      state.pending = undefined;
+      return;
+    }
+    if (finishStaff(state)) {
+      // 枠を超えたまま（auto 以外）：役割に合わない人から外す
+      autoManageStaff(state);
+      finishStaff(state);
+    }
+    return;
+  }
   if (p?.type === "match") {
-    if (policy === "skilled") startPlayerMatch(state, skilledSetup(state), canSkipWatching(state) ? "auto" : "watch");
-    else startPlayerMatch(state, defaultSetup(state));
+    let noteId: string | null = null;
+    if (opts.notes) {
+      if (state.notes.length === 0) state.notes.push(templateNote(Rng.fromSeed(`${state.seed}:note`)));
+      noteId = state.notes[0].id;
+    }
+    if (policy === "skilled") startPlayerMatch(state, skilledSetup(state), canSkipWatching(state) ? "auto" : "watch", noteId);
+    else startPlayerMatch(state, defaultSetup(state), "watch", noteId);
     return;
   }
   if (p?.type === "graduation") {
@@ -124,9 +218,9 @@ export function autoStep(state: GameState, stats: AutoplayStats, policy: AutoPol
 }
 
 /** 指定した年数ぶん進める */
-export function autoplayYears(state: GameState, years: number, policy: AutoPolicy = "simple", maxSteps = 2000 * years + 100): AutoplayStats {
+export function autoplayYears(state: GameState, years: number, policy: AutoPolicy = "simple", options: AutoplayOptions = {}, maxSteps = 2000 * years + 100): AutoplayStats {
   const stats = newAutoplayStats();
   const target = state.year + years;
-  for (let i = 0; i < maxSteps && state.year < target; i++) autoStep(state, stats, policy);
+  for (let i = 0; i < maxSteps && state.year < target; i++) autoStep(state, stats, policy, options);
   return stats;
 }

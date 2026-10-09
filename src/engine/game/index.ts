@@ -31,8 +31,30 @@ import { Rng } from "../rng";
 import { generateWorld } from "../school/generate";
 import { autumnCpuGrowth } from "../school/season";
 import { rankFromStrength, rankIndex, teamStrength } from "../school/strength";
-import { addLog, graduate, playerSchool, retireThirdYears, rolloverCpuSchools, rolloverPlayerSchool } from "../season";
-import type { Alumnus, Bracket, GameState, MajorKind, MatchKind, MatchRules, Player, School, Square, TeamSetup } from "../types";
+import { addLog, chooseCaptain, graduate, playerSchool, retireThirdYears, rolloverCpuSchools, rolloverPlayerSchool } from "../season";
+import { MATCH } from "../config/match";
+import { STAFF_LIFE } from "../config/staff";
+import {
+  analystScouting,
+  changeStaffRole,
+  checkPoaching,
+  dismissStaff,
+  driftCpuStaff,
+  emptyStaffState,
+  ensureHeadCoach,
+  finishStaffReview,
+  generateCpuStaff,
+  generateFictionalAlumni,
+  headAiQuality,
+  hireStaff,
+  injuryMult,
+  practiceStaffMult,
+  recoveryMult,
+  releaseStaff,
+  staffYearEnd,
+  startStaffYear,
+} from "../staff";
+import type { Alumnus, Bracket, GameState, MajorKind, MatchKind, MatchRules, Player, School, Square, StaffRole, TeamSetup } from "../types";
 
 export const GAME_STATE_VERSION = 1;
 
@@ -61,13 +83,18 @@ export function newGame(seed: string, schoolName: string, prefectureId?: string)
     reputation: { level: 0, gauge: 0 },
     calendar: { squares: [], position: 0, hand: [], nextPracticeMult: 1 },
     competitions: { winterDone: false, practiceMatchCount: 0 },
-    alumni: [],
+    alumni: generateFictionalAlumni(rng, 1),
+    staff: emptyStaffState(),
+    notes: [],
     history: [],
     log: [],
   };
-  startYear(state, rng);
-  state.rng = rng.state();
+  for (const s of Object.values(state.schools)) if (!s.isPlayer) s.cpuStaff = generateCpuStaff(rng, s.prestige);
   addLog(state, `${schoolName}サッカー部の監督に就任した。`, "info");
+  startYear(state, rng);
+  // 最初にヘッドコーチを OB から選ぶ（「あとで選ぶ」なら臨時コーチのまま）
+  state.pending = { type: "staff" };
+  state.rng = rng.state();
   return state;
 }
 
@@ -91,6 +118,8 @@ function startYear(state: GameState, rng: Rng) {
     practiceMatchCount: 0,
   };
   updatePlayerRank(state);
+  chooseCaptain(state);
+  startStaffYear(state, rng);
   addLog(state, `${MAJOR_NAMES.entrance}。新入生が入部した。`, "info");
 }
 
@@ -155,8 +184,13 @@ export function playCard(state: GameState, cardId: string): CardResult | null {
     const gainsAll: NonNullable<GameState["calendar"]["lastGain"]>["perPlayer"] = {};
     const injured: Player[] = [];
     let to = from;
+    const staffOpts = {
+      staffMult: (p: Player) => practiceStaffMult(state.staff, p, card.practice),
+      recoveryMult: recoveryMult(state.staff),
+      injuryMult: injuryMult(state.staff),
+    };
     for (let d = from + 1; d <= last; d++) {
-      const r = runPractice(rng, school.players, card.practice, 1, mult);
+      const r = runPractice(rng, school.players, card.practice, 1, mult, staffOpts);
       for (const [id, g] of Object.entries(r.gains)) {
         const acc = (gainsAll[id] ??= {});
         for (const [k, v] of Object.entries(g)) acc[k as keyof typeof acc] = (acc[k as keyof typeof acc] ?? 0) + (v ?? 0);
@@ -169,7 +203,10 @@ export function playCard(state: GameState, cardId: string): CardResult | null {
     }
     const days = to - from;
     cal.lastGain = { practice: card.practice, perPlayer: gainsAll };
-    for (const p of injured) addLog(state, `${p.name}が練習中にケガをした（全治${p.injuryDays}日）`, "bad");
+    for (const p of injured) {
+      addLog(state, `${p.name}が練習中にケガをした（全治${p.injuryDays}日）`, "bad");
+      state.staff.season.injuryDays += p.injuryDays;
+    }
 
     // 止まったマスの効果
     const outcomes: EventOutcome[] = [];
@@ -241,6 +278,7 @@ function processWorldDay(state: GameState, rng: Rng, day: number) {
   if (day === dateToDay(...CPU_GROWTH.autumnDate)) {
     for (const s of Object.values(state.schools)) if (!s.isPlayer) autumnCpuGrowth(rng, s);
   }
+  if (day === dateToDay(...STAFF_LIFE.poachDate)) checkPoaching(state, rng);
   const c = state.competitions;
   for (const b of [c.prefQualifier, c.national]) {
     if (!b || isFinished(b)) continue;
@@ -331,7 +369,18 @@ export function pendingMatchLabel(state: GameState): string {
 export function defaultSetup(state: GameState): TeamSetup {
   const school = playerSchool(state);
   const rules = pendingMatchRules(state) ?? PRACTICE_RULES;
-  return autoSetup(school.players, school.formation, school.tactics, rules.benchSize);
+  return autoSetup(eligiblePlayers(state), school.formation, school.tactics, rules.benchSize);
+}
+
+/** 次の試合が公式戦か */
+export function pendingIsOfficial(state: GameState): boolean {
+  return state.pending?.type === "match" && state.pending.kind !== "practice";
+}
+
+/** 次の試合に出られる部員（公式戦では出場停止の選手を除く） */
+export function eligiblePlayers(state: GameState): Player[] {
+  const players = playerSchool(state).players;
+  return pendingIsOfficial(state) ? players.filter((p) => p.suspended <= 0) : players;
 }
 
 /** 試合を始める（試合前の画面で決めた采配を使う） */
@@ -344,7 +393,7 @@ export function canSkipWatching(state: GameState): boolean {
  * 試合を始める（試合前の画面で決めた采配を使う）。
  * mode = "auto"（結果のみ）は練習試合だけ。AI の監督が采配し、最後まで計算してから返す。
  */
-export function startPlayerMatch(state: GameState, setup: TeamSetup, mode: "watch" | "auto" = "watch"): ActiveMatch | null {
+export function startPlayerMatch(state: GameState, setup: TeamSetup, mode: "watch" | "auto" = "watch", noteId?: string | null): ActiveMatch | null {
   const p = state.pending;
   if (!p || p.type !== "match" || state.activeMatch) return null;
   if (mode === "auto" && !canSkipWatching(state)) return null;
@@ -353,8 +402,23 @@ export function startPlayerMatch(state: GameState, setup: TeamSetup, mode: "watc
   school.formation = setup.formation;
   school.tactics = { ...setup.tactics };
   const opp = state.schools[p.opponentId];
+  const players = eligiblePlayers(state);
+  const ok = new Set(players.filter((x) => x.status === "active").map((x) => x.id));
+  // 出場停止などで出られない選手が入っていれば、並びを組み直す
+  if (setup.lineup.length !== 11 || setup.lineup.some((id) => !ok.has(id))) setup = autoSetup(players, setup.formation, setup.tactics, rules.benchSize);
+  else setup = { ...setup, bench: setup.bench.filter((id) => ok.has(id)) };
+  if (noteId !== undefined) state.selectedNoteId = noteId ?? undefined;
+  const note = noteId ? state.notes.find((n) => n.id === noteId) : undefined;
   return withRng(state, (rng) => {
-    const home = { ...schoolTeamInput(school, rules, true), setup };
+    const home = {
+      ...schoolTeamInput(school, rules, true),
+      players,
+      setup,
+      scouting: analystScouting(state.staff),
+      aiQuality: headAiQuality(state.staff),
+      injuryMult: injuryMult(state.staff),
+      note: note ? { noteName: note.name, rules: note.rules.map((r) => ({ ...r })), kind: p.kind } : undefined,
+    };
     const away = schoolTeamInput(opp, rules, false, rng);
     const match: ActiveMatch = {
       kind: p.kind,
@@ -362,7 +426,7 @@ export function startPlayerMatch(state: GameState, setup: TeamSetup, mode: "watc
       bracketMatchId: p.bracketMatchId,
       userSide: 0,
       opponentId: opp.id,
-      state: createMatch(rules, rng, home, away),
+      state: createMatch(rules, rng, home, away, p.kind),
       started: true,
       mode,
     };
@@ -403,15 +467,48 @@ export function finishPlayerMatch(state: GameState): MatchSummary | null {
     const school = playerSchool(state);
     const opp = state.schools[am.opponentId];
     const me = ms.teams[am.userSide];
-    // 試合に出た選手の体力の消耗
-    for (const id of [...me.onPitch, ...me.subbedOff]) {
-      const pl = school.players.find((x) => x.id === id);
-      const mp = me.players[id];
-      if (pl && mp) pl.fitness = Math.max(0, pl.fitness - (MATCH_FATIGUE.base + (100 - mp.stamina) * MATCH_FATIGUE.fromStamina));
-    }
+    const official = am.kind !== "practice";
+    // 出場停止は公式戦 1 試合で消化する（この試合の退場は次の公式戦から）
+    if (official) for (const pl of school.players) if (pl.suspended > 0) pl.suspended--;
     const myScore = ms.score[am.userSide];
     const oppScore = ms.score[am.userSide === 0 ? 1 : 0];
     const won = ms.winner === am.userSide;
+    // 試合に出た選手：体力の消耗・成績・退場・ケガ
+    for (const id of [...me.onPitch, ...me.subbedOff]) {
+      const pl = school.players.find((x) => x.id === id);
+      const mp = me.players[id];
+      if (!pl || !mp) continue;
+      pl.fitness = Math.max(0, pl.fitness - (MATCH_FATIGUE.base + (100 - mp.stamina) * MATCH_FATIGUE.fromStamina));
+      pl.record.apps++;
+      pl.record.goals += mp.goals;
+      if (official) {
+        pl.record.officialApps++;
+        pl.record.officialGoals += mp.goals;
+      }
+      if (mp.sentOff) {
+        pl.suspended = Math.max(pl.suspended, 1);
+        addLog(state, `${pl.name}は退場のため、次の公式戦に出場停止。`, "bad");
+      }
+      if (mp.injury) {
+        const [lo, hi] = MATCH.injury.days[mp.injury.severity];
+        const days = rng.int(lo, hi);
+        pl.injuryDays = Math.max(pl.injuryDays, days);
+        state.staff.season.injuryDays += days;
+        addLog(state, `${pl.name}が試合中のケガで離脱（全治${days}日）`, "bad");
+      }
+    }
+    // スタッフの成果の記録
+    const season = state.staff.season;
+    if (official) {
+      season.officialMatches++;
+      season.goalsAgainst += oppScore;
+      if (won) season.officialWins++;
+    }
+    if (ms.pk) {
+      season.pkShootouts++;
+      if (won) season.pkShootoutWins++;
+    }
+    season.inMatchPkGood += ms.events.filter((e) => e.side === am.userSide && (e.type === "pkGoal" || e.type === "pkSaved")).length;
     const result: MatchSummary["result"] = ms.winner === null || ms.winner === undefined ? "draw" : won ? "win" : "loss";
     const viaPk = !!ms.pk;
     updatePlayerRank(state);
@@ -504,6 +601,7 @@ export function confirmGraduation(state: GameState): Alumnus[] {
 export function confirmYearEnd(state: GameState): Player[] {
   if (state.pending?.type !== "yearEnd") return [];
   return withRng(state, (rng) => {
+    staffYearEnd(state, rng);
     updatePlayerRank(state);
     state.history.push({
       year: state.year,
@@ -514,10 +612,43 @@ export function confirmYearEnd(state: GameState): Player[] {
     state.year++;
     const freshmen = rolloverPlayerSchool(state, rng);
     rolloverCpuSchools(state, rng);
+    for (const s of Object.values(state.schools)) {
+      if (s.isPlayer) continue;
+      if (s.cpuStaff) driftCpuStaff(rng, s.cpuStaff);
+      else s.cpuStaff = generateCpuStaff(rng, s.prestige);
+    }
     state.pending = undefined;
     startYear(state, rng);
     addLog(state, `${freshmen.length}人の新入生が入部した。`, "good");
+    // 年度初めのスタッフ編成（枠が減っていれば、誰を残すか選ぶまで進めない）
+    state.pending = { type: "staff" };
     return freshmen;
+  });
+}
+
+// ================= スタッフ（UI から呼ぶ） =================
+
+export function hire(state: GameState, alumnusId: string, role: StaffRole): string | null {
+  return withRng(state, (rng) => hireStaff(state, rng, alumnusId, role));
+}
+
+export function dismiss(state: GameState, memberId: string): string | null {
+  return withRng(state, (rng) => dismissStaff(state, rng, memberId));
+}
+
+export function release(state: GameState, memberId: string): string | null {
+  return withRng(state, (rng) => releaseStaff(state, rng, memberId));
+}
+
+export function changeRole(state: GameState, memberId: string, role: StaffRole): string | null {
+  return changeStaffRole(state, memberId, role);
+}
+
+/** スタッフの編成を終える（ゲーム開始時・年度初め） */
+export function finishStaff(state: GameState): string | null {
+  return withRng(state, (rng) => {
+    ensureHeadCoach(state, rng);
+    return finishStaffReview(state, rng);
   });
 }
 

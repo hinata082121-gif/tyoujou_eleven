@@ -1,6 +1,7 @@
 import { MATCH } from "../config/match";
 import type { Rng } from "../rng";
 import type { Stats } from "../types";
+import { activeIds } from "./orders";
 import type { MatchState, MatchTeamState, PkKick, Side } from "./types";
 
 const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
@@ -11,7 +12,7 @@ export interface PkResult {
   result: "goal" | "saved" | "miss";
 }
 
-/** P1 ではスタッフがいないので、スカウティングの項は 0（SPEC 10.6） */
+/** 分析担当がいないチームのスカウティングの項（SPEC 10.6） */
 export const NO_SCOUTING = 0;
 
 /**
@@ -32,24 +33,31 @@ export function resolvePkKick(rng: Rng, kicker: Stats, gk: Stats, kickerScouting
   return { scored, kickerWonRead, result: scored ? "goal" : "saved" };
 }
 
+/** PK 戦に参加できる選手（試合終了時にピッチにいた選手。退場・ケガを除く） */
+export function pkEligible(team: MatchTeamState): string[] {
+  return activeIds(team);
+}
+
 /** CPU のキッカー順：PK 駆け引きとシュートの高い順。GK は最後 */
 export function autoPkOrder(team: MatchTeamState): string[] {
-  const gkId = team.onPitch[0];
+  const eligible = pkEligible(team);
+  const gkId = eligible.includes(team.onPitch[0]) ? team.onPitch[0] : eligible[0];
   const score = (id: string) => {
     const s = team.players[id].stats;
     return s.pkSkill * 0.5 + s.shooting * 0.35 + s.kickPower * 0.15;
   };
-  const field = team.onPitch.filter((id) => id !== gkId).sort((a, b) => score(b) - score(a));
+  const field = eligible.filter((id) => id !== gkId).sort((a, b) => score(b) - score(a));
   return [...field, gkId];
 }
 
-/** PK 戦のキッカー順を決める。ピッチにいる 11 人全員を並べたものだけ受け付ける */
+/** PK 戦のキッカー順を決める。ピッチにいる選手全員（退場・ケガを除く）を並べたものだけ受け付ける */
 export function setPkOrder(state: MatchState, side: Side, order: string[]): string | null {
   if (!state.pk) return "PK戦ではありません";
   const team = state.teams[side];
+  const eligible = pkEligible(team);
   const set = new Set(order);
-  if (order.length !== team.onPitch.length || set.size !== order.length || !team.onPitch.every((id) => set.has(id))) {
-    return "キッカーはピッチにいる11人全員を並べてください";
+  if (order.length !== eligible.length || set.size !== order.length || !eligible.every((id) => set.has(id))) {
+    return `キッカーはピッチにいる${eligible.length}人全員を並べてください`;
   }
   state.pk.order[side] = [...order];
   return null;
