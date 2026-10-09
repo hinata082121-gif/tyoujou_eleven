@@ -6,11 +6,14 @@ import { CAREER_NAMES, POSITION_NAMES, REPUTATION_NAMES, yearLabel } from "@/eng
 import { useGameStore } from "@/store/gameStore";
 import { RankBadge, Segmented } from "../ui";
 import { statRank } from "@/engine/player/rank";
+import type { Alumnus } from "@/engine/types";
+import { AlumnusSheet } from "../staff/StaffView";
 
 export function RecordsView() {
   const game = useGameStore((s) => s.game)!;
   useGameStore((s) => s.rev);
   const [tab, setTab] = useState<"history" | "alumni" | "log">("history");
+  const [ob, setOb] = useState<Alumnus | null>(null);
   return (
     <div className="flex flex-col gap-3 p-3">
       <Segmented options={["history", "alumni", "log"] as const} value={tab} onChange={setTab} labels={{ history: "歴代成績", alumni: "OB", log: "出来事" }} />
@@ -35,17 +38,20 @@ export function RecordsView() {
         ) : (
           <ul className="flex flex-col divide-y divide-gray-100">
             {[...game.alumni].reverse().map((a) => (
-              <li key={a.id} className="flex items-center gap-2 py-1.5 text-sm">
-                <RankBadge rank={statRank(a.overall)} size="sm" />
-                <span className="flex-1 truncate font-bold">{a.name}</span>
-                <span className="text-xs text-gray-500">
-                  {yearLabel(a.graduatedYear)}卒・{POSITION_NAMES[a.position]}
-                </span>
-                <span className="w-20 text-right text-xs">{CAREER_NAMES[a.career]}</span>
+              <li key={a.id}>
+                <button type="button" onClick={() => setOb(a)} className="flex min-h-11 w-full items-center gap-2 py-1.5 text-left text-sm">
+                  <RankBadge rank={statRank(a.overall)} size="sm" />
+                  <span className="flex-1 truncate font-bold">{a.name}</span>
+                  <span className="text-xs text-gray-500">
+                    {a.fictional ? "昔の卒業生" : `${yearLabel(a.graduatedYear)}卒`}・{POSITION_NAMES[a.position]}
+                  </span>
+                  <span className="w-20 text-right text-xs">{CAREER_NAMES[a.career]}</span>
+                </button>
               </li>
             ))}
           </ul>
         ))}
+      {ob && <AlumnusSheet alumnus={ob} onClose={() => setOb(null)} />}
       {tab === "log" && (
         <ul className="flex flex-col gap-1 text-xs">
           {[...game.log].reverse().map((l, i) => (

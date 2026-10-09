@@ -7,16 +7,21 @@
  */
 import { create } from "zustand";
 import {
+  changeRole,
   confirmGraduation,
   confirmYearEnd,
+  dismiss,
   finishPlayerMatch,
+  finishStaff,
+  hire,
   newGame,
   playCard,
+  release,
   startPlayerMatch,
   type CardResult,
   type MatchSummary,
 } from "@/engine/game";
-import type { Alumnus, GameState, Player, TeamSetup } from "@/engine/types";
+import type { Alumnus, GameState, Player, StaffRole, TeamSetup } from "@/engine/types";
 import { SaveManager, type SlotSummary } from "@/lib/save";
 
 export type Screen = "title" | "slots" | "new" | "play";
@@ -65,6 +70,9 @@ interface GameStore {
   lastFreshmen: Player[] | null;
   settings: Settings;
   saveError: string | null;
+  /** 作戦ノートの画面を開いている（メニュー・試合前から開く） */
+  notesOpen: boolean;
+  setNotesOpen(v: boolean): void;
   /** すごろくの移動演出中（演出が終わるまで次の画面に進まない） */
   moving: boolean;
   setMoving(v: boolean): void;
@@ -84,13 +92,20 @@ interface GameStore {
   playCard(cardId: string): CardResult | null;
   clearLastCard(): void;
   /** mode = "auto"（結果のみ）は練習試合だけ。すぐに結果画面へ進む */
-  startMatch(setup: TeamSetup, mode?: "watch" | "auto"): void;
+  startMatch(setup: TeamSetup, mode?: "watch" | "auto", noteId?: string | null): void;
   finishMatch(): void;
   clearLastMatch(): void;
   graduate(): void;
   clearAlumni(): void;
   newYear(): void;
   clearFreshmen(): void;
+
+  /** スタッフ（戻り値はエラーの理由。成功なら null） */
+  hireStaff(alumnusId: string, role: StaffRole): string | null;
+  dismissStaff(memberId: string): string | null;
+  releaseStaff(memberId: string): string | null;
+  changeStaffRole(memberId: string, role: StaffRole): string | null;
+  finishStaff(): string | null;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -107,6 +122,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
   settings: defaultSettings,
   saveError: null,
   moving: false,
+  notesOpen: false,
+  setNotesOpen(v) {
+    set({ notesOpen: v });
+  },
   setMoving(v) {
     set({ moving: v });
   },
@@ -141,7 +160,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     } catch {
       // 無視
     }
-    set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null });
+    set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null, notesOpen: false });
   },
 
   async createGame(slot, schoolName, prefectureId) {
@@ -149,7 +168,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     crypto.getRandomValues(buf);
     const seed = `${Date.now().toString(36)}-${buf[0].toString(36)}${buf[1].toString(36)}`;
     const game = newGame(seed, schoolName, prefectureId);
-    set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null });
+    set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null, notesOpen: false });
     try {
       window.localStorage.setItem(LAST_SLOT_KEY, String(slot));
     } catch {
@@ -187,10 +206,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ lastCard: null });
   },
 
-  startMatch(setup, mode = "watch") {
+  startMatch(setup, mode = "watch", noteId) {
     const game = get().game;
     if (!game) return;
-    startPlayerMatch(game, setup, mode);
+    startPlayerMatch(game, setup, mode, noteId);
     if (mode === "auto" && game.activeMatch) {
       get().finishMatch();
       return;
@@ -225,7 +244,32 @@ export const useGameStore = create<GameStore>((set, get) => ({
   clearFreshmen() {
     set({ lastFreshmen: null });
   },
+
+  hireStaff(alumnusId, role) {
+    return withGame(get, (g) => hire(g, alumnusId, role));
+  },
+  dismissStaff(memberId) {
+    return withGame(get, (g) => dismiss(g, memberId));
+  },
+  releaseStaff(memberId) {
+    return withGame(get, (g) => release(g, memberId));
+  },
+  changeStaffRole(memberId, role) {
+    return withGame(get, (g) => changeRole(g, memberId, role));
+  },
+  finishStaff() {
+    return withGame(get, (g) => finishStaff(g));
+  },
 }));
+
+/** エンジンの操作を呼び、成功したら画面を更新して保存する */
+function withGame(get: () => GameStore, fn: (g: GameState) => string | null): string | null {
+  const game = get().game;
+  if (!game) return "ゲームがありません";
+  const err = fn(game);
+  if (!err) get().touch();
+  return err;
+}
 
 export function lastSlot(): number | null {
   try {

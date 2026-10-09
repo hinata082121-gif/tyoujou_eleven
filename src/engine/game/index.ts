@@ -54,7 +54,8 @@ import {
   staffYearEnd,
   startStaffYear,
 } from "../staff";
-import type { Alumnus, Bracket, GameState, MajorKind, MatchKind, MatchRules, Player, School, Square, StaffRole, TeamSetup } from "../types";
+import { createNote, templateRule, type NoteTemplateId } from "../note";
+import type { Alumnus, Bracket, GameState, MajorKind, MatchKind, MatchRules, NoteRule, Player, School, Square, StaffRole, TacticsNote, TeamSetup } from "../types";
 
 export const GAME_STATE_VERSION = 1;
 
@@ -649,6 +650,21 @@ export function finishStaff(state: GameState): string | null {
   return withRng(state, (rng) => {
     ensureHeadCoach(state, rng);
     return finishStaffReview(state, rng);
+  });
+}
+
+// ================= 作戦ノート（UI から呼ぶ） =================
+
+/** ノートを作る（上限なら null）。fromTemplates なら 4 つのテンプレートを入れる */
+export function addNote(state: GameState, name: string, fromTemplates = false): TacticsNote | null {
+  return withRng(state, (rng) => createNote(state, rng, name, fromTemplates));
+}
+
+/** 新しいルール（空、またはテンプレートから） */
+export function newRule(state: GameState, template?: NoteTemplateId): NoteRule {
+  return withRng(state, (rng) => {
+    const id = rng.id("nr");
+    return template ? templateRule(template, id) : { id, name: "新しいルール", enabled: true, conditions: [], actions: [] };
   });
 }
 

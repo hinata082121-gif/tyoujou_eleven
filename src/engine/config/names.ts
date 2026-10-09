@@ -244,6 +244,37 @@ export const NOTE_TEMPLATE_NAMES = {
   pkPrep: "PK準備",
 } as const;
 
+/** 作戦ノートの「自動で選ぶ」選手の指定 */
+export const AUTO_PICK_NAMES = {
+  lowestStamina: "スタミナが最も低い選手",
+  bestForSlot: "その位置に最も合う控え",
+  tallestForward: "控えの長身FW",
+  pkGoalkeeper: "PKに強い控えのGK",
+  goalkeeperOnPitch: "出ているGK",
+  bookedPlayer: "イエローを受けた選手",
+  injuredPlayer: "ケガをした選手",
+} as const;
+
+export const NOTE_CONDITION_NAMES = {
+  minuteFrom: "○分以降",
+  minutesLeft: "残り○分",
+  score: "スコア",
+  stamina: "スタミナ",
+  booked: "イエローカード",
+  injured: "ケガ",
+  subsLeft: "交代枠の残り",
+  competition: "試合の種類",
+} as const;
+
+export const NOTE_ACTION_NAMES = {
+  sub: "選手交代",
+  formation: "フォーメーション変更",
+  tactics: "戦術変更",
+  position: "ポジション変更",
+} as const;
+
+export const MATCH_KIND_NAMES = { practice: "練習試合", prefQualifier: "予選", national: "全国大会" } as const;
+
 export const TACTICS_LABELS = {
   attack: { attacking: "攻撃的", balanced: "バランス", defensive: "守備的" },
   buildUp: { buildUp: "ビルドアップ重視", long: "ロングボール主体" },
