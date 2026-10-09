@@ -25,6 +25,7 @@
 - 表示名（大会名・地名など）は `src/engine/config/names.ts` に集約する。
 - 試合の結果はエンジンが確率で決める。表示（テキスト・2D・3D）は、エンジンが出したイベントを再生するだけにする。
 - 状態管理はZustand。保存は `src/lib/save/` に置く（localStorage、スキーマのバージョン管理、JSONの書き出し・読み込み）。
+  - セーブデータの形を変えたら、`src/lib/save/migrations.ts` の `SCHEMA_VERSION` を上げてマイグレーション関数を足す。
 - UIはスマホ縦画面を最優先にする。
 
 ## コーディング規約
@@ -35,8 +36,15 @@
 
 ## コマンド
 
-<!-- Phase 1で確定したら、Claude Codeが記入する -->
-- `npm run dev`
-- `npm run test`
-- `npm run balance`
-- `npm run build`
+- `npm install`：依存パッケージを入れる
+- `npm run dev`：開発サーバー（http://localhost:3000）
+- `npm run lint`：ESLint（`src/engine` から React・ブラウザ API・`Math.random` を使うとエラー）
+- `npm run typecheck`：TypeScript の型チェック
+- `npm run test`：Vitest の単体テスト（`src/**/*.test.ts`）
+- `npm run balance:quick`：普段使う軽い版（数十秒）。試合数と年数を減らした参考値で、SPEC 14章の目標値を表で出す
+- `npm run balance:full`：すべての検証（4分ほど）。**PR の前に必ず実行する**
+  - 大量の試合（`BALANCE_N`。quick 2000／full 10000）
+  - 戦術の相性表（`BALANCE_TACTICS_N`。quick 200／full 600。full は戦術の全36通りの確認つき）
+  - 格上と戦うときの型ごとの成績（`BALANCE_UNDERDOG_N`。quick 300／full 1500）
+  - うまい采配の自動プレイで何年分も進めた評判の推移・同じランクへの勝率・成長（`BALANCE_SEASON_GAMES` 校 × `BALANCE_SEASON_YEARS` 年。quick 6×8／full 20×12）
+- `npm run build`：静的書き出し（`out/` に出力。Vercel はこれを配信する）
