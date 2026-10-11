@@ -264,7 +264,7 @@ export const PROFICIENCY = {
   /** 努力家はどのスタイルでも */
   diligentMult: 1.1,
   /** CPU 校：年度替わりに上がる量（年 1 回の簡略化） */
-  cpuPerYear: [25, 35] as [number, number],
+  cpuPerYear: [20, 30] as [number, number],
   /** P2a のセーブを読み込んだときの学年ごとの範囲 */
   migrationByGrade: { 1: [5, 20], 2: [25, 50], 3: [50, 75] } as Record<1 | 2 | 3, [number, number]>,
 };

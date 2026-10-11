@@ -96,6 +96,8 @@ export const TIER_POINTS = { minus: -3, plus: 2.5, double: 5, gold: 12, single: 
 export const SKILL_EFFECTS = {
   /** 金色を持つ選手は、その場面以外でも一段上の存在感がある（実効能力の倍率。調子と同じく圧縮の前に掛ける） */
   goldPresence: 1.09,
+  /** GK は能力がそのまま失点に効くので、存在感を小さくする */
+  goldPresenceGk: 1.04,
   /** 1 対 1 系の金色：決定機の質に足す */
   oneOnOneGoldQ: 0.05,
   /** PK 系：PK の読みは尺度が 22 なので点数を倍にする */
