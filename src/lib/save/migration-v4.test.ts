@@ -19,8 +19,10 @@ describe("Phase 2a のセーブの移行（v3 → v4）", () => {
     expect(raw.schemaVersion).toBe(3);
     const bothBefore = new Set(Object.values(raw.game.schools as Record<string, { players: unknown[][] }>).flatMap((s) => s.players.filter((p) => p[8] === "B").map((p) => p[0] as string)));
     expect(bothBefore.size).toBeGreaterThan(0);
+    const ids = new Set(Object.values(raw.game.schools as Record<string, { players: unknown[][] }>).flatMap((x) => x.players.map((p) => p[0] as string)));
     const s = fromRawSave(raw);
-    const all = Object.values(s.schools).flatMap((x) => x.players);
+    // v5 の移行で足した CPU 校（小さな県）の部員は除く
+    const all = Object.values(s.schools).flatMap((x) => x.players).filter((p) => ids.has(p.id));
     for (const p of all) {
       expect(["R", "L"]).toContain(p.foot);
       expect(p.personality).toBeDefined();

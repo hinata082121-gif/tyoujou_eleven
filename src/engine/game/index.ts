@@ -2,7 +2,7 @@
  * ゲーム全体の進行。UI はここの関数だけを呼ぶ。
  * 関数は GameState を直接書き換える（大きな状態を毎回コピーしないため）。
  */
-import { campDays, chooseBranchPath, competitionDays, dateToDay, formatDay, nationalDays, newCalendar, prefQualifierDays, refillHand } from "../calendar";
+import { buildCalendarParts, campDays, chooseBranchPath, competitionDays, type CalendarPlan, dateToDay, formatDay, nationalDays, newCalendar, prefQualifierDays, refillHand } from "../calendar";
 import { CPU_GROWTH } from "../config/growth";
 import {
   CAMP_NAMES,
@@ -22,13 +22,14 @@ import { PRACTICE_MATCH } from "../config/calendar";
 import { CARRY_FATIGUE_KINDS, PRACTICE_RULES, ROOKIE_PREF_SETUP_DATE, ROOKIE_REGION, SUMMER, summerRulesForRound, winterRulesForRound } from "../config/competitions";
 import { DAILY_RECOVERY, NON_TARGET_FITNESS } from "../config/practice";
 import { REPUTATION_TABLE } from "../config/reputation";
-import { prefSummerReps } from "../config/school";
+import { prefSummerReps, TIER_SETTINGS } from "../config/school";
 import { SCOUT } from "../config/scout";
 import { ADJUST_DAY_RECOVERY } from "../config/season";
 import { campLearnMult, isValidCampPolicy, positionGroup, runCamp, type CampResult } from "../camp";
 import {
   cpuFacilities,
   donationChance,
+  facilitiesForReputation,
   facilityInjuryMult,
   facilityLogText,
   facilityPracticeBonus,
@@ -65,7 +66,7 @@ import type { ActiveMatch } from "../match/types";
 import { runPractice } from "../practice";
 import { addGauge, handSize, matchReputationDelta } from "../reputation";
 import { Rng } from "../rng";
-import { generateWorld } from "../school/generate";
+import { generateWorld, makeCpuSchool, NameGen } from "../school/generate";
 import { autumnCpuGrowth } from "../school/season";
 import { rankFromStrength, rankIndex, teamStrength } from "../school/strength";
 import { addLog, graduate, playerSchool, retireThirdYears, rolloverCpuSchools, rolloverPlayerSchool } from "../season";
@@ -178,13 +179,17 @@ function ownPrefecture(state: GameState) {
   return state.prefectures.find((p) => p.isPlayerPref)!;
 }
 
-/** 年度の始まり：開催県・カレンダー・県予選の組み合わせを作る */
-function startYear(state: GameState, rng: Rng) {
-  const pref = ownPrefecture(state);
-  const n = pref.schoolIds.length;
-  // 夏の全国大会の開催県（東京・神奈川・大阪は外す）。開催県はその年だけ 2 校目が出る
+/** その年の夏の全国大会の開催県を決める（東京・神奈川・大阪は外す）。開催県はその年だけ 2 校目が出る */
+function pickSummerHost(state: GameState, rng: Rng) {
   const host = rng.pick(state.prefectures.filter((p) => !SUMMER.doubleRepPrefs.includes(p.id)));
   for (const p of state.prefectures) p.summerReps = prefSummerReps(p.id) + (p.id === host.id ? 1 : 0);
+  return host;
+}
+
+/** カレンダーを作るための、各大会のラウンド数 */
+function yearPlan(state: GameState) {
+  const pref = ownPrefecture(state);
+  const n = pref.schoolIds.length;
   const prefRounds = roundsFor(n) - Math.log2(pref.reps);
   const nationalRounds = roundsFor(nationalSize(state));
   const summerQualifierRounds = roundsFor(n) - Math.log2(pref.summerReps);
@@ -194,7 +199,16 @@ function startYear(state: GameState, rng: Rng) {
     rookiePref: roundsFor(n),
     rookieRegion: roundsFor(rookieRegionSize(state)),
   };
-  state.calendar = newCalendar(rng, prefRounds, nationalRounds, handSize(state.reputation), { rounds, camps: true, scoutReply: true, branches: true });
+  const plan: CalendarPlan = { rounds, camps: true, scoutReply: true, branches: true };
+  return { prefRounds, nationalRounds, summerQualifierRounds, plan };
+}
+
+/** 年度の始まり：開催県・カレンダー・県予選の組み合わせを作る */
+function startYear(state: GameState, rng: Rng) {
+  const pref = ownPrefecture(state);
+  const host = pickSummerHost(state, rng);
+  const { prefRounds, nationalRounds, summerQualifierRounds, plan } = yearPlan(state);
+  state.calendar = newCalendar(rng, prefRounds, nationalRounds, handSize(state.reputation), plan);
   const byStrength = (ids: string[]) =>
     [...ids]
       .map((id) => ({ id, s: teamStrength(state.schools[id].players, state.schools[id].formation) + rng.normal(0, 1.5) }))
@@ -248,6 +262,68 @@ function grantFacilitiesForReputation(state: GameState) {
   const given = grantReputationFacilities(h, state.reputation.level);
   state.facilityGrantedLevel = h.facilityGrantedLevel;
   for (const e of given) addLog(state, facilityLogText(e, state.reputation.level), "good");
+}
+
+/**
+ * Phase 2b までのゲームを Phase 2c の形にする（セーブの v4 → v5）。
+ * 設備は評判に応じて付け、これから先の日程にだけ新しい大会・合宿・分岐マスを入れる。
+ * 小さな県には CPU 校を 1 校足す（他県は 3 校に）。11 月〜2 月の途中なら、スカウトを残りの期間で始める。
+ */
+export function upgradeToPhase2c(state: GameState, rng: Rng) {
+  const level = state.reputation.level;
+  state.facilities = facilitiesForReputation(level);
+  state.facilityLog = [];
+  state.facilityGrantedLevel = level;
+  // 小さな県の CPU 校
+  const names = new NameGen(rng);
+  for (const s of Object.values(state.schools)) names.reserve(s.name);
+  let n = Math.max(0, ...Object.keys(state.schools).map((id) => Number(id.slice(1))).filter(Number.isFinite)) + 1;
+  for (const pref of state.prefectures) {
+    if (pref.isPlayerPref) continue;
+    const tier = TIER_SETTINGS[pref.tier];
+    while (pref.schoolIds.length < Math.max(tier.otherPrefSchools, pref.reps + 1)) {
+      const prestige = rng.weighted([0, 1, 2, 3, 4, 5], (p) => tier.otherPrefPrestige[p]);
+      const id = `s${n++}`;
+      const school = makeCpuSchool(rng, id, names.next(), pref.id, prestige, state.year);
+      autoCaptain(school);
+      state.schools[id] = school;
+      pref.schoolIds.push(id);
+    }
+  }
+  for (const s of Object.values(state.schools)) {
+    if (s.isPlayer) continue;
+    s.cpuStaff ??= generateCpuStaff(rng, s.prestige);
+    s.cpuStaff.conditioning ??= cpuConditioning(rng, s.prestige);
+    s.cpuFacilities ??= cpuFacilities(rng, s.prestige);
+  }
+  // 夏の全国大会の開催県・これから先の日程
+  const host = pickSummerHost(state, rng);
+  const c = state.competitions;
+  c.summerHostPrefId = host.id;
+  c.rookieSeeds = [];
+  const { prefRounds, nationalRounds, summerQualifierRounds, plan } = yearPlan(state);
+  const parts = buildCalendarParts(rng, prefRounds, nationalRounds, plan);
+  const cal = state.calendar;
+  const pos = cal.position;
+  cal.squares = cal.squares.map((sq, d) => (d <= pos ? sq : parts.squares[d]));
+  cal.branches = parts.branches.filter((b) => b.day > pos);
+  const pref = ownPrefecture(state);
+  const summerDays = competitionDays("summerQualifier", summerQualifierRounds);
+  if (summerDays[0] > pos) {
+    const order = [...pref.schoolIds].sort((a, b) => teamStrength(state.schools[b].players) - teamStrength(state.schools[a].players));
+    c.summerQualifier = createBracket("summerQualifier", order, summerDays, rng, pref.summerReps);
+  }
+  // 途中から始まる仕組み
+  const scoutStart = dateToDay(...SCOUT.start);
+  const lastCard = dateToDay(...SCOUT.lastCard);
+  if (pos >= scoutStart && pos < lastCard) {
+    const t = REPUTATION_TABLE[level];
+    const count = Math.max(1, Math.round((t.scoutCards * (lastCard - pos)) / (lastCard - scoutStart)));
+    state.scout = startScoutSeason(rng, scoutContext(state, analystScouting(state.staff)), scoutCardDays(count, pos + 1, lastCard));
+  }
+  const rookieSetup = dateToDay(...ROOKIE_PREF_SETUP_DATE);
+  if (pos >= rookieSetup && pos < competitionDays("rookiePref", 1)[0]) setupRookiePref(state, rng);
+  addLog(state, `夏の全国大会・新人戦・合宿・特待生スカウト・設備が加わった。設備は評判に応じて整った状態から始まる。今年の${COMPETITION_NAMES.summer}は${host.name}で開催される。`, "info");
 }
 
 export function updatePlayerRank(state: GameState) {

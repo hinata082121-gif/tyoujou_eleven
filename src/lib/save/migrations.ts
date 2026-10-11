@@ -13,9 +13,10 @@ import { Rng } from "@/engine/rng";
 import { catchUpSkills, initialSkills } from "@/engine/skills/learn";
 import { emptyStaffState, generateCpuStaff, generateFictionalAlumni, makeStaffProfile, makeTemporaryCoach } from "@/engine/staff";
 import { PERSONALITIES, type Alumnus, type Career, type LogEntry, type Personality, type Player, type Position, type School, type SeasonRecord, type Stats } from "@/engine/types";
-import { packTraits, unpackPlayer, type PackedPlayer, type PackedTraits } from "./codec";
+import { packGame, packTraits, unpackGame, unpackPlayer, type PackedPlayer, type PackedTraits } from "./codec";
+import { upgradeToPhase2c } from "@/engine/game";
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type RawSave = { schemaVersion: number; [key: string]: any };
@@ -144,10 +145,22 @@ export function migrateV3toV4(data: RawSave): RawSave {
   return { ...data, schemaVersion: 4, game };
 }
 
+/**
+ * v4（Phase 2b）→ v5（Phase 2c）：設備（評判に応じて）・CPU 校の設備とコンディショニング・小さな県の CPU 校の追加・
+ * 夏の全国大会の開催県・これから先の日程への新しい大会や合宿や分岐マス・途中からのスカウト。
+ * 部員は全員「一般入部」として読む（codec の最後の欄が無ければ一般入部）。
+ */
+export function migrateV4toV5(data: RawSave): RawSave {
+  const state = unpackGame(structuredClone(data.game));
+  upgradeToPhase2c(state, Rng.fromSeed(`${state.seed}:migrate-v5`));
+  return { ...data, schemaVersion: 5, game: packGame(state) };
+}
+
 /** MIGRATIONS[n] は バージョン n → n+1 の変換 */
 export const MIGRATIONS: Record<number, Migration> = {
   2: migrateV2toV3,
   3: migrateV3toV4,
+  4: migrateV4toV5,
 };
 
 export const OLD_FORMAT_MESSAGE = "このセーブは古い形式のため読み込めません";

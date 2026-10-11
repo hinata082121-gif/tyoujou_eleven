@@ -72,7 +72,7 @@ export function generalFreshmen(rng: Rng, count: number, year: number): Player[]
   return generateGradeGroup(rng, count, { grade: 1, enrolledYear: year, base: FRESHMAN_BASE }, FRESHMAN_BASE_SD);
 }
 
-class NameGen {
+export class NameGen {
   private used = new Set<string>();
   constructor(private rng: Rng) {}
   next(): string {
