@@ -1,4 +1,5 @@
 import { CPU_GROWTH } from "../config/growth";
+import { autoCaptain } from "../captain";
 import { PRESTIGE_DRIFT } from "../config/school";
 import { growCpuPlayer, growHeight } from "../player/growth";
 import { cpuSeasonTraits } from "../skills/learn";
@@ -28,6 +29,8 @@ export function advanceCpuSchool(rng: Rng, school: School, newYear: number) {
   }
   school.players.push(...cpuFreshmen(rng, school.prestige, newYear));
   school.rank = rankFromStrength(teamStrength(school.players, school.formation));
+  // キャプテン（3 年生が卒業した後に、自動で選び直す）
+  autoCaptain(school);
 }
 
 /** 秋の成長（10 月 1 日）。年度替わりと合わせて 1 年分になる */

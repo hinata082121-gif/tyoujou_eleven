@@ -12,6 +12,8 @@ export function MenuView() {
   const settings = useGameStore((s) => s.settings);
   const updateSettings = useGameStore((s) => s.updateSettings);
   const setNotesOpen = useGameStore((s) => s.setNotesOpen);
+  const setSkillBookOpen = useGameStore((s) => s.setSkillBookOpen);
+  const setTeamOpen = useGameStore((s) => s.setTeamOpen);
   const [msg, setMsg] = useState<string | null>(null);
 
   const exportJson = async () => {
@@ -32,6 +34,12 @@ export function MenuView() {
     <div className="flex flex-col gap-3 p-4">
       <h2 className="text-sm font-black">{GAME_TITLE}</h2>
       <Button onClick={() => setNotesOpen(true)}>📒 作戦ノート</Button>
+      <Button variant="secondary" onClick={() => setSkillBookOpen(true)}>
+        📘 特殊能力図鑑
+      </Button>
+      <Button variant="secondary" onClick={() => setTeamOpen(true)}>
+        🅲 チーム（キャプテン）
+      </Button>
       <label className="flex min-h-12 items-center justify-between rounded-xl border border-gray-200 px-3">
         <span className="text-sm">すごろくの移動演出をスキップ</span>
         <input type="checkbox" className="h-5 w-5 accent-pitch" checked={settings.skipMove} onChange={(e) => updateSettings({ skipMove: e.target.checked })} />

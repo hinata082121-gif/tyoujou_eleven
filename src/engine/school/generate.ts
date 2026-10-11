@@ -1,4 +1,5 @@
 import { FRESHMAN_BASE, FRESHMAN_BASE_SD } from "../config/player";
+import { autoCaptain } from "../captain";
 import { REPUTATION_TABLE } from "../config/reputation";
 import { PLAYER_START, PRESTIGE_GRADE_SIZE, PRESTIGE_LEVEL_BASE, prefReps, prefTier, TIER_SETTINGS } from "../config/school";
 import { DEFAULT_PREFECTURE_ID, PREFECTURES, REGIONS, SCHOOL_NAME_HEADS, SCHOOL_NAME_TAILS } from "../config/names";
@@ -151,6 +152,7 @@ export function generateWorld(rng: Rng, playerSchoolName: string, year = 1, play
       const prestige = rng.weighted([0, 1, 2, 3, 4, 5], (p) => weights[p]);
       const id = `s${n++}`;
       schools[id] = makeCpuSchool(rng, id, names.next(), pref.id, prestige, year);
+      autoCaptain(schools[id]);
       pref.schoolIds.push(id);
     }
   }

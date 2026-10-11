@@ -7,6 +7,8 @@ import { useGameStore, type PlayView } from "@/store/gameStore";
 import { MatchScreen } from "../match/MatchScreen";
 import { PreMatchScreen } from "../match/PreMatchScreen";
 import { BracketView } from "../play/BracketView";
+import { CaptainScreen } from "../play/CaptainScreen";
+import { SkillBook } from "../play/SkillBook";
 import { FreshmenScreen, GraduationScreen, MatchResultScreen, YearEndScreen, AlumniScreen } from "../play/FlowScreens";
 import { HomeView } from "../play/HomeView";
 import { MenuView } from "../play/MenuView";
@@ -37,6 +39,8 @@ export function PlayScreen() {
   const moving = useGameStore((s) => s.moving);
   const saveError = useGameStore((s) => s.saveError);
   const notesOpen = useGameStore((s) => s.notesOpen);
+  const skillBookOpen = useGameStore((s) => s.skillBookOpen);
+  const teamOpen = useGameStore((s) => s.teamOpen);
 
   if (!game) return null;
 
@@ -47,6 +51,21 @@ export function PlayScreen() {
   if (game.activeMatch) return <MatchScreen />;
   if (notesOpen) return <NotesScreen />;
   if (!moving && game.pending?.type === "staff") return <StaffReviewScreen />;
+  if (!moving && game.pending?.type === "captain")
+    return (
+      <>
+        <CaptainScreen />
+        {selected && <PlayerDetail />}
+      </>
+    );
+  if (skillBookOpen) return <SkillBook />;
+  if (teamOpen)
+    return (
+      <>
+        <CaptainScreen viewOnly />
+        {selected && <PlayerDetail />}
+      </>
+    );
   if (!moving && game.pending?.type === "match") return <PreMatchScreen />;
   if (!moving && game.pending?.type === "graduation") return <GraduationScreen />;
   if (!moving && game.pending?.type === "yearEnd") return <YearEndScreen />;

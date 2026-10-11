@@ -33,13 +33,13 @@ import { autumnCpuGrowth } from "../school/season";
 import { rankFromStrength, rankIndex, teamStrength } from "../school/strength";
 import { addLog, graduate, playerSchool, retireThirdYears, rolloverCpuSchools, rolloverPlayerSchool } from "../season";
 import { appointCaptain, autoCaptain, captainConditionMults, captainOf, captainPracticeMult } from "../captain";
-import { SKILL_NAMES } from "../config/names";
+import { PLAY_STYLE_NAMES, SKILL_NAMES } from "../config/names";
 import { MATCH_EXP, PERSONALITY_MATCH } from "../config/personality";
 import { POSITION_RATING_WEIGHTS } from "../config/player";
 import { PROFICIENCY } from "../config/playStyle";
 import { durabilityMult } from "../match/traits";
 import { addExp } from "../player/growth";
-import { gainProficiency } from "../player/traits";
+import { changePlayStyle, gainProficiency } from "../player/traits";
 import { applyMatchFeats } from "../skills/feats";
 import type { LearnEvent } from "../skills/learn";
 import { MATCH } from "../config/match";
@@ -65,7 +65,7 @@ import {
   startStaffYear,
 } from "../staff";
 import { createNote, templateRule, type NoteTemplateId } from "../note";
-import type { Alumnus, Bracket, GameState, MajorKind, MatchKind, MatchRules, NoteRule, Player, School, Square, StaffRole, TacticsNote, TeamSetup } from "../types";
+import type { Alumnus, Bracket, GameState, MajorKind, MatchKind, MatchRules, NoteRule, Player, PlayStyle, School, Square, StaffRole, TacticsNote, TeamSetup } from "../types";
 
 export const GAME_STATE_VERSION = 1;
 
@@ -666,6 +666,18 @@ export function confirmCaptain(state: GameState, playerId: string): string | nul
   return null;
 }
 
+// ================= プレースタイル（UI から呼ぶ） =================
+
+/** スタイルを変える（試合中は変えられない。熟練度は 0 に戻る） */
+export function setPlayStyle(state: GameState, playerId: string, style: PlayStyle): string | null {
+  if (state.activeMatch) return "試合中はスタイルを変えられません";
+  const p = playerSchool(state).players.find((x) => x.id === playerId && x.status === "active");
+  if (!p) return "在籍している部員ではありません";
+  if (!changePlayStyle(p, style)) return "このスタイルは選べません";
+  addLog(state, `${p.name}のプレースタイルを「${PLAY_STYLE_NAMES[style]}」に変えた。`, "info");
+  return null;
+}
+
 // ================= 卒業・年度替わり =================
 
 export function confirmGraduation(state: GameState): Alumnus[] {
@@ -768,7 +780,7 @@ export function isPlayerAlive(state: GameState, b: Bracket | undefined): boolean
 /** カレンダーの表示用：マスの見た目（大会の大マスは、まだ勝ち残っていれば表示する） */
 export function squareDisplay(state: GameState, sq: Square): { type: Square["baseType"] | "major"; label?: string } {
   const m = sq.major;
-  if (!m) return { type: sq.baseType };
+  if (!m) return sq.baseType === "training" ? { type: "training", label: "特訓" } : { type: sq.baseType };
   const me = state.playerSchoolId;
   const c = state.competitions;
   if (m.kind === "prefQualifier" || m.kind === "national") {

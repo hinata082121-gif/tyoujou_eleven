@@ -16,6 +16,7 @@ const SQUARE_STYLE: Record<string, string> = {
   white: "bg-white text-gray-600 border border-gray-300",
   green: "bg-emerald-400 text-white",
   yellow: "bg-yellow-300 text-yellow-900",
+  training: "bg-purple-500 text-white",
   major: "bg-violet-700 text-white",
 };
 

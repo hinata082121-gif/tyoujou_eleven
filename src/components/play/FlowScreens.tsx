@@ -1,6 +1,6 @@
 "use client";
 
-import { CAREER_NAMES, MAJOR_NAMES, POSITION_NAMES, REPUTATION_NAMES, yearLabel } from "@/engine/config/names";
+import { CAREER_NAMES, MAJOR_NAMES, POSITION_NAMES, REPUTATION_NAMES, SKILL_NAMES, yearLabel } from "@/engine/config/names";
 import { overall } from "@/engine/player/rating";
 import { statRank } from "@/engine/player/rank";
 import { playerSchool } from "@/engine/season";
@@ -38,6 +38,13 @@ export function MatchResultScreen() {
                 {g.pk && "（PK）"}
                 <span className="ml-1 text-[10px]">{g.mine ? "" : `（${r.opponentName}）`}</span>
               </li>
+            ))}
+          </ul>
+        )}
+        {r.learned?.length > 0 && (
+          <ul className="w-full rounded-xl bg-emerald-50 p-3 text-left text-sm text-emerald-900">
+            {r.learned.map((l, i) => (
+              <li key={i}>{l.kind === "remove" ? `${l.name}の「${SKILL_NAMES[l.skill]}」が消えた` : `✨ ${l.name}が「${SKILL_NAMES[l.skill]}」を身につけた！`}</li>
             ))}
           </ul>
         )}
