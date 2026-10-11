@@ -6,6 +6,7 @@ import { DEFAULT_TACTICS } from "../match/lineup";
 import { STYLE_WEIGHTS, TACTIC_STYLE_IDS, TACTIC_STYLES } from "../config/tactics";
 import { generateGradeGroup } from "../player/generate";
 import { growCpuPlayer } from "../player/growth";
+import { cpuSeasonTraits } from "../skills/learn";
 import type { Rng } from "../rng";
 import { type FormationId, type Player, type Prefecture, type ReputationLevel, type School, type Tactics } from "../types";
 import { rankFromStrength, teamStrength } from "./strength";
@@ -35,7 +36,12 @@ export function cpuFreshmen(rng: Rng, prestige: number, year: number): Player[] 
  */
 function generateGrownGroup(rng: Rng, size: number, grade: 1 | 2 | 3, year: number, base: number, baseSd: number): Player[] {
   const players = generateGradeGroup(rng, size, { grade, enrolledYear: year - (grade - 1), base }, baseSd);
-  for (const p of players) for (let y = 1; y < grade; y++) growCpuPlayer(rng, p);
+  for (const p of players)
+    for (let y = 1; y < grade; y++) {
+      growCpuPlayer(rng, p);
+      cpuSeasonTraits(rng, p, false);
+      cpuSeasonTraits(rng, p, true);
+    }
   return players;
 }
 

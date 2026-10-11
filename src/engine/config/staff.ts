@@ -13,9 +13,6 @@ export const STAFF_GEN = {
   /** 指導力の素地 = 総合/100 × fromOverall + 指導の素質 × fromTalent（名選手、名監督にあらず） */
   coachingFromOverall: 0.2,
   coachingFromTalent: 0.8,
-  /** 指導の素質（仮の隠しパラメーター。Phase 2b で性格に置き換える） */
-  talentMean: 0.5,
-  talentSd: 0.18,
   /** 主将だった人の戦術眼の素地への加算 */
   captainTactics: 0.1,
   /** 2 番目に高い素地との差がこの値以内なら、得意分野を 2 つにする */

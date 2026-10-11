@@ -1,9 +1,11 @@
 import type { RngState } from "../rng";
 import type { CpuStaff, StaffProfile, StaffState } from "./staff";
 import type { TacticsNote } from "./note";
+import type { Personality, PlayerFeats, PlayStyle, SkillId } from "./traits";
 
 export * from "./staff";
 export * from "./note";
+export * from "./traits";
 
 // ================= 選手 =================
 
@@ -14,7 +16,8 @@ export type Position = (typeof POSITIONS)[number];
 
 /** ポジション適性 3=◎ 2=○ 1=△ */
 export type Aptitude = 1 | 2 | 3;
-export type Foot = "R" | "L" | "B";
+/** 利き足（右・左。両足は特殊能力「両利き」で表す。P2b） */
+export type Foot = "R" | "L";
 
 export const COMMON_STATS = ["vision", "kickPower", "speed", "stamina", "pass", "technique", "physical", "pkSkill"] as const;
 export const FIELD_STATS = ["shooting", "dribble", "defense", "aerial", "decision"] as const;
@@ -61,6 +64,18 @@ export interface Player {
   suspended: number;
   /** 在学中の成績（OB の記録に引き継ぐ） */
   record: PlayerRecord;
+  /** 性格（SPEC 7.5） */
+  personality: Personality;
+  /** 職人気質の得意な練習（隠し。ほかの性格は持たない） */
+  favoritePractice?: PracticeKind;
+  /** プレースタイル（SPEC 7.6） */
+  playStyle: PlayStyle;
+  /** プレースタイル熟練度 0〜100（変更すると 0） */
+  styleProficiency: number;
+  /** 特殊能力（系統ごとに今の段階だけを持つ。SPEC 7.7） */
+  skills: SkillId[];
+  /** 試合での成果の通算（自校のみ） */
+  feats?: PlayerFeats;
 }
 
 export interface PlayerRecord {
@@ -96,7 +111,7 @@ export interface School {
   prestige: number;
   formation: FormationId;
   tactics: Tactics;
-  /** 主将（自校のみ。毎年 4 月に 3 年生から決める） */
+  /** キャプテン（SPEC 7.8。自校は年度初めに指名、CPU 校は自動） */
   captainId?: string;
   /** CPU 校の簡略化したスタッフの値（自校は GameState.staff を使う） */
   cpuStaff?: CpuStaff;
@@ -118,7 +133,7 @@ export interface Prefecture {
 
 // ================= カレンダー =================
 
-export type SquareType = "blue" | "red" | "white" | "green" | "yellow" | "major";
+export type SquareType = "blue" | "red" | "white" | "green" | "yellow" | "training" | "major";
 export type MajorKind = "entrance" | "practiceMatch" | "prefQualifier" | "national" | "graduation" | "yearEnd";
 
 export interface Square {
@@ -232,6 +247,10 @@ export interface Alumnus {
   record: PlayerRecord & { winterResults: string[] };
   /** スタッフとしての素質（隠し） */
   staffProfile: StaffProfile;
+  /** 性格・スタイル・特殊能力（P2b。OB から教わるイベントとスタッフの能力に使う） */
+  personality: Personality;
+  playStyle: PlayStyle;
+  skills: SkillId[];
 }
 
 export interface SeasonRecord {
@@ -291,4 +310,6 @@ export type PendingAction =
   | { type: "graduation" }
   /** スタッフの編成（ゲーム開始時と年度初め） */
   | { type: "staff" }
+  /** キャプテンの指名（年度初めと、3 年生の引退でいなくなったとき） */
+  | { type: "captain" }
   | { type: "yearEnd" };

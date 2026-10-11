@@ -53,7 +53,7 @@ describe("スタッフの能力の生成", () => {
     for (let i = 0; i < 300; i++) {
       const p = generatePlayer(rng, { grade: 3, enrolledYear: 1, base: rng.range(30, 80) });
       const career = rng.pick(["pro", "university", "worker", "coach", "other"] as const);
-      const prof = makeStaffProfile(rng, { stats: p.stats, position: p.mainPosition, overall: overall(p), career, graduatedYear: 3, wasCaptain: false });
+      const prof = makeStaffProfile(rng, { stats: p.stats, position: p.mainPosition, overall: overall(p), career, graduatedYear: 3, wasCaptain: false, personality: p.personality });
       expect(prof.specialties.length).toBeGreaterThanOrEqual(1);
       expect(prof.specialties.length).toBeLessThanOrEqual(2);
       for (const k of STAFF_ABILITIES) {

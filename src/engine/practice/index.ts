@@ -1,6 +1,9 @@
 import { PRACTICES, NON_TARGET_FITNESS, DAILY_RECOVERY, INJURY, CONDITION_DRIFT_CHANCE } from "../config/practice";
 import { GROWTH } from "../config/growth";
 import { addExp, practiceEfficiency } from "../player/growth";
+import { CRAFTSMAN_FAVORITE_MULT, INSPIRED_PRACTICE, PERSONALITY_CONDITION, PERSONALITY_PRACTICE } from "../config/personality";
+import { PLAY_STYLE_DEFS, PROFICIENCY, STYLE_GROWTH_BONUS } from "../config/playStyle";
+import { gainProficiency, styleUsesPractice } from "../player/traits";
 import type { Rng } from "../rng";
 import type { Condition, Player, PracticeKind, StatKey } from "../types";
 
@@ -27,6 +30,42 @@ export interface PracticeStaffOptions {
   recoveryMult?: number;
   /** ケガの確率の倍率（フィジカルコーチ） */
   injuryMult?: number;
+  /** チーム全体の練習効率の倍率（キャプテンが努力家など） */
+  teamMult?: number;
+  /** 調子が下がる・上がる確率の倍率（キャプテンがムードメーカー） */
+  conditionDownMult?: number;
+  conditionUpMult?: number;
+  /** ひらめき型の、その練習（カード 1 枚）での倍率。同じオブジェクトを日をまたいで渡す */
+  rolls?: Record<string, number>;
+  /** ケガしにくさ系の倍率（選手ごと） */
+  playerInjuryMult?: (p: Player) => number;
+}
+
+/** 性格による練習の倍率（PLAN 2.2）。ひらめき型は練習 1 回ごとに引く */
+export function personalityPracticeMult(rng: Rng, p: Player, kind: PracticeKind, rolls?: Record<string, number>): number {
+  const t = PERSONALITY_PRACTICE[p.personality];
+  if (p.personality === "craftsman" && p.favoritePractice === kind) return CRAFTSMAN_FAVORITE_MULT;
+  if (p.personality === "inspired") {
+    const r = rolls?.[p.id];
+    if (r !== undefined) return r;
+    const v = Math.max(INSPIRED_PRACTICE.min, Math.min(INSPIRED_PRACTICE.max, rng.normal(INSPIRED_PRACTICE.mean, INSPIRED_PRACTICE.sd)));
+    if (rolls) rolls[p.id] = v;
+    return v;
+  }
+  return t[kind] ?? t.default;
+}
+
+/** スタイルの能力の伸び（keyStats の経験点を熟練度に応じて増やす） */
+export function styleGrowthMult(p: Player, stat: StatKey): number {
+  return PLAY_STYLE_DEFS[p.playStyle].keyStats[stat] ? 1 + STYLE_GROWTH_BONUS * (p.styleProficiency / 100) : 1;
+}
+
+/** 調子の日ごとの変化（性格とキャプテンで変わる） */
+export function driftCondition(rng: Rng, p: Player, opts: Pick<PracticeStaffOptions, "conditionDownMult" | "conditionUpMult"> = {}) {
+  const pc = PERSONALITY_CONDITION[p.personality];
+  const dir = p.condition > 0 ? -1 : p.condition < 0 ? 1 : rng.chance(pc.upChance ?? 0.5) ? 1 : -1;
+  const mult = pc.drift * (dir < 0 ? (opts.conditionDownMult ?? 1) : (opts.conditionUpMult ?? 1));
+  if (rng.chance(CONDITION_DRIFT_CHANCE * mult)) shiftCondition(p, dir);
 }
 
 /**
@@ -45,27 +84,29 @@ export function practiceOneDay(rng: Rng, players: Player[], kind: PracticeKind, 
       continue;
     }
     if (isPracticeTarget(p, kind)) {
-      const eff = practiceEfficiency(p) * mult * GROWTH.practiceMult * (opts.staffMult?.(p) ?? 1);
+      const eff =
+        practiceEfficiency(p) * mult * GROWTH.practiceMult * (opts.staffMult?.(p) ?? 1) * (opts.teamMult ?? 1) * personalityPracticeMult(rng, p, kind, opts.rolls);
       for (const [stat, value] of Object.entries(def.gains) as [StatKey, number][]) {
         if (def.fieldOnly?.includes(stat) && p.mainPosition === "GK") continue;
-        const exp = value * eff;
+        const exp = value * eff * styleGrowthMult(p, stat);
         addExp(p, stat, exp);
         const g = (gains[p.id] ??= {});
         g[stat] = (g[stat] ?? 0) + exp;
       }
+      if (kind !== "rest" && styleUsesPractice(p.playStyle, kind)) gainProficiency(p, PROFICIENCY.perPracticeDay);
       p.fitness = clampFit(p.fitness + def.fitness + recovery);
     } else {
       p.fitness = clampFit(p.fitness + NON_TARGET_FITNESS + recovery);
     }
     // 体力が低いとケガをしやすい
     if (p.fitness < INJURY.safeFitness) {
-      const risk = INJURY.maxDailyChance * (1 - p.fitness / INJURY.safeFitness) * (opts.injuryMult ?? 1);
+      const risk = INJURY.maxDailyChance * (1 - p.fitness / INJURY.safeFitness) * (opts.injuryMult ?? 1) * (opts.playerInjuryMult?.(p) ?? 1);
       if (rng.chance(risk)) {
         p.injuryDays = rng.int(INJURY.minDays, INJURY.maxDays);
         injured.push(p);
       }
     }
-    if (rng.chance(CONDITION_DRIFT_CHANCE)) shiftCondition(p, p.condition > 0 ? -1 : p.condition < 0 ? 1 : rng.chance(0.5) ? 1 : -1);
+    driftCondition(rng, p, opts);
   }
   return injured;
 }

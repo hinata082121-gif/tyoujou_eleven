@@ -12,6 +12,8 @@ export const SQUARE_WEIGHTS: Record<Exclude<SquareType, "major">, number> = {
   white: 20,
   green: 18,
   yellow: 17,
+  /** 特訓マス（P2b）。止まると特殊能力の習得を判定する */
+  training: 7,
 };
 
 /** 進行カードの数字の出やすさ（1〜5） */

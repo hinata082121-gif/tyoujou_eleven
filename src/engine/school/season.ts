@@ -1,6 +1,7 @@
 import { CPU_GROWTH } from "../config/growth";
 import { PRESTIGE_DRIFT } from "../config/school";
 import { growCpuPlayer, growHeight } from "../player/growth";
+import { cpuSeasonTraits } from "../skills/learn";
 import type { Rng } from "../rng";
 import type { School } from "../types";
 import { cpuFreshmen } from "./generate";
@@ -20,6 +21,7 @@ export function advanceCpuSchool(rng: Rng, school: School, newYear: number) {
     p.condition = 0;
     p.injuryDays = 0;
     p.exp = {};
+    cpuSeasonTraits(rng, p, true);
   }
   if (rng.chance(PRESTIGE_DRIFT.chance)) {
     school.prestige = Math.max(0, Math.min(5, school.prestige + (rng.chance(0.5) ? 1 : -1)));
@@ -30,6 +32,9 @@ export function advanceCpuSchool(rng: Rng, school: School, newYear: number) {
 
 /** 秋の成長（10 月 1 日）。年度替わりと合わせて 1 年分になる */
 export function autumnCpuGrowth(rng: Rng, school: School) {
-  for (const p of school.players) growCpuPlayer(rng, p, 1 - CPU_GROWTH.springShare);
+  for (const p of school.players) {
+    growCpuPlayer(rng, p, 1 - CPU_GROWTH.springShare);
+    cpuSeasonTraits(rng, p, false);
+  }
   school.rank = rankFromStrength(teamStrength(school.players, school.formation));
 }

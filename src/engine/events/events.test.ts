@@ -14,9 +14,9 @@ const ctx = (seed: string) => {
 };
 
 describe("イベント", () => {
-  it("P1 のイベントは 10〜15 種類", () => {
-    expect(EVENTS.length).toBeGreaterThanOrEqual(10);
-    expect(EVENTS.length).toBeLessThanOrEqual(15);
+  it("イベントは P1 の 10〜15 種類に、P2b の特殊能力のイベントを足したもの", () => {
+    expect(EVENTS.length).toBeGreaterThanOrEqual(15);
+    expect(EVENTS.length).toBeLessThanOrEqual(20);
   });
 
   it("青マスは良いイベント、赤マスは悪いイベント", () => {

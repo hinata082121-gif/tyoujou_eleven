@@ -18,7 +18,7 @@ export interface StaffProfile {
   /** 能力の上限（隠し）。得意分野 1〜2 個だけ 100 まで届きうる */
   caps: StaffAbilities;
   specialties: StaffAbility[];
-  /** 仮の隠しパラメーター「指導の素質」（0〜1）。Phase 2b で性格に置き換える */
+  /** 指導の素質（0〜1。P2b からは性格で決まる。SPEC 7.5） */
   teachingTalent: number;
   /** 進路による伸び方の倍率 */
   growthMult: number;

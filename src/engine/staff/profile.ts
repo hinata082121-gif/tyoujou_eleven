@@ -1,15 +1,16 @@
 /**
  * OB のスタッフとしての素質（SPEC 9章「能力の決まり方」、PLAN 2章）。
  * 現役時代の能力で得意分野が決まり、進路で伸び方と雇える時期が決まる。
- * 指導力は現役の強さより「指導の素質」（仮の隠しパラメーター）で決まる割合が大きい。
+ * 指導力は現役の強さより「指導の素質」で決まる割合が大きい。指導の素質は性格で決まる（P2b。SPEC 7.5）。
  */
 import { CAREER_STAFF, FICTIONAL_ALUMNI, STAFF_GEN, STAFF_LIFE } from "../config/staff";
+import { PERSONALITY_TEACHING, TEACHING_SD } from "../config/personality";
 import { CAREER_KEYS } from "../season/careers";
 import { careerWeights } from "../config/season";
 import { generatePlayer, randomName } from "../player/generate";
 import { overall } from "../player/rating";
 import type { Rng } from "../rng";
-import { STAFF_ABILITIES, type Alumnus, type Career, type Position, type StaffAbilities, type StaffAbility, type StaffProfile, type Stats } from "../types";
+import { STAFF_ABILITIES, type Alumnus, type Career, type Personality, type Position, type StaffAbilities, type StaffAbility, type StaffProfile, type Stats } from "../types";
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
@@ -20,20 +21,27 @@ export interface AlumnusBasics {
   career: Career;
   graduatedYear: number;
   wasCaptain: boolean;
+  personality: Personality;
 }
 
 /** 現役時代の能力から出す「素地」（0〜1） */
-export function staffAptitudes(a: Omit<AlumnusBasics, "career" | "graduatedYear">, teachingTalent: number): StaffAbilities {
+export function staffAptitudes(a: Omit<AlumnusBasics, "career" | "graduatedYear" | "personality"> & { personality?: Personality }, teachingTalent: number): StaffAbilities {
   const s = a.stats;
   const isGk = a.position === "GK";
   const tactics = isGk ? ((s.vision + s.positioning) / 200) * 0.8 : (s.decision * 0.6 + s.vision * 0.4) / 100;
+  const bonus = a.personality ? (PERSONALITY_TEACHING[a.personality].aptitudeBonus ?? {}) : {};
   return {
     coaching: clamp((a.overall / 100) * STAFF_GEN.coachingFromOverall + teachingTalent * STAFF_GEN.coachingFromTalent, 0, 1),
-    tactics: clamp(tactics + (a.wasCaptain ? STAFF_GEN.captainTactics : 0), 0, 1),
+    tactics: clamp(tactics + (a.wasCaptain ? STAFF_GEN.captainTactics : 0) + (bonus.tactics ?? 0), 0, 1),
     gkCoaching: isGk ? (s.saving + s.highBall + s.positioning + s.catching) / 400 : 0.15,
     conditioning: (s.stamina + s.physical) / 200,
-    scouting: (s.vision * 0.4 + s.decision * 0.3 + s.pkSkill * 0.3) / 100,
+    scouting: clamp((s.vision * 0.4 + s.decision * 0.3 + s.pkSkill * 0.3) / 100 + (bonus.scouting ?? 0), 0, 1),
   };
+}
+
+/** 性格から決まる指導の素質（小さな揺らぎつき。SPEC 7.5） */
+export function teachingTalentOf(rng: Rng, personality: Personality): number {
+  return clamp(rng.normal(PERSONALITY_TEACHING[personality].talent, TEACHING_SD), 0, 1);
 }
 
 /** 素地の高い順に得意分野を 1〜2 個 */
@@ -43,7 +51,8 @@ export function pickSpecialties(apt: StaffAbilities): StaffAbility[] {
 }
 
 export function makeStaffProfile(rng: Rng, a: AlumnusBasics): StaffProfile {
-  const teachingTalent = clamp(rng.normal(STAFF_GEN.talentMean, STAFF_GEN.talentSd), 0, 1);
+  const teachingTalent = teachingTalentOf(rng, a.personality);
+  const capBonus = PERSONALITY_TEACHING[a.personality].specialtyCapBonus ?? 0;
   const apt = staffAptitudes(a, teachingTalent);
   const career = CAREER_STAFF[a.career];
   const specialties = pickSpecialties(apt);
@@ -53,7 +62,7 @@ export function makeStaffProfile(rng: Rng, a: AlumnusBasics): StaffProfile {
     const v = STAFF_GEN.base + STAFF_GEN.fromAptitude * apt[k] + (career.bonus[k] ?? 0) + rng.normal(0, STAFF_GEN.sd);
     base[k] = Math.round(clamp(v, STAFF_GEN.min, STAFF_GEN.max));
     if (specialties.includes(k)) {
-      const cap = STAFF_GEN.specialtyCapBase + STAFF_GEN.specialtyCapFromAptitude * apt[k] + rng.normal(0, STAFF_GEN.specialtyCapSd);
+      const cap = STAFF_GEN.specialtyCapBase + STAFF_GEN.specialtyCapFromAptitude * apt[k] + rng.normal(0, STAFF_GEN.specialtyCapSd) + capBonus;
       caps[k] = Math.round(clamp(cap, STAFF_GEN.specialtyCapMin, 100));
     } else {
       caps[k] = Math.round(rng.range(STAFF_GEN.otherCapMin, STAFF_GEN.otherCapMax));
@@ -93,7 +102,7 @@ export function generateFictionalAlumni(rng: Rng, year: number): Alumnus[] {
     const w = careerWeights(ovr);
     const career: Career = i === 0 ? "coach" : rng.weighted(CAREER_KEYS, (c) => w[c]);
     const wasCaptain = rng.chance(0.2);
-    const basics: AlumnusBasics = { stats: p.stats, position: p.mainPosition, overall: ovr, career, graduatedYear, wasCaptain };
+    const basics: AlumnusBasics = { stats: p.stats, position: p.mainPosition, overall: ovr, career, graduatedYear, wasCaptain, personality: p.personality };
     const profile = makeStaffProfile(rng, basics);
     profile.availableFromYear = Math.min(profile.availableFromYear, year);
     for (const k of STAFF_ABILITIES) profile.base[k] = Math.min(profile.base[k], FICTIONAL_ALUMNI.maxStart);
@@ -110,6 +119,9 @@ export function generateFictionalAlumni(rng: Rng, year: number): Alumnus[] {
       wasCaptain,
       record: { apps, goals: p.mainPosition === "GK" ? 0 : rng.int(0, Math.round(apps / 4)), officialApps: Math.round(apps / 3), officialGoals: 0, winterResults: [] },
       staffProfile: profile,
+      personality: p.personality,
+      playStyle: p.playStyle,
+      skills: [...p.skills],
     });
   }
   return list;
