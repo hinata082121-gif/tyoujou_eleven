@@ -39,6 +39,8 @@ export interface TeamInputOptions {
   maxGrade?: number;
   /** 大会の本戦：持ち越した体力を使う日（P2c） */
   carryDay?: number;
+  /** 本戦で体力を見て先発を入れ替えるか（初期値 true。false は balance の比較用） */
+  rotate?: boolean;
 }
 
 /**
@@ -49,7 +51,7 @@ export function schoolTeamInput(school: School, rules: MatchRules, isUser: boole
   let players = opts.maxGrade ? school.players.filter((p) => p.grade <= opts.maxGrade!) : school.players;
   const carry = opts.carryDay !== undefined ? carriedFitness(school, opts.carryDay) : undefined;
   if (rng && !school.isPlayer) players = cpuMatchSquad(rng, players, carry);
-  const setup = opts.carryDay !== undefined && !school.isPlayer ? fitnessAwareSetup(players, school.formation, school.tactics, rules.benchSize) : autoSetup(players, school.formation, school.tactics, rules.benchSize);
+  const setup = opts.carryDay !== undefined && !school.isPlayer && opts.rotate !== false ? fitnessAwareSetup(players, school.formation, school.tactics, rules.benchSize) : autoSetup(players, school.formation, school.tactics, rules.benchSize);
   return {
     schoolId: school.id,
     name: school.name,
@@ -85,12 +87,13 @@ export interface CpuMatchOptions {
   maxGrade?: number;
   /** 本戦の日（疲れを持ち越す） */
   carryDay?: number;
+  rotate?: boolean;
 }
 
 /** CPU 同士の試合（表示なし。同じ試合エンジンで計算する） */
 export function simulateCpuMatch(rng: Rng, a: School, b: School, rules: MatchRules, options: boolean | CpuMatchOptions = false): MatchOutcome {
   const opts: CpuMatchOptions = typeof options === "boolean" ? { bigStage: options } : options;
-  const tin = { maxGrade: opts.maxGrade, carryDay: opts.carryDay };
+  const tin = { maxGrade: opts.maxGrade, carryDay: opts.carryDay, rotate: opts.rotate };
   const ia = schoolTeamInput(a, rules, false, rng, tin);
   const ib = schoolTeamInput(b, rules, false, rng, tin);
   const state = simulateToEnd(createMatch(rules, rng, ia, ib, undefined, opts.bigStage ?? false));

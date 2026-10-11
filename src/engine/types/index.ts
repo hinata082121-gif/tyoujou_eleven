@@ -290,6 +290,8 @@ export interface Alumnus {
   personality: Personality;
   playStyle: PlayStyle;
   skills: SkillId[];
+  /** 特待生として入部した（P2c） */
+  scholarship?: boolean;
 }
 
 export interface SeasonRecord {

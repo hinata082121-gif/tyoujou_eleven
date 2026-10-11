@@ -44,7 +44,7 @@ import {
   visitScout,
   type MatchSummary,
 } from ".";
-import { defaultCampPolicy } from "../camp";
+import { defaultCampPolicy, type CampResult } from "../camp";
 import { branchPreview } from "../calendar";
 import { REPUTATION_TABLE } from "../config/reputation";
 import type { RandomSquareType, ScoutCandidate } from "../types";
@@ -121,9 +121,13 @@ export interface AutoplayStats {
   matches: MatchSummary[];
   graduations: number;
   yearEnds: number;
+  /** 合宿の結果（P2c） */
+  camps: CampResult[];
+  /** 年度替わりに入った特待生の数と、そのときの評判（P2c） */
+  scholars: { level: number; count: number }[];
 }
 
-export const newAutoplayStats = (): AutoplayStats => ({ cards: 0, matches: [], graduations: 0, yearEnds: 0 });
+export const newAutoplayStats = (): AutoplayStats => ({ cards: 0, matches: [], graduations: 0, yearEnds: 0, camps: [], scholars: [] });
 
 /** 練習カードの役に立つ度合い（対象の広さ） */
 const PRACTICE_USEFULNESS = { all: 1, field: 0.9, gk: 0.35 } as const;
@@ -278,7 +282,8 @@ export function autoStep(state: GameState, stats: AutoplayStats, policy: AutoPol
     return;
   }
   if (p?.type === "camp") {
-    confirmCamp(state, defaultCampPolicy(state.campPolicy));
+    const r = confirmCamp(state, defaultCampPolicy(state.campPolicy));
+    if (r) stats.camps.push(r);
     return;
   }
   if (p?.type === "branch") {
@@ -303,7 +308,9 @@ export function autoStep(state: GameState, stats: AutoplayStats, policy: AutoPol
     return;
   }
   if (p?.type === "yearEnd") {
-    confirmYearEnd(state);
+    const level = state.reputation.level;
+    const freshmen = confirmYearEnd(state);
+    stats.scholars.push({ level, count: freshmen.filter((x) => x.admission === "scholarship").length });
     stats.yearEnds++;
     return;
   }
