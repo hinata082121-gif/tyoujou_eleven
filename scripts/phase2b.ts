@@ -223,7 +223,7 @@ const GOLD_CASES: { pos: Slot["pos"]; id: SkillId }[] = [
 export function goldTable(n: number) {
   const t0 = Date.now();
   const base = pointsRate(n, "gold", () => undefined);
-  console.log(`\n=== Phase 2b：金色 1 人の効果（同じチーム・同格 ${n}試合ずつ。目標：平均 +2〜4pt） ===`);
+  console.log(`\n=== Phase 2b：金色 1 人の効果（同じチーム・同格 ${n}試合ずつ。目標：平均 +2pt 前後） ===`);
   console.log("| 枠 | 金色 | 勝ち点の率 | 持たないチームとの差 |");
   console.log("|---|---|---|---|");
   console.log(`| — | なし | ${pct(base)} | — |`);
@@ -242,6 +242,6 @@ export function goldTable(n: number) {
     console.log(`| ${pos} | ${SKILL_NAMES[id]} | ${pct(r)} | ${d >= 0 ? "+" : ""}${d.toFixed(1)}pt |`);
   }
   const avg = diffs.reduce((s, x) => s + x, 0) / diffs.length;
-  console.log(`金色 1 人の効果（平均）：${avg >= 0 ? "+" : ""}${avg.toFixed(1)}pt（目標 +2〜4pt。${avg >= 2 && avg <= 4 ? "OK" : avg >= 1.5 && avg <= 4.5 ? "ほぼ" : "NG"}）・最大 +${Math.max(...diffs).toFixed(1)}pt`);
+  console.log(`金色 1 人の効果（平均）：${avg >= 0 ? "+" : ""}${avg.toFixed(1)}pt（目標 +2pt 前後。${avg >= 1.5 && avg <= 2.5 ? "OK" : avg >= 1 && avg <= 3 ? "ほぼ" : "NG"}）・最大 +${Math.max(...diffs).toFixed(1)}pt`);
   console.log(`(計算時間 ${((Date.now() - t0) / 1000).toFixed(1)} 秒)`);
 }

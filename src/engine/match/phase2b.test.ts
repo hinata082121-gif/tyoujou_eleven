@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { WINTER_RULES } from "../config/competitions";
 import { CAPTAIN } from "../config/captain";
 import { FORMATIONS } from "../config/formations";
+import { SKILL_EFFECTS } from "../config/skills";
 import { Rng } from "../rng";
 import { generateCpuRoster } from "../school/generate";
 import type { Player } from "../types";
@@ -9,7 +10,7 @@ import { createMatch, simulateToEnd, type TeamInput } from "./engine";
 import { effectiveMovement, laneAffinity } from "./lanes";
 import { autoSetup, DEFAULT_TACTICS } from "./lineup";
 import { describeEvent } from "./text";
-import { captainEffect, NEUTRAL_ENV, playerTraitMult, teamTraitMult } from "./traits";
+import { captainEffect, goldPresence, NEUTRAL_ENV, playerTraitMult, teamTraitMult } from "./traits";
 import type { MatchPlayer, MatchTeamState } from "./types";
 
 const team = (seed: string, prep?: (players: Player[], lineup: string[]) => void, extra: Partial<TeamInput> = {}): TeamInput => {
@@ -100,13 +101,24 @@ describe("性格・特殊能力・キャプテンの補正", () => {
     expect(playerTraitMult(mp({ skills: ["adversity1"] }), { ...NEUTRAL_ENV, behind: true })).toBeGreaterThan(1);
   });
 
+  it("金色の存在感は、その金色に関係するプレーだけに効く", () => {
+    expect(playerTraitMult(mp({ skills: ["duelG"] }), NEUTRAL_ENV)).toBe(1);
+    expect(goldPresence(mp({ skills: ["duel2"] }))).toBeNull();
+    expect([...goldPresence(mp({ skills: ["duelG"] }))!.plays]).toEqual(["defense"]);
+    expect([...goldPresence(mp({ skills: ["headingG"] }))!.plays]).toEqual(["shoot"]);
+    expect([...goldPresence(mp({ skills: ["crossMaster"] }))!.plays]).toEqual(["pass"]);
+    const gk = goldPresence(mp({ skills: ["feedG"], mainPosition: "GK" }))!;
+    expect([...gk.plays]).toEqual(["gk"]);
+    expect(gk.mult).toBe(SKILL_EFFECTS.goldPresenceGk);
+  });
+
   it("キャプテンの効果は試合に出ていないと半分。キャプテンシーはキャプテンのときだけ", () => {
     const players: Record<string, MatchPlayer> = { c: mp({ id: "c", personality: "passionate", skills: ["captaincy2"] }), o: mp({ id: "o" }) };
     const t = { players, onPitch: ["c", "o"], captainId: "c" } as unknown as MatchTeamState;
     const on = captainEffect(t)!;
     expect(on.share).toBe(1);
     const behind = { ...NEUTRAL_ENV, behind: true };
-    expect(teamTraitMult(on, behind)).toBeCloseTo(1.02 * CAPTAIN.passionateBehind, 5);
+    expect(teamTraitMult(on, behind)).toBeCloseTo(SKILL_EFFECTS.captaincy.double * CAPTAIN.passionateBehind, 5);
     const off = captainEffect({ ...t, onPitch: ["o"] } as MatchTeamState)!;
     expect(off.share).toBe(CAPTAIN.offPitchShare);
     expect(teamTraitMult(off, behind)).toBeLessThan(teamTraitMult(on, behind));

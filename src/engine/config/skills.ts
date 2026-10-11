@@ -93,9 +93,27 @@ export const SKILL_LINE_TIERS: Record<SkillLine, { minus: SkillId | null; plus: 
 /** 段階ごとの「実効値に足す点数」（判定の尺度はほぼ 10） */
 export const TIER_POINTS = { minus: -3, plus: 2.5, double: 5, gold: 12, single: 4 };
 
+/** 金色の存在感が効くプレーの種類 */
+export type GoldPlay = "shoot" | "defense" | "pass" | "gk" | "setPiece" | "dribble";
+
+/** 金色ごとに、存在感が効くプレー（それ以外のプレーには効かない） */
+export const GOLD_PLAYS: Partial<Record<SkillId, readonly GoldPlay[]>> = {
+  duelG: ["defense"],
+  aerialDefG: ["defense"],
+  oneOnOneG: ["shoot"],
+  headingG: ["shoot"],
+  crossMaster: ["pass"],
+  ckMaster: ["pass"],
+  gkOneOnOneG: ["gk"],
+  feedG: ["gk"],
+  fkMaster: ["setPiece"],
+  pkG: ["setPiece"],
+  footG: ["shoot", "dribble"],
+};
+
 export const SKILL_EFFECTS = {
-  /** 金色を持つ選手は、その場面以外でも一段上の存在感がある（実効能力の倍率。調子と同じく圧縮の前に掛ける） */
-  goldPresence: 1.09,
+  /** 金色の存在感：その金色に関係するプレー（GOLD_PLAYS）でだけ、場面の効果に加えて実効能力が上がる（倍率。調子と同じく圧縮の前に掛ける） */
+  goldPresence: 1.15,
   /** GK は能力がそのまま失点に効くので、存在感を小さくする */
   goldPresenceGk: 1.04,
   /** 1 対 1 系の金色：決定機の質に足す */
@@ -110,7 +128,7 @@ export const SKILL_EFFECTS = {
   /** スタミナ持続系：試合中の体力の減りの倍率 */
   staminaKeep: { minus: 1.15, plus: 0.9, double: 0.8 },
   /** キャプテンシー系：キャプテンのとき、チーム全体の実効能力の倍率 */
-  captaincy: { plus: 1.01, double: 1.02 },
+  captaincy: { plus: 1.01, double: 1.015 },
   /** フィード系の金色：GK のロングボールがカウンターの起点になる率 */
   feedGoldCounterMult: 1.1,
   /** 逆足で蹴る場面の割合と、精度の減点（ふつう／逆足×）。両利きは減点なし */

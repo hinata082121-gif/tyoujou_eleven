@@ -7,7 +7,7 @@ import type { Slot } from "../config/formations";
 import { CAPTAIN } from "../config/captain";
 import { PERSONALITY_MATCH } from "../config/personality";
 import { PLAY_STYLE_DEFS, type PlayStyleMatchMod, type StyleBonus, type StylePick } from "../config/playStyle";
-import { SKILL_DEFS, SKILL_EFFECTS, TIER_POINTS } from "../config/skills";
+import { GOLD_PLAYS, SKILL_DEFS, SKILL_EFFECTS, TIER_POINTS, type GoldPlay } from "../config/skills";
 import { styleFitsPosition } from "../player/traits";
 import type { Personality, SkillId, SkillLine } from "../types";
 import { activeIds } from "./orders";
@@ -143,7 +143,7 @@ export interface ActorEnv {
 
 export const NEUTRAL_ENV: ActorEnv = { late: false, behind: false, underdog: false, bigStage: false };
 
-/** 選手自身の倍率（性格・大舞台系・逆境系） */
+/** 選手自身の倍率（性格・大舞台系・逆境系。金色の存在感は関係するプレーだけなので goldPresence で別に扱う） */
 export function playerTraitMult(p: MatchPlayer, env: ActorEnv): number {
   let m = 1;
   if (p.personality === "passionate" && env.late) m *= PERSONALITY_MATCH.passionateLateMult;
@@ -151,11 +151,18 @@ export function playerTraitMult(p: MatchPlayer, env: ActorEnv): number {
   if (p.personality === "cautious" && env.bigStage) m *= PERSONALITY_MATCH.cautiousBigStageMult;
   for (const id of p.skills ?? []) {
     const d = SKILL_DEFS[id];
-    if (d.tier === "gold") m *= p.mainPosition === "GK" ? SKILL_EFFECTS.goldPresenceGk : SKILL_EFFECTS.goldPresence;
     if (d.line === "bigStage" && env.bigStage) m *= SKILL_EFFECTS.bigStage[d.tier as "minus" | "plus" | "double"];
     if (d.line === "adversity" && env.behind) m *= SKILL_EFFECTS.adversity[d.tier as "plus" | "double"];
   }
   return m;
+}
+
+/** 金色の存在感：効くプレーと、そのプレーでの実効能力の倍率（金色がなければ null） */
+export function goldPresence(p: Pick<MatchPlayer, "skills" | "mainPosition">): { plays: ReadonlySet<GoldPlay>; mult: number } | null {
+  const plays = new Set<GoldPlay>();
+  for (const id of p.skills ?? []) for (const play of GOLD_PLAYS[id] ?? []) plays.add(play);
+  if (plays.size === 0) return null;
+  return { plays, mult: p.mainPosition === "GK" ? SKILL_EFFECTS.goldPresenceGk : SKILL_EFFECTS.goldPresence };
 }
 
 export interface CaptainEffect {

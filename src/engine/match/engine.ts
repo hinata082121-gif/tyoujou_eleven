@@ -15,7 +15,7 @@ import { positionRating } from "../player/rating";
 import { CAPTAIN } from "../config/captain";
 import { PERSONALITY_MATCH } from "../config/personality";
 import { LANE_THRESHOLDS } from "../config/playStyle";
-import { SKILL_DEFS, SKILL_EFFECTS } from "../config/skills";
+import { SKILL_DEFS, SKILL_EFFECTS, type GoldPlay } from "../config/skills";
 import {
   ALL_STATS,
   type DribbleMove,
@@ -38,6 +38,7 @@ import {
   NEUTRAL_ENV,
   pickMult,
   playerTraitMult,
+  goldPresence,
   singlePoints,
   staminaDrainMult,
   styleBonus,
@@ -426,8 +427,16 @@ interface Actor {
   lanes: LaneAffinity;
   /** スタイル・特殊能力・性格の補正（P2b） */
   t: ActorTraits;
+  /** 金色の存在感が効くプレーと、そのプレーでの実効能力（金色がなければ e と同じ） */
+  gp: ReadonlySet<GoldPlay>;
+  g: Stats;
   mp: MatchPlayer;
 }
+
+const NO_GOLD_PLAYS: ReadonlySet<GoldPlay> = new Set();
+
+/** そのプレーでの実効能力（関係する金色を持っていれば存在感の分だけ上がる） */
+const st = (a: Actor, play: GoldPlay): Stats => (a.gp.has(play) ? a.g : a.e);
 
 /** 区間の頭の状況（実効能力の倍率の条件） */
 export function actorEnv(state: MatchState, side: Side): ActorEnv {
@@ -455,12 +464,19 @@ function buildActors(team: MatchTeamState, env: ActorEnv = NEUTRAL_ENV): Actor[]
     const fat = fatigueFactor(p.stamina);
     // 性格・大舞台系・逆境系・キャプテンの倍率は、調子と同じく圧縮の前に掛ける
     const m = apt * (CONDITION_MULT[p.condition] ?? 1) * team.form * tm * playerTraitMult(p, env);
-    const e = {} as Stats;
-    for (const k of ALL_STATS) e[k] = (MATCH.skillPivot + (p.stats[k] * m - MATCH.skillPivot) * MATCH.skillCompression) * fat;
-    if (cap?.personality === "calm" && env.late) e.decision += CAPTAIN.calmLateDecision * cap.share;
+    const toEff = (mult: number) => {
+      const e = {} as Stats;
+      for (const k of ALL_STATS) e[k] = (MATCH.skillPivot + (p.stats[k] * mult - MATCH.skillPivot) * MATCH.skillCompression) * fat;
+      if (cap?.personality === "calm" && env.late) e.decision += CAPTAIN.calmLateDecision * cap.share;
+      return e;
+    };
+    const e = toEff(m);
+    // 金色の存在感：関係するプレーで使う実効能力を別に持つ
+    const gold = goldPresence(p);
+    const g = gold ? toEff(m * gold.mult) : e;
     const t = actorTraits(p, slot, cap?.id === id && cap.personality === "inspired");
     const foot = t.skills.has("footG") ? "both" : (p.foot ?? "R");
-    actors.push({ id, slot, e, height: p.heightCm, lanes: laneAffinity(slot.lane, effectiveMovement(p.playStyle, slot), foot), t, mp: p });
+    actors.push({ id, slot, e, height: p.heightCm, lanes: laneAffinity(slot.lane, effectiveMovement(p.playStyle, slot), foot), t, gp: gold?.plays ?? NO_GOLD_PLAYS, g, mp: p });
   });
   return actors;
 }
@@ -713,7 +729,7 @@ class SegmentSim {
   }
 
   private defScore(a: Actor) {
-    return weightedStats(a.e, MATCH.defWeights);
+    return weightedStats(st(a, "defense"), MATCH.defWeights);
   }
 
   private atkScore(a: Actor) {
@@ -763,18 +779,18 @@ class SegmentSim {
     return any.length > 0 ? any : def.actors.filter((a) => a.slot.line !== "GK");
   }
 
-  private aerialPower(a: Actor) {
-    return a.e.aerial + (a.height - 175) * MATCH.aerialHeightPerCm;
+  private aerialPower(a: Actor, s: Stats = a.e) {
+    return s.aerial + (a.height - 175) * MATCH.aerialHeightPerCm;
   }
 
   /** 攻撃側の空中戦（スタイル・ヘディング系・セットプレーの職人気質） */
   private aerialAtk(side: Side, a: Actor) {
-    return this.aerialPower(a) + styleBonus(a.t, "aerialAtk") + this.line(a, "heading") + (this.setPieceKick ? this.setPieceBonus(side, a) : 0);
+    return this.aerialPower(a, st(a, "shoot")) + styleBonus(a.t, "aerialAtk") + this.line(a, "heading") + (this.setPieceKick ? this.setPieceBonus(side, a) : 0);
   }
 
   /** 守備側の空中戦 */
   private aerialDef(a: Actor) {
-    return this.aerialPower(a) + styleBonus(a.t, "aerialDef") + this.line(a, "aerialDef");
+    return this.aerialPower(a, st(a, "defense")) + styleBonus(a.t, "aerialDef") + this.line(a, "aerialDef");
   }
 
   /** 1 対 1 の守備の値への足し算（スタイル・対人系・スライディングタックル） */
@@ -801,7 +817,8 @@ class SegmentSim {
     if (!counter && atk.team.tactics.buildUp === "buildUp") {
       const pressMult = MATCH.buildUpPressMult[def.team.tactics.press];
       if (pressMult > 0) {
-        const gkBuild = (atk.gk.e.pass + atk.gk.e.technique) / 2 + styleBonus(atk.gk.t, "gkBuild") + this.line(atk.gk, "feed");
+        const gs = st(atk.gk, "gk");
+        const gkBuild = (gs.pass + gs.technique) / 2 + styleBonus(atk.gk.t, "gkBuild") + this.line(atk.gk, "feed");
         const pressers = this.attackers(def);
         const pressQ = pressers.reduce((s, a) => s + (a.e.speed + a.e.stamina + a.e.decision) / 3, 0) / pressers.length;
         const cut = atk.actors.reduce((m, a) => m * (1 - a.t.buildUpErrorCut), 1);
@@ -831,8 +848,9 @@ class SegmentSim {
   /** パスの候補の価値（視野・判断。スタイルの視野・チャンスメイカーを足す） */
   private passValue(passer: Actor, defQ: number): number | null {
     const cm = passer.t.skills.has("chanceMaker");
-    const vision = passer.e.vision + styleBonus(passer.t, "vision") + (cm ? MATCH.visionPerCandidate : 0);
-    const v = bestPassValue(this.rng, vision, passer.e.decision, defQ);
+    const ps = st(passer, "pass");
+    const vision = ps.vision + styleBonus(passer.t, "vision") + (cm ? MATCH.visionPerCandidate : 0);
+    const v = bestPassValue(this.rng, vision, ps.decision, defQ);
     if (v === null) return null;
     return cm ? Math.min(1, v + SKILL_EFFECTS.chanceMakerValue * this.scale(passer)) : v;
   }
@@ -887,7 +905,7 @@ class SegmentSim {
     const cutters = this.defenders(def, "C");
     const intercept = cutters.reduce((m, a) => Math.max(m, this.single(a, "interception")), 0);
     const passAcc =
-      passer.e.pass +
+      st(passer, "pass").pass +
       styleBonus(passer.t, "pass") +
       (passer.t.personality === "cautious" ? PERSONALITY_MATCH.cautiousPass : 0) +
       (through ? this.single(passer, "throughPass") : 0) -
@@ -928,7 +946,8 @@ class SegmentSim {
   /** 受け手の動き出し（判断・スピード）と相手のマークの差でチャンスの質を決める */
   private receiveQuality(receiver: Actor, marker: Actor, value: number): number {
     const atkV = (receiver.e.decision + receiver.e.speed) / 2 + this.single(receiver, "offBall");
-    const defV = (marker.e.defense + marker.e.decision) / 2 + this.single(marker, "manMark");
+    const md = st(marker, "defense");
+    const defV = (md.defense + md.decision) / 2 + this.single(marker, "manMark");
     const edge = (atkV - defV) / MATCH.receiverEdgeScale;
     const edgeQ = clamp(0.5 + edge * 0.5, 0, 1);
     return clamp(value * (1 - MATCH.receiverEdgeWeight) + edgeQ * MATCH.receiverEdgeWeight, 0.05, 0.95);
@@ -954,8 +973,8 @@ class SegmentSim {
     this.touch(marker, lane);
     const move = this.dribbleMove(base, def, marker);
     const mv = this.movePoints(carrier, move);
-    const atkV = carrier.e.dribble * 0.6 + carrier.e.speed * 0.4 + styleBonus(carrier.t, "dribble") + mv;
-    const defV = marker.e.defense * 0.6 + marker.e.speed * 0.4 + this.duelDefBonus(marker);
+    const atkV = st(carrier, "dribble").dribble * 0.6 + st(carrier, "dribble").speed * 0.4 + styleBonus(carrier.t, "dribble") + mv;
+    const defV = st(marker, "defense").defense * 0.6 + st(marker, "defense").speed * 0.4 + this.duelDefBonus(marker);
     if (this.rng.chance(sigmoid((atkV - defV) / MATCH.dribbleScale))) {
       if (this.duelFoul(side, carrier, marker, minute)) return;
       this.emit(minute, side, "dribble", [carrier.id, marker.id], undefined, { move, skill: mv > 0 ? move : undefined });
@@ -993,8 +1012,8 @@ class SegmentSim {
     const mv = this.movePoints(carrier, move);
     // サイドの 1 対 1
     const footSide = carrier.t.skills.has("footG") ? SKILL_EFFECTS.footGoldSide * this.scale(carrier) : 0;
-    const atkV = carrier.e.dribble * 0.5 + carrier.e.speed * 0.5 + styleBonus(carrier.t, "dribble") + mv + switchBonus + (wantsCross ? 0 : footSide);
-    const defV = marker.e.defense * 0.6 + marker.e.speed * 0.4 + this.duelDefBonus(marker);
+    const atkV = st(carrier, "dribble").dribble * 0.5 + st(carrier, "dribble").speed * 0.5 + styleBonus(carrier.t, "dribble") + mv + switchBonus + (wantsCross ? 0 : footSide);
+    const defV = st(marker, "defense").defense * 0.6 + st(marker, "defense").speed * 0.4 + this.duelDefBonus(marker);
     if (!this.rng.chance(sigmoid((atkV - defV) / MATCH.dribbleScale + 0.4))) {
       const ms = this.ms(marker);
       if (ms) ms.duelWins++;
@@ -1052,12 +1071,14 @@ class SegmentSim {
     }
     if (kind === "cross" && crosser.t.skills.has("footG")) extra += (SKILL_EFFECTS.footGoldSide * sc) / 100;
     if (kind !== "cross") extra += this.setPieceBonus(side, crosser) / 100;
-    const crossQ = clamp((crosser.e.pass * 0.65 + crosser.e.kickPower * 0.35) / MATCH.crossQualityScale + bonus + extra + this.rng.range(-0.15, 0.15), 0, 1.2);
+    const cs = st(crosser, kind === "setPiece" ? "setPiece" : "pass");
+    const crossQ = clamp((cs.pass * 0.65 + cs.kickPower * 0.35) / MATCH.crossQualityScale + bonus + extra + this.rng.range(-0.15, 0.15), 0, 1.2);
     this.emit(minute, side, "cross", [crosser.id], undefined, { skill });
     const gk = def.gk;
-    const gkReach = sigmoid((gk.e.highBall + styleBonus(gk.t, "gkHighBall") + (gk.height - 180) * MATCH.aerialHeightPerCm - crossQ * 100 + MATCH.gkHighBallBias) / MATCH.gkHighBallScale);
+    const gs = st(gk, "gk");
+    const gkReach = sigmoid((gs.highBall + styleBonus(gk.t, "gkHighBall") + (gk.height - 180) * MATCH.aerialHeightPerCm - crossQ * 100 + MATCH.gkHighBallBias) / MATCH.gkHighBallScale);
     if (this.rng.chance(gkReach)) {
-      if (this.rng.chance(sigmoid((gk.e.catching - MATCH.gkCatchCrossBias) / MATCH.gkCatchCrossScale))) {
+      if (this.rng.chance(sigmoid((gs.catching - MATCH.gkCatchCrossBias) / MATCH.gkCatchCrossScale))) {
         this.emit(minute, other(side), "gkClaim", [gk.id]);
         return;
       }
@@ -1105,7 +1126,8 @@ class SegmentSim {
     const target = this.pickBy(this.attackers(atk, "C"), (a) => Math.max(1, this.aerialPower(a)) * pickMult(a.t, "longTarget"));
     const feed = fromGk ? this.line(kicker, "feed") : 0;
     const lp = styleBonus(kicker.t, "longPass") + feed;
-    const lb = longBallOutcome(this.rng, kicker.e.kickPower + lp, kicker.e.pass + lp);
+    const ks = st(kicker, fromGk ? "gk" : "pass");
+    const lb = longBallOutcome(this.rng, ks.kickPower + lp, ks.pass + lp);
     if (lb !== "ok") {
       this.emit(minute, side, lb === "short" ? "longBallShort" : "longBallLost", [kicker.id]);
       return this.turnover(side, minute);
@@ -1182,8 +1204,10 @@ class SegmentSim {
     // 1 対 1：GK の飛び出し（スピード・スタミナ）とフィジカル
     const gk = def.gk;
     this.emit(minute, side, "oneOnOne", [runner.id, gk.id]);
-    const gkV = (gk.e.speed + gk.e.stamina + gk.e.physical) / 3 + styleBonus(gk.t, "gkRush") + this.line(gk, "gkOneOnOne") + this.single(gk, "gkRush");
-    const runV = runner.e.dribble * 0.6 + runner.e.technique * 0.4 + this.line(runner, "oneOnOne");
+    const gs = st(gk, "gk");
+    const gkV = (gs.speed + gs.stamina + gs.physical) / 3 + styleBonus(gk.t, "gkRush") + this.line(gk, "gkOneOnOne") + this.single(gk, "gkRush");
+    const rs = st(runner, "shoot");
+    const runV = rs.dribble * 0.6 + rs.technique * 0.4 + this.line(runner, "oneOnOne");
     if (this.rng.chance(sigmoid((gkV - runV + MATCH.oneOnOneBias) / MATCH.oneOnOneScale))) {
       const ms = this.ms(gk);
       if (ms) ms.gkOneOnOneStops++;
@@ -1241,7 +1265,7 @@ class SegmentSim {
     if (field.length === 0) return;
     const kicker = field.reduce((b, a) => (a.e.pkSkill * 0.5 + a.e.shooting * 0.5 > b.e.pkSkill * 0.5 + b.e.shooting * 0.5 ? a : b), field[0]);
     atk.team.stats.shots++;
-    const r = resolvePkKick(this.rng, kicker.e, def.gk.e, pkScoutingTerm(atk.team) + this.pkKickerRead(kicker), pkScoutingTerm(def.team) + this.pkGkRead(def.gk));
+    const r = resolvePkKick(this.rng, st(kicker, "setPiece"), st(def.gk, "gk"), pkScoutingTerm(atk.team) + this.pkKickerRead(kicker), pkScoutingTerm(def.team) + this.pkGkRead(def.gk));
     this.ms(kicker)?.pkKicks.push(r.scored);
     this.assist = undefined;
     if (r.result === "goal") {
@@ -1290,7 +1314,7 @@ class SegmentSim {
   shoot(side: Side, shooter: Actor, q: number, minute: number, kind: ShotKind, depth: number) {
     const atk = this.ctx[side];
     const def = this.ctx[other(side)];
-    const e = shooter.e;
+    const e = st(shooter, kind === "freeKick" ? "setPiece" : "shoot");
     let acc: number;
     let power: number;
     switch (kind) {
@@ -1358,7 +1382,8 @@ class SegmentSim {
     atk.team.stats.onTarget++;
     this.bumpMomentum(side, MATCH.momentum.onTarget);
     const gk = def.gk;
-    const gkStats = { positioning: gk.e.positioning, saving: gk.e.saving + styleBonus(gk.t, "gkSave"), catching: gk.e.catching };
+    const gs = st(gk, "gk");
+    const gkStats = { positioning: gs.positioning, saving: gs.saving + styleBonus(gk.t, "gkSave"), catching: gs.catching };
     const outcome = goalkeeperOutcome(this.rng, { acc, power, q }, gkStats);
     if (outcome === "goal") return this.goal(side, shooter, minute, kind === "normal" ? undefined : kind, skill);
     if (outcome === "catch") {
