@@ -1,4 +1,7 @@
 import { FORMATIONS } from "../config/formations";
+import { MATCH } from "../config/match";
+import { CONDITION_MULT } from "../config/player";
+import { fatigueFactor } from "./fatigue";
 import { positionRating, isAvailable } from "../player/rating";
 import type { FormationId, Player, Position, TeamSetup, Tactics } from "../types";
 
@@ -58,6 +61,26 @@ export function pickBench(players: Player[], lineup: string[], size: number): st
 export function autoSetup(players: Player[], formation: FormationId, tactics: Tactics, benchSize = 9): TeamSetup {
   const lineup = pickBestEleven(players, formation);
   return { formation, tactics, lineup, bench: pickBench(players, lineup, benchSize) };
+}
+
+/**
+ * 試合の前半（開始時）と終盤（体力が 35 減ったころ）の疲労係数の平均。
+ * 体力を見て先発を選ぶとき（うまい監督の自動プレイ・本戦の CPU 校）に使う
+ */
+export function fitnessFactor(fitness: number): number {
+  const start = MATCH.startStaminaBase + MATCH.startStaminaFromFitness * fitness;
+  return (fatigueFactor(start) + fatigueFactor(start - 35)) / 2;
+}
+
+/** 調子と体力を見た並び（能力に調子・体力の係数をかけて選ぶ。選ばれる選手の能力そのものは変えない） */
+export function fitnessAwareSetup(players: Player[], formation: FormationId, tactics: Tactics, benchSize = 9): TeamSetup {
+  const judged = players.map((p) => {
+    const m = (CONDITION_MULT[p.condition] ?? 1) * fitnessFactor(p.fitness);
+    const stats = { ...p.stats };
+    for (const k of Object.keys(stats) as (keyof typeof stats)[]) stats[k] = stats[k] * m;
+    return { ...p, stats };
+  });
+  return autoSetup(judged, formation, tactics, benchSize);
 }
 
 /** 交代・フォーメーション変更時に、出場中の 11 人を新しいスロットに割り当て直す */

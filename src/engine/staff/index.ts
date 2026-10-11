@@ -3,6 +3,7 @@
  * 関数は GameState を直接書き換える（ゲーム全体の進行と同じ方針）。
  */
 import { REPUTATION_TABLE } from "../config/reputation";
+import { CPU_CONDITIONING_MEAN } from "../config/facilities";
 import { CPU_STAFF, ROLE_ABILITIES, STAFF_EFFECTS, STAFF_GROWTH, STAFF_LIFE, TEMP_COACH } from "../config/staff";
 import { ROLE_NAMES } from "../config/names";
 import { randomName } from "../player/generate";
@@ -234,10 +235,11 @@ const effect = (v: number) => clamp((v - STAFF_EFFECTS.effectFrom) / STAFF_EFFEC
 
 /**
  * 練習効率の補正（倍率）。ヘッドコーチの指導力は全員、GK コーチの GK 指導は GK 練習・PK 練習の GK に効く。
- * 合計は practiceCap で切る（インフレ防止）。
+ * 合計は practiceCap で切る（インフレ防止）。facilityBonus は設備（グラウンド・トレーニングルーム）の補正で、
+ * スタッフと合わせて practiceCap までにする（SPEC 15章。P2c）。
  */
-export function practiceStaffMult(staff: StaffState, p: Pick<Player, "mainPosition">, kind: PracticeKind): number {
-  let bonus = 0;
+export function practiceStaffMult(staff: StaffState, p: Pick<Player, "mainPosition">, kind: PracticeKind, facilityBonus = 0): number {
+  let bonus = facilityBonus;
   const head = headCoach(staff);
   if (head) bonus += effect(head.abilities.coaching) * STAFF_EFFECTS.headPractice;
   const gk = staffByRole(staff, "gk");
@@ -276,7 +278,13 @@ export function generateCpuStaff(rng: Rng, prestige: number): CpuStaff {
   const i = clamp(Math.round(prestige), 0, CPU_STAFF.tacticsMean.length - 1);
   const tactics = Math.round(clamp(rng.normal(CPU_STAFF.tacticsMean[i], CPU_STAFF.sd), 10, 95));
   const scouting = rng.chance(CPU_STAFF.noAnalystChance[i]) ? 0 : Math.round(clamp(rng.normal(CPU_STAFF.scoutingMean[i], CPU_STAFF.sd), 10, 95));
-  return { tactics, scouting };
+  return { tactics, scouting, conditioning: cpuConditioning(rng, prestige) };
+}
+
+/** CPU 校の体力管理（P2c。連戦の疲れの抜けやすさに使う） */
+export function cpuConditioning(rng: Rng, prestige: number): number {
+  const i = clamp(Math.round(prestige), 0, CPU_CONDITIONING_MEAN.length - 1);
+  return Math.round(clamp(rng.normal(CPU_CONDITIONING_MEAN[i], CPU_STAFF.sd), 5, 95));
 }
 
 export function driftCpuStaff(rng: Rng, s: CpuStaff) {

@@ -3,7 +3,7 @@
  */
 import { NOTE_TEMPLATE_NAMES } from "../config/names";
 import type { Rng } from "../rng";
-import { NOTE_LIMITS, type GameState, type NoteRule, type TacticsNote } from "../types";
+import { COMPETITION_KINDS, NOTE_LIMITS, type GameState, type NoteRule, type TacticsNote } from "../types";
 
 export type NoteTemplateId = keyof typeof NOTE_TEMPLATE_NAMES;
 export const NOTE_TEMPLATE_IDS = Object.keys(NOTE_TEMPLATE_NAMES) as NoteTemplateId[];
@@ -59,7 +59,7 @@ export function templateRule(id: NoteTemplateId, ruleId: string): NoteRule {
         name,
         enabled: true,
         conditions: [
-          { type: "competition", kinds: ["prefQualifier", "national"] },
+          { type: "competition", kinds: [...COMPETITION_KINDS] },
           { type: "score", state: "draw", by: 0 },
           { type: "minutesLeft", minutes: 3 },
         ],

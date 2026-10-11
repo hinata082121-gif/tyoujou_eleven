@@ -14,6 +14,12 @@ export function careerWeights(overall: number): Record<Career, number> {
 /** 試合に出た選手の体力の消耗 = base + (100 - 試合終了時の体力) × fromStamina */
 export const MATCH_FATIGUE = { base: 8, fromStamina: 0.25 };
 
+/**
+ * 連戦の疲労（SPEC 10.3、docs/PHASE2C_PLAN.md 8章）。
+ * 大会の本戦の間は、試合のない日（と試合の翌日までの 1 晩）を「調整日」として、この値 × 回復の倍率だけ回復する
+ */
+export const ADJUST_DAY_RECOVERY = 10;
+
 /** 年度替わりの体力の回復 */
 export const NEW_YEAR_FITNESS = 100;
 

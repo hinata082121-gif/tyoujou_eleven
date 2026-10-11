@@ -222,6 +222,7 @@ export function pickEvent(rng: Rng, type: "blue" | "red" | "white"): EventDef {
 
 /** 止まった通常マスの効果 */
 export function landOnSquare(ctx: EventContext, type: Exclude<SquareType, "major">): EventOutcome {
+  if (type === "branch") return { title: "分かれ道", text: "道が分かれている。", tone: "info" };
   if (type === "green") {
     for (const p of activePlayers(ctx.players)) p.fitness = clampFit(p.fitness + GREEN_RECOVERY);
     return { title: "体力回復", text: "しっかり体を休めた。部員の体力が回復した。", tone: "good" };

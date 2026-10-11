@@ -34,6 +34,9 @@ export const prefTier = (prefId: string): PrefTier => PREFECTURE_TIERS[prefId] ?
 /** 冬の全国大会の代表校の数（東京のみ 2） */
 export const PREFECTURE_REPS: Record<string, number> = { tokyo: 2 };
 export const prefReps = (prefId: string): number => PREFECTURE_REPS[prefId] ?? 1;
+/** 夏の全国大会の代表校の数（東京・神奈川・大阪は 2。開催県の +1 は年ごとに足す。P2c） */
+export const PREFECTURE_SUMMER_REPS: Record<string, number> = { tokyo: 2, kanagawa: 2, osaka: 2 };
+export const prefSummerReps = (prefId: string): number => PREFECTURE_SUMMER_REPS[prefId] ?? 1;
 
 /** 区分ごとの設定 */
 export const TIER_SETTINGS: Record<
@@ -64,7 +67,8 @@ export const TIER_SETTINGS: Record<
   small: {
     playerPrefSchools: { min: 16, max: 19 },
     playerPrefPrestige: [36, 30, 20, 10, 4, 0],
-    otherPrefSchools: 2,
+    /** P2c で 2 → 3（開催県になったときに夏の予選の意味がなくならないように） */
+    otherPrefSchools: 3,
     otherPrefPrestige: [8, 22, 34, 24, 10, 2],
   },
 };
@@ -109,16 +113,13 @@ export const PRESTIGE_DRIFT = {
  * CPU 校の試合のときの部員の状態（試合ごとに決める。保存はしない）。
  * プレイヤー校はすごろくで体力・調子・ケガが変わるので、CPU 校にも同じ程度の変動を持たせる。
  * 値は「うまい采配の自動プレイ」での自校の試合時の状態（調子はやや良い、ケガ 1 試合 0.2 人程度）に合わせた。
- * 体力は平均だけでなく散らばりもそろえる（P2a で疲労の影響を強めたため）：自校は練習が続いた後などに、
- * 2 割近くの試合を先発の平均体力 60 未満で戦う。CPU 校も tiredChance の確率で、チーム全体が疲れた状態で試合をする。
+ * P2c で「15% の試合でチーム全体が疲れた状態で来る」仕組みをやめ、体力の平均と散らばりを自校の実測に合わせた。
+ * 大会の本戦では、この値ではなく持ち越した体力を使う（School.carryFitness）。
  */
 export const CPU_MATCH_CONDITION = {
-  fitnessMean: 82,
-  fitnessSd: 9,
+  fitnessMean: 76,
+  fitnessSd: 13,
   fitnessMin: 15,
-  /** チーム全体が疲れている試合の確率と、そのときの体力の平均 */
-  tiredChance: 0.15,
-  tiredMean: 40,
   /** 調子 -2〜2 の出やすさ */
   conditionWeights: [4, 16, 48, 24, 8],
   /** ケガなどで出られない確率（1 人あたり） */

@@ -113,13 +113,23 @@ export const COMPETITION_NAMES = {
   winter: "冬の全国大会",
   prefQualifier: "冬の全国大会 予選",
   national: "冬の全国大会",
-  /** P2 */
   summer: "夏の全国大会",
+  summerQualifier: "夏の全国大会 予選",
+  summerNational: "夏の全国大会",
+  rookie: "新人戦",
+  rookiePref: "新人戦 県大会",
+  rookieRegion: "新人戦 地域大会",
   practice: "練習試合",
 } as const;
 
 /** 都道府県予選の表示名（例：冬の全国大会 東京都予選） */
 export const prefQualifierName = (prefName: string) => `${COMPETITION_NAMES.winter} ${prefName}予選`;
+/** 夏の全国大会の都道府県予選（例：夏の全国大会 東京都予選） */
+export const summerQualifierName = (prefName: string) => `${COMPETITION_NAMES.summer} ${prefName}予選`;
+/** 新人戦の県大会（例：新人戦 東京都大会） */
+export const rookiePrefName = (prefName: string) => `${COMPETITION_NAMES.rookie} ${prefName}大会`;
+/** 新人戦の地域大会（例：新人戦 関東地域大会。北海道は「全道大会」） */
+export const rookieRegionName = (regionName: string) => (regionName === "北海道" ? `${COMPETITION_NAMES.rookie} 全道大会` : `${COMPETITION_NAMES.rookie} ${regionName}地域大会`);
 
 /**
  * ラウンドの表示名。qualifiers が 2 以上（東京の予選など）のときは、最終ラウンドを「代表決定戦」と呼ぶ
@@ -201,6 +211,7 @@ export const SQUARE_NAMES: Record<SquareType, string> = {
   green: "緑マス",
   yellow: "黄マス",
   training: "特訓マス",
+  branch: "分岐マス",
   major: "大マス",
 };
 
@@ -209,6 +220,12 @@ export const MAJOR_NAMES: Record<MajorKind, string> = {
   practiceMatch: "練習試合",
   prefQualifier: "予選",
   national: "全国大会",
+  summerQualifier: "夏の予選",
+  summerNational: "夏の全国",
+  rookiePref: "新人戦",
+  rookieRegion: "新人戦（地域）",
+  camp: "合宿",
+  scoutReply: "スカウトの返事",
   graduation: "卒業式",
   yearEnd: "年度末",
 };
@@ -274,7 +291,41 @@ export const NOTE_ACTION_NAMES = {
   position: "ポジション変更",
 } as const;
 
-export const MATCH_KIND_NAMES = { practice: "練習試合", prefQualifier: "予選", national: "全国大会" } as const;
+export const MATCH_KIND_NAMES = {
+  practice: "練習試合",
+  prefQualifier: "冬の予選",
+  national: "冬の全国大会",
+  summerQualifier: "夏の予選",
+  summerNational: "夏の全国大会",
+  rookiePref: "新人戦（県）",
+  rookieRegion: "新人戦（地域）",
+} as const;
+
+// ---- 設備（P2c） ----
+export const FACILITY_NAMES = { ground: "グラウンド", trainingRoom: "トレーニングルーム", careRoom: "ケアルーム", dorm: "寮" } as const;
+/** グラウンドの段階の名前（SPEC 15章） */
+export const GROUND_LEVEL_NAMES = ["土", "人工芝", "ナイター設備付き", "人工芝2面＋ナイター設備"] as const;
+
+// ---- 合宿・分岐・スカウト（P2c） ----
+export const CAMP_NAMES = { summer: "夏合宿", winter: "冬合宿" } as const;
+export const POSITION_GROUP_NAMES = { GK: "GK", DF: "DF", MF: "MF", FW: "FW" } as const;
+export const BRANCH_THEME_NAMES = { normal: "ふつうの道", blue: "青の道", training: "特訓の道", rest: "休養の道", yellow: "集中の道" } as const;
+export const AFFILIATION_NAMES = { juniorHigh: "中学の部活", townClub: "街クラブ", juniorYouth: "ジュニアユース" } as const;
+export const ACHIEVEMENT_NAMES = ["実績なし", "県大会", "地域大会", "全国大会"] as const;
+export const REACTION_NAMES = { good: "良好", normal: "普通", bad: "悪い" } as const;
+/** ジュニアユースから上がる架空のユースチーム */
+export const YOUTH_TEAM_NAME = "ユースチーム";
+export const METER_NAMES = {
+  attack: "攻撃",
+  pass: "パス",
+  dribble: "ドリブル",
+  defense: "守備",
+  physical: "フィジカル",
+  speed: "スピード",
+  saving: "セービング",
+  kick: "キック",
+  highBall: "ハイボール",
+} as const;
 
 export const TACTICS_LABELS = {
   attack: { attacking: "攻撃的", balanced: "バランス", defensive: "守備的" },

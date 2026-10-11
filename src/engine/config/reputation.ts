@@ -1,12 +1,15 @@
-import type { ReputationLevel, SchoolRank } from "../types";
+import type { MatchKind, ReputationLevel, SchoolRank } from "../types";
 
-/** 評判ごとの手札・1学年の人数（SPEC 6章） */
-export const REPUTATION_TABLE: Record<ReputationLevel, { handSize: number; gradeSize: number; scholarshipSlots: number; staffSlots: number }> = {
-  0: { handSize: 4, gradeSize: 9, scholarshipSlots: 2, staffSlots: 1 },
-  1: { handSize: 5, gradeSize: 10, scholarshipSlots: 3, staffSlots: 1 },
-  2: { handSize: 6, gradeSize: 11, scholarshipSlots: 3, staffSlots: 2 },
-  3: { handSize: 7, gradeSize: 13, scholarshipSlots: 4, staffSlots: 2 },
-  4: { handSize: 8, gradeSize: 14, scholarshipSlots: 5, staffSlots: 3 },
+/** スカウト範囲（SPEC 6章。P2c） */
+export type ScoutScope = "pref" | "region" | "adjacent" | "national";
+
+/** 評判ごとの手札・1学年の人数・特待生枠・スカウトカード・スカウト範囲・スタッフ枠（SPEC 6章） */
+export const REPUTATION_TABLE: Record<ReputationLevel, { handSize: number; gradeSize: number; scholarshipSlots: number; scoutCards: number; scoutScope: ScoutScope; staffSlots: number }> = {
+  0: { handSize: 4, gradeSize: 9, scholarshipSlots: 2, scoutCards: 2, scoutScope: "pref", staffSlots: 1 },
+  1: { handSize: 5, gradeSize: 10, scholarshipSlots: 3, scoutCards: 3, scoutScope: "pref", staffSlots: 1 },
+  2: { handSize: 6, gradeSize: 11, scholarshipSlots: 3, scoutCards: 4, scoutScope: "region", staffSlots: 2 },
+  3: { handSize: 7, gradeSize: 13, scholarshipSlots: 4, scoutCards: 5, scoutScope: "adjacent", staffSlots: 2 },
+  4: { handSize: 8, gradeSize: 14, scholarshipSlots: 5, scoutCards: 6, scoutScope: "national", staffSlots: 3 },
 };
 
 /** 評判ゲージ（0〜100）の動き */
@@ -17,9 +20,9 @@ export const REPUTATION_GAUGE = {
   /** 降格した直後のゲージ */
   afterDemotion: 70,
   /** 勝利の基本値（試合の種類別） */
-  winBase: { practice: 7, prefQualifier: 9, national: 14 },
+  winBase: { practice: 7, prefQualifier: 9, national: 14, summerQualifier: 8, summerNational: 12, rookiePref: 5, rookieRegion: 7 } as Record<MatchKind, number>,
   /** 敗戦の基本値（試合の種類別） */
-  lossBase: { practice: 3, prefQualifier: 5, national: 3 },
+  lossBase: { practice: 3, prefQualifier: 5, national: 3, summerQualifier: 4, summerNational: 3, rookiePref: 2, rookieRegion: 2 } as Record<MatchKind, number>,
   /** 引き分け（練習試合）で格上相手なら少し上がる */
   drawVsStronger: 2,
   /** PK 戦での敗戦は下がり幅を小さくする */
@@ -40,6 +43,13 @@ export const REPUTATION_GAUGE = {
     prefChampion: 30,
     nationalWinPerRound: 6,
     nationalChampion: 50,
+    /** 夏の全国大会（P2c） */
+    summerPrefChampion: 20,
+    summerNationalWinPerRound: 5,
+    summerNationalChampion: 40,
+    /** 新人戦（P2c） */
+    rookiePrefChampion: 8,
+    rookieRegionChampion: 15,
   },
 };
 

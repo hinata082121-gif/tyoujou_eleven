@@ -3,7 +3,7 @@
  */
 import { FORMATIONS } from "../config/formations";
 import { AUTO_PICK_NAMES, MATCH_KIND_NAMES, POSITION_NAMES, TACTICS_ITEM_NAMES, TACTICS_LABELS } from "../config/names";
-import type { FormationId, NoteAction, NoteCondition, NoteRule, PlayerRef, Tactics } from "../types";
+import { COMPETITION_KINDS, type FormationId, type NoteAction, type NoteCondition, type NoteRule, type PlayerRef, type Tactics } from "../types";
 
 /** 選手の ID から名前を引く関数（いなければ undefined） */
 export type NameOf = (id: string) => string | undefined;
@@ -32,6 +32,8 @@ export function describeCondition(c: NoteCondition, nameOf: NameOf): string {
     case "subsLeft":
       return `交代枠が${c.atLeast}人以上残っている`;
     case "competition":
+      // 公式戦（大会）を全部選んでいれば「公式戦」とまとめる
+      if (COMPETITION_KINDS.every((k) => c.kinds.includes(k))) return (c.kinds.includes("practice") ? "すべて" : "公式戦") + "の試合";
       return c.kinds.map((k) => MATCH_KIND_NAMES[k]).join("・") + "の試合";
   }
 }

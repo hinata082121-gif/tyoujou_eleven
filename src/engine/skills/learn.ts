@@ -103,14 +103,19 @@ export function trainingSquare(rng: Rng, players: Player[], practice: PracticeKi
   return out;
 }
 
-/** 合宿（P2c の差し込み口）：練習方針の候補で、複数の選手が判定する。カレンダーからはまだ呼ばない */
-export function campLearning(rng: Rng, players: Player[], policy: PracticeKind[], base = SKILL_LEARN.trainingBase): LearnEvent[] {
+/** 合宿（P2c）：練習方針の候補で、複数の選手が判定する。goldBase を渡すと、○◎で身につかなかった選手は金色も判定する */
+export function campLearning(rng: Rng, players: Player[], policy: PracticeKind[], base = SKILL_LEARN.trainingBase, goldBase = 0): LearnEvent[] {
   const pool = [...new Set(policy.flatMap((k) => TRAINING_POOLS[k]))];
+  const golds = [...new Set(policy.flatMap((k) => TRAINING_GOLDS[k]))];
   const out: LearnEvent[] = [];
   for (const p of players) {
     if (p.status !== "active" || p.injuryDays > 0) continue;
     const learned = tryLearn(rng, p, pool, base);
     if (learned) out.push(ev(p, learned));
+    else if (goldBase > 0) {
+      const gold = tryLearnGold(rng, p, golds, goldBase);
+      if (gold) out.push(ev(p, gold));
+    }
   }
   return out;
 }

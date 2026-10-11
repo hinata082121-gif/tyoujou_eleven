@@ -77,4 +77,6 @@ export interface CpuStaff {
   tactics: number;
   /** 0 は分析担当なし */
   scouting: number;
+  /** 体力管理（連戦の疲れの抜けやすさ。P2c。古いセーブには無い） */
+  conditioning?: number;
 }

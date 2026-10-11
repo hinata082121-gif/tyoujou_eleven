@@ -66,7 +66,7 @@ export function graduate(state: GameState, rng: Rng): Alumnus[] {
 }
 
 /** 年度替わり：進級・新入生・CPU 校の入れ替え・新しいカレンダー */
-export function rolloverPlayerSchool(state: GameState, rng: Rng): Player[] {
+export function rolloverPlayerSchool(state: GameState, rng: Rng, scholars: Player[] = []): Player[] {
   const school = playerSchool(state);
   // 卒業式を経ていない 3 年生がいれば、ここで卒業扱いにする
   if (school.players.some((p) => p.grade === 3)) graduate(state, rng);
@@ -76,7 +76,9 @@ export function rolloverPlayerSchool(state: GameState, rng: Rng): Player[] {
     p.fitness = NEW_YEAR_FITNESS;
     p.status = "active";
   }
-  const freshmen = generalFreshmen(rng, gradeSize(state.reputation), state.year);
+  // 特待生（P2c）は学年の人数に含める。一般入部はその残り
+  const general = generalFreshmen(rng, Math.max(0, gradeSize(state.reputation) - scholars.length), state.year);
+  const freshmen = [...scholars.map((p) => ({ ...p, grade: 1 as const, enrolledYear: state.year, admission: "scholarship" as const })), ...general];
   school.players.push(...freshmen);
   return freshmen;
 }
@@ -94,7 +96,8 @@ export function chooseCaptain(state: GameState) {
   school.captainId = undefined;
 }
 
-export function rolloverCpuSchools(state: GameState, rng: Rng) {
-  for (const s of Object.values(state.schools)) if (!s.isPlayer) advanceCpuSchool(rng, s, state.year);
+/** incoming：スカウトの取り合いで CPU 校に進んだ中学生（学校 ID → 選手） */
+export function rolloverCpuSchools(state: GameState, rng: Rng, incoming: Record<string, Player[]> = {}) {
+  for (const s of Object.values(state.schools)) if (!s.isPlayer) advanceCpuSchool(rng, s, state.year, incoming[s.id]);
 }
 
