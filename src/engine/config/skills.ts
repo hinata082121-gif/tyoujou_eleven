@@ -255,20 +255,21 @@ export const TRAINING_GOLDS: Record<PracticeKind, SkillId[]> = {
 };
 
 /** 金色の前提（下の段階）と成果の条件（PLAN 5.4） */
-export const GOLD_REQUIREMENTS: Partial<Record<SkillId, { requires?: SkillId; feat?: { key: "oneOnOneGoals" | "headerGoals" | "fkGoals" | "cornerAssists" | "crossAssists" | "feedAssists" | "duelWins" | "aerialWins" | "gkOneOnOneStops" | "pkStreak"; count: number } }>> = {
+export const GOLD_REQUIREMENTS: Partial<Record<SkillId, { requires?: SkillId; chanceMult?: number; feat?: { key: "oneOnOneGoals" | "headerGoals" | "fkGoals" | "cornerAssists" | "crossAssists" | "feedAssists" | "duelWins" | "aerialWins" | "gkOneOnOneStops" | "pkStreak"; count: number } }>> = {
   // P2c：公式戦が増えた（夏の大会・新人戦）ので回数を上げ、種類ごとの難しさをそろえた。
   // 一般入部の卒業生のうち、成果の条件を満たす人がどれも 3〜5% 前後になる回数（balance で測定）。
-  // 守備の 1 対 1・空中戦・GK の 1 対 1 は 1 試合に何度も起きるので回数が大きい
+  // 守備の 1 対 1・空中戦・GK の 1 対 1 は 1 試合に何度も起きるので回数が大きい。
+  // FK・CK・クロスの名手は前提の特殊能力（◎）がなく条件をそろえる人が多いので、判定の確率を下げて（chanceMult）ほかとそろえる
   oneOnOneG: { requires: "oneOnOne2", feat: { key: "oneOnOneGoals", count: 2 } },
   headingG: { requires: "heading2", feat: { key: "headerGoals", count: 2 } },
-  duelG: { requires: "duel2", feat: { key: "duelWins", count: 9 } },
-  aerialDefG: { requires: "aerialDef2", feat: { key: "aerialWins", count: 7 } },
-  gkOneOnOneG: { requires: "gkOneOnOne2", feat: { key: "gkOneOnOneStops", count: 10 } },
+  duelG: { requires: "duel2", feat: { key: "duelWins", count: 6 } },
+  aerialDefG: { requires: "aerialDef2", feat: { key: "aerialWins", count: 5 } },
+  gkOneOnOneG: { requires: "gkOneOnOne2", feat: { key: "gkOneOnOneStops", count: 7 } },
   feedG: { requires: "feed2", feat: { key: "feedAssists", count: 1 } },
   pkG: { requires: "pk2", feat: { key: "pkStreak", count: 2 } },
-  fkMaster: { feat: { key: "fkGoals", count: 1 } },
-  ckMaster: { feat: { key: "cornerAssists", count: 1 } },
-  crossMaster: { feat: { key: "crossAssists", count: 2 } },
+  fkMaster: { chanceMult: 0.4, feat: { key: "fkGoals", count: 1 } },
+  ckMaster: { chanceMult: 0.4, feat: { key: "cornerAssists", count: 1 } },
+  crossMaster: { chanceMult: 0.4, feat: { key: "crossAssists", count: 2 } },
 };
 
 /** 試合での成果で段階が上がる条件 */

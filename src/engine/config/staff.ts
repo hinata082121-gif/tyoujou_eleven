@@ -105,8 +105,8 @@ export const STAFF_EFFECTS = {
   /** 練習効率 = +(能力 − effectFrom) / effectRange × perRole（effectFrom 以下は 0） */
   effectFrom: 20,
   effectRange: 80,
-  /** ヘッドコーチの指導力による全体の練習効率（初期案 0.1。最高のスタッフで総合 B 以上が 12% 程度になるよう調整） */
-  headPractice: 0.07,
+  /** ヘッドコーチの指導力による全体の練習効率（初期案 0.1。最高のスタッフで総合 B 以上が 12% 程度になるよう調整。P2c で合宿・設備が加わったので 0.07 → 0.04） */
+  headPractice: 0.04,
   /** GK コーチの GK 指導による、GK の練習効率（GK 練習・PK 練習） */
   gkPractice: 0.1,
   /** GK コーチによる、PK 練習での GK の PK 駆け引きの伸び */

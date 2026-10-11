@@ -121,6 +121,11 @@ export const MATCH = {
   /** 必要な飛距離（キック力で比べる） */
   longDistanceMin: 40,
   longDistanceMax: 70,
+  /**
+   * ロングボール主体でラインが高いと、全体を押し上げて前線までの距離が近いぶん、ロングボールが届きやすい（キック力に足す）。
+   * P2c：パワープレイ（ライン高・ロングボール）のロングボールの 6 割が届かず、効果が +2.6pt にとどまっていた
+   */
+  longHighLineReach: 12,
   longAccScale: 12,
   longAccBias: 38,
   aerialHeightPerCm: 0.8,

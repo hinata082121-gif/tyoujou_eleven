@@ -55,7 +55,7 @@ export function goldReady(p: Player, id: SkillId): boolean {
 /** 金色の判定の確率（条件をそろえていなければ 0。ひらめき型は上がる） */
 export function goldChance(p: Player, id: SkillId, base: number): number {
   if (!goldReady(p, id)) return 0;
-  let c = base;
+  let c = base * (GOLD_REQUIREMENTS[id]?.chanceMult ?? 1);
   if (PERSONALITY_SKILLS[p.personality].includes(id)) c *= SKILL_LEARN.personalityMult;
   if (p.personality === "inspired") c *= INSPIRED_GOLD_MULT;
   return Math.min(0.95, c);

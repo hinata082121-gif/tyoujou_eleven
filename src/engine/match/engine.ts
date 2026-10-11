@@ -1127,7 +1127,8 @@ class SegmentSim {
     const feed = fromGk ? this.line(kicker, "feed") : 0;
     const lp = styleBonus(kicker.t, "longPass") + feed;
     const ks = st(kicker, fromGk ? "gk" : "pass");
-    const lb = longBallOutcome(this.rng, ks.kickPower + lp, ks.pass + lp);
+    const reach = atk.team.tactics.line === "high" && atk.team.tactics.buildUp === "long" ? MATCH.longHighLineReach : 0;
+    const lb = longBallOutcome(this.rng, ks.kickPower + lp + reach, ks.pass + lp);
     if (lb !== "ok") {
       this.emit(minute, side, lb === "short" ? "longBallShort" : "longBallLost", [kicker.id]);
       return this.turnover(side, minute);
