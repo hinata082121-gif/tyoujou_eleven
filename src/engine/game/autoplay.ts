@@ -41,7 +41,7 @@ import {
   confirmCamp,
   confirmScoutReply,
   inTournamentRun,
-  useScoutCard,
+  visitScout,
   type MatchSummary,
 } from ".";
 import { defaultCampPolicy } from "../camp";
@@ -295,7 +295,7 @@ export function autoStep(state: GameState, stats: AutoplayStats, policy: AutoPol
   }
   if (opts.scout && state.scout && !state.scout.replied && state.scout.cards > 0) {
     const id = chooseScoutTarget(state, policy);
-    if (id && useScoutCard(state, id)) return;
+    if (id && visitScout(state, id)) return;
   }
   if (p?.type === "graduation") {
     confirmGraduation(state);

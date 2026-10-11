@@ -828,7 +828,7 @@ function beginScout(state: GameState, rng: Rng) {
 }
 
 /** スカウトカードを使って候補を訪問する（1 日進む。その日は練習しない） */
-export function useScoutCard(state: GameState, candidateId: string): { visit: VisitResult; card: CardResult } | null {
+export function visitScout(state: GameState, candidateId: string): { visit: VisitResult; card: CardResult } | null {
   const sc = state.scout;
   if (!sc || sc.replied || sc.cards <= 0 || state.pending || state.activeMatch || inTournamentRun(state)) return null;
   return withRng(state, (rng) => {
