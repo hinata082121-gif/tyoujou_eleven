@@ -1,5 +1,5 @@
 import type { RngState } from "../rng";
-import type { Aptitude, Condition, FormationId, MatchKind, MatchRules, NoteRule, Position, SchoolRank, Stats, Tactics } from "../types";
+import type { Aptitude, Condition, DribbleMove, Foot, FormationId, MatchKind, MatchRules, NoteRule, Personality, PlayStyle, Position, SchoolRank, SkillId, Stats, Tactics } from "../types";
 
 export type Side = 0 | 1;
 
@@ -20,7 +20,54 @@ export interface MatchPlayer {
   sentOff?: boolean;
   /** 試合中のケガ（ピッチを離れる。交代するまで枠は空き） */
   injury?: { minute: number; severity: InjurySeverity };
+  // ---- P2b（P2a のセーブに残っている試合には無い。無ければ効果なし） ----
+  personality?: Personality;
+  playStyle?: PlayStyle;
+  styleProficiency?: number;
+  skills?: SkillId[];
+  foot?: Foot;
+  /** 出場した時間（分） */
+  minutes?: number;
+  /** 出場中の記録（スタイル別の貢献の集計と、試合での成果に使う） */
+  ms?: MatchPlayerStats;
 }
+
+export interface MatchPlayerStats {
+  assists: number;
+  steals: number;
+  duelWins: number;
+  aerialWins: number;
+  /** 関わったレーン（自チームの枠から見た 左・中央・右） */
+  laneTouches: [number, number, number];
+  oneOnOneGoals: number;
+  headerGoals: number;
+  fkGoals: number;
+  cornerAssists: number;
+  crossAssists: number;
+  feedAssists: number;
+  gkOneOnOneStops: number;
+  /** PK（試合中・PK 戦）を蹴った結果の順 */
+  pkKicks: boolean[];
+  /** PK 戦で止めた本数（GK） */
+  pkShootoutSaves: number;
+}
+
+export const emptyMatchPlayerStats = (): MatchPlayerStats => ({
+  assists: 0,
+  steals: 0,
+  duelWins: 0,
+  aerialWins: 0,
+  laneTouches: [0, 0, 0],
+  oneOnOneGoals: 0,
+  headerGoals: 0,
+  fkGoals: 0,
+  cornerAssists: 0,
+  crossAssists: 0,
+  feedAssists: 0,
+  gkOneOnOneStops: 0,
+  pkKicks: [],
+  pkShootoutSaves: 0,
+});
 
 export type InjurySeverity = "light" | "medium" | "severe";
 
@@ -77,6 +124,10 @@ export interface MatchTeamState {
   /** ケガの確率の倍率（フィジカルコーチ） */
   injuryMult?: number;
   note?: NoteMatchState;
+  /** キャプテン（P2b） */
+  captainId?: string;
+  /** 慎重派のキャプテン：失点した後、この分まで相手に流れが行く量を減らす */
+  momentumGuardUntil?: number;
   stats: {
     shots: number;
     onTarget: number;
@@ -144,7 +195,10 @@ export type MatchEventType =
   | "injury"
   | "shortHanded"
   | "note"
-  | "position";
+  | "position"
+  | "throughBall"
+  | "switchPlay"
+  | "longThrow";
 
 export interface MatchEvent {
   minute: number;
@@ -156,6 +210,12 @@ export interface MatchEvent {
   score?: [number, number];
   /** 付加情報（シュートの種類など） */
   note?: string;
+  /** 発動した特殊能力（速報と 3D 再生用） */
+  skill?: SkillId;
+  /** ドリブルの技（P4 のモーション用。技を持っていない選手の突破にも場面に合う技を入れる） */
+  move?: DribbleMove;
+  /** 得点のアシスト（選手 ID） */
+  assist?: string;
 }
 
 export interface PkKick {
@@ -195,6 +255,8 @@ export interface MatchState {
   winner?: Side | null;
   /** 大会の種類（作戦ノートの条件用） */
   kind?: MatchKind;
+  /** 大舞台（全国大会・県予選の決勝。P2b） */
+  bigStage?: boolean;
 }
 
 /** ゲームの中で進行中の試合 */

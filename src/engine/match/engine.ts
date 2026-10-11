@@ -12,7 +12,40 @@ import { rankIndex } from "../school/strength";
 import { Rng } from "../rng";
 import { STAFF_EFFECTS } from "../config/staff";
 import { positionRating } from "../player/rating";
-import { ALL_STATS, type MatchKind, type MatchRules, type Player, type SchoolRank, type Stats, type Tactics, type TeamSetup } from "../types";
+import { CAPTAIN } from "../config/captain";
+import { PERSONALITY_MATCH } from "../config/personality";
+import { LANE_THRESHOLDS } from "../config/playStyle";
+import { SKILL_DEFS, SKILL_EFFECTS } from "../config/skills";
+import {
+  ALL_STATS,
+  type DribbleMove,
+  type LaneAffinity,
+  type MatchKind,
+  type MatchRules,
+  type Player,
+  type SchoolRank,
+  type SkillId,
+  type SkillLine,
+  type Stats,
+  type Tactics,
+  type TeamSetup,
+} from "../types";
+import { effectiveMovement, laneAffinity, laneIndex } from "./lanes";
+import {
+  actorTraits,
+  captainEffect,
+  linePoints,
+  NEUTRAL_ENV,
+  pickMult,
+  playerTraitMult,
+  singlePoints,
+  staminaDrainMult,
+  styleBonus,
+  teamTraitMult,
+  type ActorEnv,
+  type ActorTraits,
+  type CaptainEffect,
+} from "./traits";
 import { decideAi } from "./ai";
 import { assignToSlots } from "./lineup";
 import { evaluateNote } from "./note";
@@ -21,7 +54,7 @@ export { fatigueFactor };
 import { activeIds, isOut, pendingOf } from "./orders";
 import { autoPkOrder, pkDecided, resolvePkKick } from "./pk";
 export { cancelSubstitution, queueFormation, queueSubstitution, queueTactics, subsRemaining, activeIds, isOut } from "./orders";
-import type { InjurySeverity, MatchEvent, MatchEventType, MatchPlayer, MatchState, MatchTeamState, NoteMatchState, Side } from "./types";
+import { emptyMatchPlayerStats, type InjurySeverity, type MatchEvent, type MatchEventType, type MatchPlayer, type MatchPlayerStats, type MatchState, type MatchTeamState, type NoteMatchState, type Side } from "./types";
 
 const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -44,6 +77,8 @@ export interface TeamInput {
   injuryMult?: number;
   /** 作戦ノート（自校のみ） */
   note?: Omit<NoteMatchState, "fired" | "stopped">;
+  /** キャプテン（P2b） */
+  captainId?: string;
 }
 
 function toMatchPlayer(p: Player): MatchPlayer {
@@ -57,6 +92,13 @@ function toMatchPlayer(p: Player): MatchPlayer {
     condition: p.condition,
     stamina: clamp(MATCH.startStaminaBase + MATCH.startStaminaFromFitness * p.fitness, 0, 100),
     goals: 0,
+    personality: p.personality,
+    playStyle: p.playStyle,
+    styleProficiency: p.styleProficiency,
+    skills: [...p.skills],
+    foot: p.foot,
+    minutes: 0,
+    ms: emptyMatchPlayerStats(),
   };
 }
 
@@ -85,6 +127,7 @@ function makeTeam(input: TeamInput, benchSize: number, form: number): MatchTeamS
     aiQuality: input.aiQuality ?? DEFAULT_AI_QUALITY,
     injuryMult: input.injuryMult ?? 1,
     ...(input.note ? { note: { ...input.note, fired: [], stopped: [] } } : {}),
+    ...(input.captainId && players[input.captainId] ? { captainId: input.captainId } : {}),
     stats: { shots: 0, onTarget: 0, possessionSum: 0, segments: 0, corners: 0, zones: { attacks: [0, 0, 0], chances: [0, 0, 0] } },
   };
 }
@@ -92,7 +135,8 @@ function makeTeam(input: TeamInput, benchSize: number, form: number): MatchTeamS
 /** スタッフの値を持たないチーム（バランス検証など）の AI の質。Phase 1 の CPU の采配と同じ動きになる値 */
 export const DEFAULT_AI_QUALITY = MATCH.ai.baseQuality;
 
-export function createMatch(rules: MatchRules, seed: Rng, home: TeamInput, away: TeamInput, kind?: MatchKind): MatchState {
+/** bigStage：全国大会・県予選の決勝（大舞台系・慎重派の効果） */
+export function createMatch(rules: MatchRules, seed: Rng, home: TeamInput, away: TeamInput, kind?: MatchKind, bigStage = false): MatchState {
   const rng = seed.fork("match");
   const form = () => clamp(rng.normal(1, MATCH.matchDayFormSd), 0.8, 1.2);
   const state: MatchState = {
@@ -108,6 +152,7 @@ export function createMatch(rules: MatchRules, seed: Rng, home: TeamInput, away:
     events: [{ minute: 0, side: 0, type: "kickoff" }],
   };
   if (kind) state.kind = kind;
+  if (bigStage) state.bigStage = true;
   return state;
 }
 
@@ -377,10 +422,29 @@ interface Actor {
   /** 実効能力（適性・疲労・調子込み） */
   e: Stats;
   height: number;
+  /** レーンへの関わりやすさ（動きの範囲。P2b） */
+  lanes: LaneAffinity;
+  /** スタイル・特殊能力・性格の補正（P2b） */
+  t: ActorTraits;
+  mp: MatchPlayer;
 }
 
-function buildActors(team: MatchTeamState): Actor[] {
+/** 区間の頭の状況（実効能力の倍率の条件） */
+export function actorEnv(state: MatchState, side: Side): ActorEnv {
+  const me = state.teams[side];
+  const opp = state.teams[other(side)];
+  return {
+    late: state.minute >= state.rules.halfMinutes * 1.5,
+    behind: state.score[side] < state.score[other(side)],
+    underdog: rankIndex(opp.rank) > rankIndex(me.rank),
+    bigStage: !!state.bigStage,
+  };
+}
+
+function buildActors(team: MatchTeamState, env: ActorEnv = NEUTRAL_ENV): Actor[] {
   const slots = FORMATIONS[team.formation];
+  const cap = captainEffect(team);
+  const tm = teamTraitMult(cap, env);
   const actors: Actor[] = [];
   team.onPitch.forEach((id, i) => {
     const p = team.players[id];
@@ -389,10 +453,14 @@ function buildActors(team: MatchTeamState): Actor[] {
     const apt = MATCH.aptitudeMult[p.aptitude[slot.pos]];
     // 疲労は能力差の圧縮の後に掛ける（疲れの影響を圧縮で薄めない）
     const fat = fatigueFactor(p.stamina);
-    const m = apt * (CONDITION_MULT[p.condition] ?? 1) * team.form;
+    // 性格・大舞台系・逆境系・キャプテンの倍率は、調子と同じく圧縮の前に掛ける
+    const m = apt * (CONDITION_MULT[p.condition] ?? 1) * team.form * tm * playerTraitMult(p, env);
     const e = {} as Stats;
     for (const k of ALL_STATS) e[k] = (MATCH.skillPivot + (p.stats[k] * m - MATCH.skillPivot) * MATCH.skillCompression) * fat;
-    actors.push({ id, slot, e, height: p.heightCm });
+    if (cap?.personality === "calm" && env.late) e.decision += CAPTAIN.calmLateDecision * cap.share;
+    const t = actorTraits(p, slot, cap?.id === id && cap.personality === "inspired");
+    const foot = t.skills.has("footG") ? "both" : (p.foot ?? "R");
+    actors.push({ id, slot, e, height: p.heightCm, lanes: laneAffinity(slot.lane, effectiveMovement(p.playStyle, slot), foot), t, mp: p });
   });
   return actors;
 }
@@ -410,7 +478,19 @@ interface TeamCtx {
   mid: number;
   /** 11 人から減っている人数 */
   short: number;
+  /** キャプテンの試合中の効果 */
+  cap: CaptainEffect | null;
 }
+
+/** 今の攻撃のアシストの候補（得点したら記録する） */
+interface AssistCand {
+  id: string;
+  kind: "pass" | "cross" | "corner" | "feed" | "setPiece";
+}
+
+type ShotKind = "normal" | "middle" | "header" | "rebound" | "oneOnOne" | "freeKick";
+
+const isAttackerSlot = (a: Actor) => a.slot.line === "FW" || a.slot.pos === "OMF" || a.slot.pos === "WG" || (a.slot.line === "MF" && a.slot.pos !== "DMF");
 
 class SegmentSim {
   readonly ctx: [TeamCtx, TeamCtx];
@@ -418,6 +498,13 @@ class SegmentSim {
   private momentumDelta = 0;
   /** 今の攻撃のレーン（ゾーン別の集計用） */
   private currentLane: Lane = "C";
+  private assist: AssistCand | undefined;
+  /** 今の攻撃がサイドから生まれた（カーブシュート用） */
+  private fromSide = false;
+  /** 今の攻撃がセットプレー（職人気質用） */
+  private setPieceKick = false;
+  /** 試合の残りが少なく点差 1 以内（ひらめき型） */
+  private readonly clutch: boolean;
 
   constructor(
     private state: MatchState,
@@ -425,15 +512,62 @@ class SegmentSim {
     private segStart: number,
   ) {
     this.ctx = [this.makeCtx(0), this.makeCtx(1)];
+    this.clutch = totalMinutes(state) - segStart <= PERSONALITY_MATCH.inspiredLateMinutes && Math.abs(state.score[0] - state.score[1]) <= 1;
   }
 
   private makeCtx(side: Side): TeamCtx {
     const team = this.state.teams[side];
-    const actors = buildActors(team);
+    const actors = buildActors(team, actorEnv(this.state, side));
     const gk = actors.find((a) => a.slot.pos === "GK") ?? actors[0];
     let mid = 0;
     for (const a of actors) mid += weightedStats(a.e, MATCH.midWeights) * MATCH.midLineWeights[a.slot.line];
-    return { side, team, actors, gk, mid, short: playersShort(team) };
+    return { side, team, actors, gk, mid, short: playersShort(team), cap: captainEffect(team) };
+  }
+
+  // ---- 特殊能力・スタイルの補正（P2b）----
+
+  /** 特殊能力の効果の倍率（ひらめき型は終盤の接戦で上がる） */
+  private scale(a: Actor): number {
+    return this.clutch && a.t.personality === "inspired" ? PERSONALITY_MATCH.inspiredClutchSkillMult : 1;
+  }
+
+  private line(a: Actor, l: SkillLine): number {
+    return linePoints(a.t, l, this.scale(a));
+  }
+
+  private single(a: Actor, id: SkillId, points?: number): number {
+    return singlePoints(a.t, id, this.scale(a), points);
+  }
+
+  /** 効いた（プラスの）特殊能力の ID（速報用） */
+  private lineSkill(a: Actor, l: SkillLine): SkillId | undefined {
+    const id = a.t.lines[l];
+    return id && SKILL_DEFS[id].tier !== "minus" ? id : undefined;
+  }
+
+  /** そのレーンへの関わりやすさで選ばれやすさを下げる（絞り込まずに選ぶ場面） */
+  private laneW(a: Actor, lane: Lane): number {
+    return Math.min(1, a.lanes[lane] / LANE_THRESHOLDS.pickScale);
+  }
+
+  private touch(a: Actor, lane: Lane) {
+    if (a.mp.ms) a.mp.ms.laneTouches[laneIndex(lane)]++;
+  }
+
+  private ms(a: Actor): MatchPlayerStats | undefined {
+    return a.mp.ms;
+  }
+
+  /** 逆足で蹴る場面の減点（両利きは 0、逆足× は大きい） */
+  private weakFoot(a: Actor): number {
+    if (a.t.skills.has("footG") || !this.rng.chance(SKILL_EFFECTS.weakFootChance)) return 0;
+    return a.t.skills.has("footX") ? SKILL_EFFECTS.weakFootPenaltyMinus : SKILL_EFFECTS.weakFootPenalty;
+  }
+
+  /** 職人気質のキッカーと、職人気質のキャプテンの補正（セットプレー） */
+  private setPieceBonus(side: Side, a: Actor): number {
+    const cap = this.ctx[side].cap;
+    return (a.t.personality === "craftsman" ? PERSONALITY_MATCH.craftsmanSetPiece : 0) + (cap?.personality === "craftsman" ? CAPTAIN.craftsmanSetPiece * cap.share : 0);
   }
 
   // ---- ファウル・カード・ケガ（P2a）----
@@ -476,9 +610,10 @@ class SegmentSim {
     const mp = team.players[fouler.id];
     team.stats.fouls = (team.stats.fouls ?? 0) + 1;
     if (!mp || mp.sentOff) return;
-    if (this.rng.chance(inBox ? f.redInBox : f.red)) return this.sendOff(defSide, fouler.id, minute, "red");
+    const cm = fouler.t.cardMult;
+    if (this.rng.chance((inBox ? f.redInBox : f.red) * cm)) return this.sendOff(defSide, fouler.id, minute, "red");
     const booked = (mp.yellow ?? 0) > 0;
-    if (!this.rng.chance((inBox ? f.yellowInBox : f.yellow) * (booked ? f.bookedYellowMult : 1))) return;
+    if (!this.rng.chance((inBox ? f.yellowInBox : f.yellow) * (booked ? f.bookedYellowMult : 1) * cm)) return;
     mp.yellow = (mp.yellow ?? 0) + 1;
     team.stats.yellows = (team.stats.yellows ?? 0) + 1;
     if (mp.yellow >= 2) this.sendOff(defSide, fouler.id, minute, "secondYellow");
@@ -501,7 +636,7 @@ class SegmentSim {
   }
 
   private foulInjury(victimSide: Side, victim: Actor, minute: number) {
-    if (this.rng.chance(MATCH.injury.onFoul * (this.ctx[victimSide].team.injuryMult ?? 1))) this.injure(victimSide, victim.id, minute);
+    if (this.rng.chance(MATCH.injury.onFoul * (this.ctx[victimSide].team.injuryMult ?? 1) * victim.t.injuryMult)) this.injure(victimSide, victim.id, minute);
   }
 
   private isBooked(side: Side, id: string) {
@@ -518,7 +653,7 @@ class SegmentSim {
     const def = this.ctx[defSide];
     if (!def.actors.includes(marker)) return false;
     const decisionMult = clamp(1 + (50 - marker.e.decision) * f.duelDecisionSlope, 0.4, 2);
-    const p = f.duelFoul * f.pressMult[def.team.tactics.press] * decisionMult * (this.isBooked(defSide, marker.id) ? f.bookedFoulMult : 1);
+    const p = f.duelFoul * f.pressMult[def.team.tactics.press] * decisionMult * (this.isBooked(defSide, marker.id) ? f.bookedFoulMult : 1) * marker.t.foulMult;
     if (!this.rng.chance(p)) return false;
     this.emit(minute, defSide, "foul", [marker.id, carrier.id]);
     this.card(defSide, marker, minute, false);
@@ -534,7 +669,7 @@ class SegmentSim {
     const field = def.actors.filter((a) => a.slot.line !== "GK");
     const victims = atk.actors.filter((a) => a.slot.line !== "GK");
     if (field.length === 0 || victims.length === 0) return;
-    const fouler = this.pickBy(field, (a) => (120 - a.e.decision) * (this.isBooked(defSide, a.id) ? MATCH.fouls.bookedFoulMult : 1));
+    const fouler = this.pickBy(field, (a) => (120 - a.e.decision) * (this.isBooked(defSide, a.id) ? MATCH.fouls.bookedFoulMult : 1) * a.t.foulMult);
     const victim = this.pickBy(victims, (a) => a.e.dribble + a.e.speed);
     this.card(defSide, fouler, minute, false);
     this.foulInjury(other(defSide), victim, minute);
@@ -547,20 +682,28 @@ class SegmentSim {
       const team = this.ctx[side].team;
       for (const a of [...this.ctx[side].actors]) {
         const st = team.players[a.id].stamina;
-        const p = MATCH.injury.perSegment * scale * (1 + MATCH.injury.fatigue * (1 - st / 100)) * (team.injuryMult ?? 1);
+        const p = MATCH.injury.perSegment * scale * (1 + MATCH.injury.fatigue * (1 - st / 100)) * (team.injuryMult ?? 1) * a.t.injuryMult;
         if (this.rng.chance(p)) this.injure(side, a.id, this.segStart + this.rng.int(0, Math.max(0, segMinutes - 1)) + 1);
       }
     }
   }
 
-  private emit(minute: number, side: Side, type: MatchEventType, players?: string[], note?: string) {
+  private emit(minute: number, side: Side, type: MatchEventType, players?: string[], note?: string, extra?: Pick<MatchEvent, "skill" | "move" | "assist">) {
     const ev: MatchEvent = { minute, side, type };
     if (players) ev.players = players;
     if (note) ev.note = note;
+    if (extra?.skill) ev.skill = extra.skill;
+    if (extra?.move) ev.move = extra.move;
+    if (extra?.assist) ev.assist = extra.assist;
     this.events.push(ev);
   }
 
   private bumpMomentum(side: Side, amount: number) {
+    // 慎重派のキャプテン：失点した後しばらく、相手に流れが行く量を減らす
+    const opp = this.ctx[other(side)];
+    if (opp.cap && opp.team.momentumGuardUntil !== undefined && this.segStart < opp.team.momentumGuardUntil) {
+      amount *= 1 - (1 - CAPTAIN.cautiousMomentum) * opp.cap.share;
+    }
     this.momentumDelta += side === 0 ? amount : -amount;
   }
 
@@ -583,9 +726,11 @@ class SegmentSim {
     let w = 0;
     for (const a of def.actors) {
       if (a.slot.line === "GK" || a.slot.line === "FW") continue;
-      const laneW = a.slot.lane === lane ? 1 : lane === "C" || a.slot.lane === "C" ? 0.5 : 0.15;
+      // 動きの範囲：そのレーンへの関わりやすさで重みを決める（自由なら P2a までの重みとほぼ同じ）
+      const laneW = a.lanes[lane] * pickMult(a.t, "defenseWeight");
       const lineW = a.slot.line === "DF" ? 1 : 0.6;
-      sum += this.defScore(a) * laneW * lineW;
+      const shadow = a.lanes[lane] >= LANE_THRESHOLDS.primary ? this.single(a, "coverShadow", SKILL_EFFECTS.coverShadowDef) : 0;
+      sum += (this.defScore(a) + styleBonus(a.t, "defense") + shadow) * laneW * lineW;
       w += laneW * lineW;
     }
     const base = w > 0 ? sum / w : 30;
@@ -596,21 +741,23 @@ class SegmentSim {
     return base + MATCH.pressDefenseBonus[t.press] + MATCH.lineDefenseBonus[t.line] + MATCH.attackStyleDefense[t.attack] + gap + underdog - short;
   }
 
+  /** 攻撃に加わる選手（レーンを指定すると、そのレーンに関わる選手だけ） */
   private attackers(atk: TeamCtx, lane?: Lane): Actor[] {
-    const list = atk.actors.filter(
-      (a) => a.slot.line === "FW" || a.slot.pos === "OMF" || a.slot.pos === "WG" || (a.slot.line === "MF" && a.slot.pos !== "DMF"),
-    );
-    const inLane = lane ? list.filter((a) => a.slot.lane === lane || a.slot.lane === "C") : list;
+    const list = atk.actors.filter(isAttackerSlot);
+    const inLane = lane ? list.filter((a) => a.lanes[lane] >= LANE_THRESHOLDS.include) : list;
     return inLane.length > 0 ? inLane : atk.actors.filter((a) => a.slot.line !== "GK");
   }
 
-  private midfielders(atk: TeamCtx, lane?: Lane): Actor[] {
-    const list = atk.actors.filter((a) => a.slot.line === "MF" && (!lane || a.slot.lane === lane));
+  /** 中央攻撃の出し手（MF。リンクマン・ビルドアップ型などは MF 以外でも加わる） */
+  private centralPassers(atk: TeamCtx): Actor[] {
+    const mids = atk.actors.filter((a) => a.slot.line === "MF" && a.lanes.C >= LANE_THRESHOLDS.primary);
+    const join = atk.actors.filter((a) => a.slot.line !== "MF" && a.slot.line !== "GK" && a.t.joinCentralPass > 0);
+    const list = [...mids, ...join];
     return list.length > 0 ? list : atk.actors.filter((a) => a.slot.line !== "GK");
   }
 
   private defenders(def: TeamCtx, lane?: Lane): Actor[] {
-    const list = def.actors.filter((a) => a.slot.line === "DF" && (!lane || a.slot.lane === lane));
+    const list = def.actors.filter((a) => a.slot.line === "DF" && (!lane || a.lanes[lane] >= LANE_THRESHOLDS.primary));
     if (list.length > 0) return list;
     const any = def.actors.filter((a) => a.slot.line === "DF" || a.slot.pos === "DMF");
     return any.length > 0 ? any : def.actors.filter((a) => a.slot.line !== "GK");
@@ -620,23 +767,49 @@ class SegmentSim {
     return a.e.aerial + (a.height - 175) * MATCH.aerialHeightPerCm;
   }
 
+  /** 攻撃側の空中戦（スタイル・ヘディング系・セットプレーの職人気質） */
+  private aerialAtk(side: Side, a: Actor) {
+    return this.aerialPower(a) + styleBonus(a.t, "aerialAtk") + this.line(a, "heading") + (this.setPieceKick ? this.setPieceBonus(side, a) : 0);
+  }
+
+  /** 守備側の空中戦 */
+  private aerialDef(a: Actor) {
+    return this.aerialPower(a) + styleBonus(a.t, "aerialDef") + this.line(a, "aerialDef");
+  }
+
+  /** 1 対 1 の守備の値への足し算（スタイル・対人系・スライディングタックル） */
+  private duelDefBonus(a: Actor) {
+    return styleBonus(a.t, "duelDef") + styleBonus(a.t, "steal") + this.line(a, "duel") + this.single(a, "slidingTackle", SKILL_EFFECTS.slidingTackleDef);
+  }
+
+  /** 1 対 1 の守備で効いた特殊能力 */
+  private duelSkill(a: Actor): SkillId | undefined {
+    return this.lineSkill(a, "duel") ?? (a.t.skills.has("slidingTackle") ? "slidingTackle" : undefined);
+  }
+
   // ---- 攻撃 ----
 
   /** 攻撃 1 回 */
   attack(side: Side, minute: number, counter = false) {
     this.currentLane = "C";
+    this.assist = undefined;
+    this.fromSide = false;
+    this.setPieceKick = false;
     const atk = this.ctx[side];
     const def = this.ctx[other(side)];
     // ビルドアップ重視：相手のプレスに引っかかると自陣ゴール前で奪われる（7.3）
     if (!counter && atk.team.tactics.buildUp === "buildUp") {
       const pressMult = MATCH.buildUpPressMult[def.team.tactics.press];
       if (pressMult > 0) {
-        const gkBuild = (atk.gk.e.pass + atk.gk.e.technique) / 2;
+        const gkBuild = (atk.gk.e.pass + atk.gk.e.technique) / 2 + styleBonus(atk.gk.t, "gkBuild") + this.line(atk.gk, "feed");
         const pressers = this.attackers(def);
         const pressQ = pressers.reduce((s, a) => s + (a.e.speed + a.e.stamina + a.e.decision) / 3, 0) / pressers.length;
-        const p = MATCH.buildUpErrorBase * pressMult * 2 * sigmoid((pressQ - gkBuild) / MATCH.buildUpErrorScale);
+        const cut = atk.actors.reduce((m, a) => m * (1 - a.t.buildUpErrorCut), 1);
+        const p = MATCH.buildUpErrorBase * pressMult * 2 * sigmoid((pressQ - gkBuild) / MATCH.buildUpErrorScale) * cut;
         if (this.rng.chance(p)) {
           const thief = this.pickBy(pressers, (a) => a.e.speed + a.e.decision);
+          const ms = this.ms(thief);
+          if (ms) ms.steals++;
           this.emit(minute, def.side, "buildUpError", [thief.id, atk.gk.id]);
           this.chanceInBox(def.side, thief, MATCH.buildUpErrorChanceQ, minute, 0);
           return;
@@ -655,111 +828,234 @@ class SegmentSim {
     return this.setPiece(side, minute);
   }
 
-  visionDecision(passer: Actor, defQ: number): number | null {
-    return bestPassValue(this.rng, passer.e.vision, passer.e.decision, defQ);
+  /** パスの候補の価値（視野・判断。スタイルの視野・チャンスメイカーを足す） */
+  private passValue(passer: Actor, defQ: number): number | null {
+    const cm = passer.t.skills.has("chanceMaker");
+    const vision = passer.e.vision + styleBonus(passer.t, "vision") + (cm ? MATCH.visionPerCandidate : 0);
+    const v = bestPassValue(this.rng, vision, passer.e.decision, defQ);
+    if (v === null) return null;
+    return cm ? Math.min(1, v + SKILL_EFFECTS.chanceMakerValue * this.scale(passer)) : v;
   }
 
-  private turnover(lostSide: Side, minute: number) {
-    const lost = this.ctx[lostSide].team;
-    const counterer = this.ctx[other(lostSide)].team;
+  visionDecision(passer: Actor, defQ: number): number | null {
+    return this.passValue(passer, defQ);
+  }
+
+  /** ボールを失った（winner は奪った選手。奪ってカウンターにつなぐ率に効く） */
+  private turnover(lostSide: Side, minute: number, winner?: Actor) {
+    const lostCtx = this.ctx[lostSide];
+    const lost = lostCtx.team;
+    const countererCtx = this.ctx[other(lostSide)];
+    const counterer = countererCtx.team;
+    if (winner) {
+      const ms = this.ms(winner);
+      if (ms) ms.steals++;
+    }
+    const exposure = lostCtx.actors.reduce((m, a) => m * (1 + a.t.counterExposure), 1);
+    const feed = countererCtx.gk.t.skills.has("feedG") ? SKILL_EFFECTS.feedGoldCounterMult : 1;
     const p =
       MATCH.counterChance *
       (lost.tactics.line === "high" ? MATCH.counterLineHighMult : 1) *
       MATCH.attackStyleCounterExposure[lost.tactics.attack] *
       MATCH.attackStyleCounterAttack[counterer.tactics.attack] *
-      (1 + underdogLowBlockRanks(counterer, lost) * MATCH.underdogLowBlock.counterPerRank);
+      (1 + underdogLowBlockRanks(counterer, lost) * MATCH.underdogLowBlock.counterPerRank) *
+      (winner ? pickMult(winner.t, "stealer") : 1) *
+      exposure *
+      feed;
     if (this.rng.chance(p)) this.attack(other(lostSide), minute, true);
   }
 
   private centerAttack(side: Side, minute: number) {
     const atk = this.ctx[side];
     const def = this.ctx[other(side)];
-    const passer = this.pickBy(this.midfielders(atk, "C"), (a) => a.e.pass + a.e.vision);
+    const passer = this.pickBy(
+      this.centralPassers(atk),
+      (a) => (a.e.pass + a.e.vision) * pickMult(a.t, "centralPasser") * (a.slot.line === "MF" ? 1 : a.t.joinCentralPass),
+    );
+    this.touch(passer, "C");
     const defQ = this.defQuality(def, "C");
-    const value = this.visionDecision(passer, defQ);
+    let value = this.passValue(passer, defQ);
     if (value === null) {
-      // 出せるパスがない → ドリブルで打開を試みる
-      if (this.rng.chance(passer.e.dribble / MATCH.dribbleTryDiv)) return this.dribble(side, passer, minute, "C");
+      // 出せるパスがない → ドリブルで打開を試みる（プレスを受けている：ルーレットの場面）
+      if (this.rng.chance((passer.e.dribble / MATCH.dribbleTryDiv) * pickMult(passer.t, "centralDribble"))) return this.dribble(side, passer, minute, "C", "roulette");
       this.emit(minute, side, "noOption", [passer.id]);
       return this.turnover(side, minute);
     }
-    const pAcc = sigmoid((passer.e.pass - MATCH.passAccBias - value * MATCH.passAccValue) / MATCH.passAccScale);
-    const receiver = this.pickBy(
-      this.attackers(atk).filter((a) => a.id !== passer.id),
-      (a) => this.atkScore(a),
-    );
-    if (!this.rng.chance(pAcc)) {
-      const cutter = this.pickBy(this.defenders(def, "C"), (a) => this.defScore(a));
-      this.emit(minute, side, "passBlocked", [passer.id, cutter.id]);
+    // スルーパス：相手のラインが高いとき、裏へのパスになる
+    const through = def.team.tactics.line === "high" && passer.t.skills.has("throughPass");
+    if (through) value = Math.max(value, SKILL_EFFECTS.throughPassValueMin);
+    const cutters = this.defenders(def, "C");
+    const intercept = cutters.reduce((m, a) => Math.max(m, this.single(a, "interception")), 0);
+    const passAcc =
+      passer.e.pass +
+      styleBonus(passer.t, "pass") +
+      (passer.t.personality === "cautious" ? PERSONALITY_MATCH.cautiousPass : 0) +
+      (through ? this.single(passer, "throughPass") : 0) -
+      intercept;
+    const pAcc = sigmoid((passAcc - MATCH.passAccBias - value * MATCH.passAccValue) / MATCH.passAccScale);
+    const receivers = this.receivers(atk, passer);
+    if (receivers.length === 0) {
+      this.emit(minute, side, "noOption", [passer.id]);
       return this.turnover(side, minute);
     }
-    const marker = this.pickBy(this.defenders(def, receiver.slot.lane), (a) => this.defScore(a));
+    const receiver = this.pickBy(receivers, (a) => this.atkScore(a) * this.laneW(a, "C") * this.receiverMult(a));
+    if (!this.rng.chance(pAcc)) {
+      const cutter = this.pickBy(cutters, (a) => this.defScore(a) * (a.t.skills.has("interception") ? SKILL_EFFECTS.interceptionPickMult : 1));
+      this.touch(cutter, "C");
+      this.emit(minute, side, "passBlocked", [passer.id, cutter.id], undefined, { skill: cutter.t.skills.has("interception") ? "interception" : undefined });
+      return this.turnover(side, minute, cutter);
+    }
+    const marker = this.pickBy(this.defenders(def, receiver.slot.lane), (a) => this.defScore(a) * pickMult(a.t, "marker"));
     const q = this.receiveQuality(receiver, marker, value) * matchupAdjust(atk.team.tactics, def.team.tactics, "pass");
-    this.emit(minute, side, "pass", [passer.id, receiver.id]);
+    this.touch(receiver, "C");
+    if (through) this.emit(minute, side, "throughBall", [passer.id, receiver.id], undefined, { skill: "throughPass" });
+    else this.emit(minute, side, "pass", [passer.id, receiver.id], undefined, { skill: passer.t.skills.has("chanceMaker") && value > 0.8 ? "chanceMaker" : undefined });
+    this.assist = { id: passer.id, kind: "pass" };
     this.chanceInBox(side, receiver, q, minute, 0);
+  }
+
+  /** パスの受け手の候補（出し手を除く。いなければフィールド選手から） */
+  private receivers(atk: TeamCtx, passer: Actor, lane?: Lane): Actor[] {
+    const list = this.attackers(atk, lane).filter((a) => a.id !== passer.id);
+    return list.length > 0 ? list : atk.actors.filter((a) => a.slot.line !== "GK" && a.id !== passer.id);
+  }
+
+  /** 受け手に選ばれやすさ（シューターのスタイル・消える動き） */
+  private receiverMult(a: Actor) {
+    return pickMult(a.t, "boxShooter") * pickMult(a.t, "receiver") * (a.t.skills.has("offBall") ? SKILL_EFFECTS.offBallPickMult : 1);
   }
 
   /** 受け手の動き出し（判断・スピード）と相手のマークの差でチャンスの質を決める */
   private receiveQuality(receiver: Actor, marker: Actor, value: number): number {
-    const edge = ((receiver.e.decision + receiver.e.speed) / 2 - (marker.e.defense + marker.e.decision) / 2) / MATCH.receiverEdgeScale;
+    const atkV = (receiver.e.decision + receiver.e.speed) / 2 + this.single(receiver, "offBall");
+    const defV = (marker.e.defense + marker.e.decision) / 2 + this.single(marker, "manMark");
+    const edge = (atkV - defV) / MATCH.receiverEdgeScale;
     const edgeQ = clamp(0.5 + edge * 0.5, 0, 1);
     return clamp(value * (1 - MATCH.receiverEdgeWeight) + edgeQ * MATCH.receiverEdgeWeight, 0.05, 0.95);
   }
 
-  private dribble(side: Side, carrier: Actor, minute: number, lane: Lane) {
+  /**
+   * ドリブルの場面（PLAN 4.1）：プレスを受けている → ルーレット、相手が飛び込んでくる（プレスが高い・ボールハンター・偶然）→ ダブルタッチ、
+   * それ以外は呼び出し側の場面（裏街道・チョップタッチ・シザース）
+   */
+  private dribbleMove(base: DribbleMove, def: TeamCtx, marker: Actor): DribbleMove {
+    if (base === "roulette") return base;
+    if (def.team.tactics.press === "high" || marker.mp.playStyle === "ballHunter" || this.rng.chance(SKILL_EFFECTS.doubleTouchRandom)) return "doubleTouch";
+    return base;
+  }
+
+  private movePoints(a: Actor, move: DribbleMove): number {
+    return this.single(a, move, SKILL_EFFECTS.dribbleMove);
+  }
+
+  private dribble(side: Side, carrier: Actor, minute: number, lane: Lane, base: DribbleMove) {
     const def = this.ctx[other(side)];
-    const marker = this.pickBy(this.defenders(def, lane), (a) => this.defScore(a));
-    const atkV = carrier.e.dribble * 0.6 + carrier.e.speed * 0.4;
-    const defV = marker.e.defense * 0.6 + marker.e.speed * 0.4;
+    const marker = this.pickBy(this.defenders(def, lane), (a) => this.defScore(a) * pickMult(a.t, "marker"));
+    this.touch(marker, lane);
+    const move = this.dribbleMove(base, def, marker);
+    const mv = this.movePoints(carrier, move);
+    const atkV = carrier.e.dribble * 0.6 + carrier.e.speed * 0.4 + styleBonus(carrier.t, "dribble") + mv;
+    const defV = marker.e.defense * 0.6 + marker.e.speed * 0.4 + this.duelDefBonus(marker);
     if (this.rng.chance(sigmoid((atkV - defV) / MATCH.dribbleScale))) {
       if (this.duelFoul(side, carrier, marker, minute)) return;
-      this.emit(minute, side, "dribble", [carrier.id, marker.id]);
+      this.emit(minute, side, "dribble", [carrier.id, marker.id], undefined, { move, skill: mv > 0 ? move : undefined });
       this.chanceInBox(side, carrier, MATCH.dribbleChanceQ * (0.7 + this.rng.next() * 0.6), minute, 0);
     } else {
-      this.emit(minute, side, "dribbleFail", [carrier.id, marker.id]);
-      this.turnover(side, minute);
+      const ms = this.ms(marker);
+      if (ms) ms.duelWins++;
+      this.emit(minute, side, "dribbleFail", [carrier.id, marker.id], undefined, { move, skill: this.duelSkill(marker) });
+      this.turnover(side, minute, marker);
     }
   }
 
-  private sideAttack(side: Side, minute: number) {
+  /** サイド攻撃。switchBonus はサイドチェンジから受けたときの 1 対 1 の補正 */
+  private sideAttack(side: Side, minute: number, forcedLane?: Lane, switchBonus = 0) {
     const atk = this.ctx[side];
     const def = this.ctx[other(side)];
-    const lane: Lane = this.rng.chance(0.5) ? "L" : "R";
+    const lane: Lane = forcedLane ?? (this.rng.chance(0.5) ? "L" : "R");
     this.currentLane = lane;
     this.recordZone(side, "attacks");
-    const wide = atk.actors.filter((a) => a.slot.lane === lane && a.slot.line !== "GK");
-    const carrier = wide.length > 0 ? this.pickBy(wide, (a) => a.e.speed + a.e.dribble + (a.slot.line === "DF" ? -20 : 0)) : this.pickBy(this.attackers(atk), (a) => a.e.speed);
-    const defWide = def.actors.filter((a) => a.slot.lane === lane && a.slot.line !== "GK" && a.slot.line !== "FW");
-    const marker = defWide.length > 0 ? this.pickBy(defWide, (a) => this.defScore(a)) : this.pickBy(this.defenders(def), (a) => this.defScore(a));
+    this.fromSide = true;
+    const wide = atk.actors.filter((a) => a.lanes[lane] >= LANE_THRESHOLDS.primary && a.slot.line !== "GK");
+    const carrier =
+      wide.length > 0
+        ? this.pickBy(wide, (a) => (a.e.speed + a.e.dribble + (a.slot.line === "DF" && !a.t.fullbackCarry ? -20 : 0)) * pickMult(a.t, "sideCarrier"))
+        : this.pickBy(this.attackers(atk), (a) => a.e.speed);
+    this.touch(carrier, lane);
+    const defWide = def.actors.filter((a) => a.lanes[lane] >= LANE_THRESHOLDS.primary && a.slot.line !== "GK" && a.slot.line !== "FW");
+    const markW = (a: Actor) => this.defScore(a) * pickMult(a.t, "marker");
+    const marker = defWide.length > 0 ? this.pickBy(defWide, markW) : this.pickBy(this.defenders(def), markW);
+    this.touch(marker, lane);
+    // クロスかカットインかを先に決める（カットインはチョップタッチの場面）
+    const wantsCross = carrier.t.noCutInside || this.rng.chance(Math.min(0.95, MATCH.crossChance * pickMult(carrier.t, "crossChoice")));
+    const base: DribbleMove = !wantsCross ? "chopTouch" : def.team.tactics.line === "high" ? "uraKaido" : "scissors";
+    const move = this.dribbleMove(base, def, marker);
+    const mv = this.movePoints(carrier, move);
     // サイドの 1 対 1
-    const atkV = carrier.e.dribble * 0.5 + carrier.e.speed * 0.5;
-    const defV = marker.e.defense * 0.6 + marker.e.speed * 0.4;
+    const footSide = carrier.t.skills.has("footG") ? SKILL_EFFECTS.footGoldSide * this.scale(carrier) : 0;
+    const atkV = carrier.e.dribble * 0.5 + carrier.e.speed * 0.5 + styleBonus(carrier.t, "dribble") + mv + switchBonus + (wantsCross ? 0 : footSide);
+    const defV = marker.e.defense * 0.6 + marker.e.speed * 0.4 + this.duelDefBonus(marker);
     if (!this.rng.chance(sigmoid((atkV - defV) / MATCH.dribbleScale + 0.4))) {
-      this.emit(minute, side, "dribbleFail", [carrier.id, marker.id]);
-      return this.turnover(side, minute);
+      const ms = this.ms(marker);
+      if (ms) ms.duelWins++;
+      this.emit(minute, side, "dribbleFail", [carrier.id, marker.id], undefined, { move, skill: this.duelSkill(marker) });
+      // ロングスロー：外に出たボールを、ゴール前へのクロスにする
+      const throwers = atk.actors.filter((a) => a.slot.line !== "GK" && a.t.skills.has("longThrow"));
+      if (throwers.length > 0 && this.rng.chance(SKILL_EFFECTS.longThrowChance)) {
+        const thrower = this.pickBy(throwers, (a) => a.e.kickPower + a.e.physical);
+        this.emit(minute, side, "longThrow", [thrower.id], undefined, { skill: "longThrow" });
+        this.setPieceKick = true;
+        return this.cross(side, thrower, minute, 1, SKILL_EFFECTS.longThrowQ, "setPiece");
+      }
+      return this.turnover(side, minute, marker);
     }
     if (this.duelFoul(side, carrier, marker, minute)) return;
-    if (this.rng.chance(MATCH.crossChance)) return this.cross(side, carrier, minute, 0);
+    const dribbleSkill = mv > 0 ? move : undefined;
+    if (wantsCross) {
+      if (dribbleSkill) this.emit(minute, side, "dribble", [carrier.id, marker.id], undefined, { move, skill: dribbleSkill });
+      return this.cross(side, carrier, minute, 0, 0, "cross");
+    }
     // カットインして中へ
-    const value = this.visionDecision(carrier, this.defQuality(def, "C"));
+    if (dribbleSkill || footSide > 0) this.emit(minute, side, "dribble", [carrier.id, marker.id], undefined, { move, skill: dribbleSkill ?? "footG" });
+    const value = this.passValue(carrier, this.defQuality(def, "C"));
     if (value === null) {
       this.emit(minute, side, "noOption", [carrier.id]);
       return this.turnover(side, minute);
     }
-    const receiver = this.pickBy(this.attackers(atk, "C").filter((a) => a.id !== carrier.id), (a) => this.atkScore(a));
-    const cb = this.pickBy(this.defenders(def, "C"), (a) => this.defScore(a));
+    const receivers = this.receivers(atk, carrier, "C");
+    if (receivers.length === 0) {
+      this.emit(minute, side, "noOption", [carrier.id]);
+      return this.turnover(side, minute);
+    }
+    const receiver = this.pickBy(receivers, (a) => this.atkScore(a) * this.receiverMult(a));
+    this.touch(receiver, "C");
+    const cb = this.pickBy(this.defenders(def, "C"), (a) => this.defScore(a) * pickMult(a.t, "marker"));
     this.emit(minute, side, "pass", [carrier.id, receiver.id]);
+    this.assist = { id: carrier.id, kind: "pass" };
     this.chanceInBox(side, receiver, this.receiveQuality(receiver, cb, value) * matchupAdjust(atk.team.tactics, def.team.tactics, "pass"), minute, 0);
   }
 
   /** クロス：GK のハイボール → キャッチング、届かなければ空中戦（7.3） */
-  private cross(side: Side, crosser: Actor, minute: number, depth: number, bonus = 0) {
+  private cross(side: Side, crosser: Actor, minute: number, depth: number, bonus = 0, kind: "cross" | "corner" | "setPiece" = "cross") {
     const atk = this.ctx[side];
     const def = this.ctx[other(side)];
-    const crossQ = clamp((crosser.e.pass * 0.65 + crosser.e.kickPower * 0.35) / MATCH.crossQualityScale + bonus + this.rng.range(-0.15, 0.15), 0, 1.2);
-    this.emit(minute, side, "cross", [crosser.id]);
+    const sc = this.scale(crosser);
+    let extra = styleBonus(crosser.t, "crossQ") - this.weakFoot(crosser) / 100;
+    let skill: SkillId | undefined;
+    if (kind === "cross" && crosser.t.skills.has("crossMaster")) {
+      extra += SKILL_EFFECTS.crossMasterQ * sc;
+      skill = "crossMaster";
+    }
+    if (kind === "corner" && crosser.t.skills.has("ckMaster")) {
+      extra += SKILL_EFFECTS.ckMasterQ * sc;
+      skill = "ckMaster";
+    }
+    if (kind === "cross" && crosser.t.skills.has("footG")) extra += (SKILL_EFFECTS.footGoldSide * sc) / 100;
+    if (kind !== "cross") extra += this.setPieceBonus(side, crosser) / 100;
+    const crossQ = clamp((crosser.e.pass * 0.65 + crosser.e.kickPower * 0.35) / MATCH.crossQualityScale + bonus + extra + this.rng.range(-0.15, 0.15), 0, 1.2);
+    this.emit(minute, side, "cross", [crosser.id], undefined, { skill });
     const gk = def.gk;
-    const gkReach = sigmoid((gk.e.highBall + (gk.height - 180) * MATCH.aerialHeightPerCm - crossQ * 100 + MATCH.gkHighBallBias) / MATCH.gkHighBallScale);
+    const gkReach = sigmoid((gk.e.highBall + styleBonus(gk.t, "gkHighBall") + (gk.height - 180) * MATCH.aerialHeightPerCm - crossQ * 100 + MATCH.gkHighBallBias) / MATCH.gkHighBallScale);
     if (this.rng.chance(gkReach)) {
       if (this.rng.chance(sigmoid((gk.e.catching - MATCH.gkCatchCrossBias) / MATCH.gkCatchCrossScale))) {
         this.emit(minute, other(side), "gkClaim", [gk.id]);
@@ -770,19 +1066,26 @@ class SegmentSim {
       if (this.rng.chance(MATCH.reboundToAttacker)) {
         const s = this.pickBy(this.attackers(atk, "C"), (a) => a.e.speed + a.e.decision);
         this.emit(minute, side, "rebound", [s.id]);
+        this.assist = undefined;
         this.shoot(side, s, MATCH.reboundChanceQ, minute, "rebound", depth + 1);
       }
       return;
     }
     const targets = this.attackers(atk, "C").filter((a) => a.id !== crosser.id);
-    const target = this.pickBy(targets.length ? targets : this.attackers(atk), (a) => Math.max(1, this.aerialPower(a)));
-    const marker = this.pickBy(this.defenders(def, "C"), (a) => Math.max(1, this.aerialPower(a)));
-    const win = sigmoid((this.aerialPower(target) - this.aerialPower(marker)) / MATCH.aerialScale);
+    const target = this.pickBy(targets.length ? targets : this.attackers(atk), (a) => Math.max(1, this.aerialPower(a)) * pickMult(a.t, "aerialTarget"));
+    const marker = this.pickBy(this.defenders(def, "C"), (a) => Math.max(1, this.aerialPower(a)) * pickMult(a.t, "aerialMarker"));
+    this.touch(target, "C");
+    this.touch(marker, "C");
+    const win = sigmoid((this.aerialAtk(side, target) - this.aerialDef(marker)) / MATCH.aerialScale);
     if (this.rng.chance(win)) {
-      this.emit(minute, side, "header", [target.id, marker.id]);
-      this.shoot(side, target, MATCH.headerChanceQ * (0.7 + crossQ * 0.5), minute, "header", depth);
+      this.emit(minute, side, "header", [target.id, marker.id], undefined, { skill: this.lineSkill(target, "heading") });
+      this.assist = { id: crosser.id, kind: kind === "corner" ? "corner" : kind === "cross" ? "cross" : "setPiece" };
+      const masterQ = skill === "crossMaster" ? SKILL_EFFECTS.crossMasterHeaderMult : 1;
+      this.shoot(side, target, MATCH.headerChanceQ * (0.7 + crossQ * 0.5) * masterQ, minute, "header", depth);
     } else {
-      this.emit(minute, side, "crossCleared", [marker.id]);
+      const ms = this.ms(marker);
+      if (ms) ms.aerialWins++;
+      this.emit(minute, side, "crossCleared", [marker.id], undefined, { skill: this.lineSkill(marker, "aerialDef") });
       if (depth === 0 && this.rng.chance(MATCH.clearedCornerChance)) this.corner(side, minute, depth + 1);
     }
   }
@@ -792,71 +1095,104 @@ class SegmentSim {
     const atk = this.ctx[side];
     const def = this.ctx[other(side)];
     const fromGk = atk.team.tactics.buildUp === "long" && this.rng.chance(0.5);
-    const kicker = fromGk ? atk.gk : this.pickBy(this.defenders(atk), (a) => a.e.kickPower + a.e.pass);
-    const target = this.pickBy(this.attackers(atk, "C"), (a) => Math.max(1, this.aerialPower(a)));
-    const lb = longBallOutcome(this.rng, kicker.e.kickPower, kicker.e.pass);
+    const kicker = fromGk ? atk.gk : this.pickBy(this.defenders(atk), (a) => (a.e.kickPower + a.e.pass) * pickMult(a.t, "longKicker"));
+    // サイドチェンジ：逆サイドの大外へ大きく展開し、そのサイドの 1 対 1 を有利にする
+    if (!fromGk && kicker.t.skills.has("switchPlay") && this.rng.chance(SKILL_EFFECTS.switchPlayChance)) {
+      const lane: Lane = this.rng.chance(0.5) ? "L" : "R";
+      this.emit(minute, side, "switchPlay", [kicker.id], undefined, { skill: "switchPlay" });
+      return this.sideAttack(side, minute, lane, this.single(kicker, "switchPlay"));
+    }
+    const target = this.pickBy(this.attackers(atk, "C"), (a) => Math.max(1, this.aerialPower(a)) * pickMult(a.t, "longTarget"));
+    const feed = fromGk ? this.line(kicker, "feed") : 0;
+    const lp = styleBonus(kicker.t, "longPass") + feed;
+    const lb = longBallOutcome(this.rng, kicker.e.kickPower + lp, kicker.e.pass + lp);
     if (lb !== "ok") {
       this.emit(minute, side, lb === "short" ? "longBallShort" : "longBallLost", [kicker.id]);
       return this.turnover(side, minute);
     }
-    const marker = this.pickBy(this.defenders(def, "C"), (a) => Math.max(1, this.aerialPower(a)));
-    this.emit(minute, side, "longBall", [kicker.id, target.id]);
+    const marker = this.pickBy(this.defenders(def, "C"), (a) => Math.max(1, this.aerialPower(a)) * pickMult(a.t, "aerialMarker"));
+    this.touch(target, "C");
+    this.touch(marker, "C");
+    this.emit(minute, side, "longBall", [kicker.id, target.id], undefined, { skill: fromGk ? this.lineSkill(kicker, "feed") : undefined });
     const deepBonus = def.team.tactics.line === "low" ? MATCH.matchup.longVsLowLineAerial : 0;
-    if (this.rng.chance(sigmoid((this.aerialPower(target) - this.aerialPower(marker) - deepBonus) / MATCH.aerialScale))) {
+    if (this.rng.chance(sigmoid((this.aerialAtk(side, target) - this.aerialDef(marker) - deepBonus) / MATCH.aerialScale))) {
       const base = MATCH.longChanceQ + matchupAdjust(atk.team.tactics, def.team.tactics, "long");
       const q = this.receiveQuality(target, marker, Math.max(0.05, base + this.rng.range(0, 0.3)));
+      this.assist = { id: kicker.id, kind: fromGk ? "feed" : "pass" };
       this.chanceInBox(side, target, q, minute, 0);
     } else {
-      this.emit(minute, side, "crossCleared", [marker.id]);
+      const ms = this.ms(marker);
+      if (ms) ms.aerialWins++;
+      this.emit(minute, side, "crossCleared", [marker.id], undefined, { skill: this.lineSkill(marker, "aerialDef") });
     }
   }
 
   private setPiece(side: Side, minute: number) {
     const atk = this.ctx[side];
-    const kicker = this.pickBy(atk.actors.filter((a) => a.slot.line !== "GK"), (a) => Math.pow(a.e.kickPower + a.e.pass, 2));
+    const field = atk.actors.filter((a) => a.slot.line !== "GK");
+    this.setPieceKick = true;
     if (this.rng.chance(0.35)) {
-      // 直接 FK：キック力の比重が大きい
+      // 直接 FK：キック力の比重が大きい。FK の名手は選ばれやすい
+      const kicker = this.pickBy(field, (a) => Math.pow(a.e.kickPower + a.e.pass, 2) * (a.t.skills.has("fkMaster") ? SKILL_EFFECTS.setPieceKickerMult : 1));
       this.emit(minute, side, "freeKick", [kicker.id]);
+      this.assist = undefined;
       this.shoot(side, kicker, 0.3, minute, "freeKick", 1);
       return;
     }
+    const kicker = this.pickBy(field, (a) => Math.pow(a.e.kickPower + a.e.pass, 2));
     this.emit(minute, side, "setPiece", [kicker.id]);
-    this.cross(side, kicker, minute, 1, 0.08);
+    this.cross(side, kicker, minute, 1, 0.08, "setPiece");
   }
 
   private corner(side: Side, minute: number, depth: number) {
     const atk = this.ctx[side];
     atk.team.stats.corners++;
-    const kicker = this.pickBy(atk.actors.filter((a) => a.slot.line !== "GK"), (a) => Math.pow(a.e.kickPower + a.e.pass, 2));
+    this.setPieceKick = true;
+    const kicker = this.pickBy(
+      atk.actors.filter((a) => a.slot.line !== "GK"),
+      (a) => Math.pow(a.e.kickPower + a.e.pass, 2) * (a.t.skills.has("ckMaster") ? SKILL_EFFECTS.setPieceKickerMult : 1),
+    );
     this.emit(minute, side, "corner", [kicker.id]);
-    this.cross(side, kicker, minute, depth, 0.05);
+    this.cross(side, kicker, minute, depth, 0.05, "corner");
   }
 
   private counterAttack(side: Side, minute: number) {
     const atk = this.ctx[side];
     const def = this.ctx[other(side)];
-    const runner = this.pickBy(this.attackers(atk), (a) => Math.pow(a.e.speed, 2));
+    // 走る先のレーン（大外のみ・定位置の選手は自分のレーンのカウンターにだけ加わる）
+    const lane = this.rng.weighted(["L", "C", "R"] as Lane[], (l) => (l === "C" ? 0.4 : 0.3));
+    const runner = this.pickBy(this.attackers(atk), (a) => Math.pow(a.e.speed, 2) * this.laneW(a, lane) * pickMult(a.t, "counterRunner"));
+    this.touch(runner, lane);
     const defs = this.defenders(def);
-    const defSpeed = defs.reduce((s, a) => s + a.e.speed, 0) / defs.length;
+    const defSpeed = defs.reduce((s, a) => s + a.e.speed + styleBonus(a.t, "coverSpeed") + this.single(a, "spaceCover"), 0) / defs.length;
     const lineMult = def.team.tactics.line === "high" ? 0.9 : 1.06;
-    this.emit(minute, side, "counter", [runner.id]);
-    const atkV = runner.e.speed * 0.6 + runner.e.dribble * 0.4;
+    const move: DribbleMove = "uraKaido";
+    const mv = this.movePoints(runner, move);
+    this.emit(minute, side, "counter", [runner.id], undefined, { move, skill: mv > 0 ? move : undefined });
+    const atkV = runner.e.speed * 0.6 + runner.e.dribble * 0.4 + styleBonus(runner.t, "runSpeed") + mv;
+    const stopW = (a: Actor) => (a.e.speed + a.e.defense) * pickMult(a.t, "counterStopper");
     if (!this.rng.chance(sigmoid((atkV - defSpeed * lineMult) / MATCH.counterScale))) {
-      const stopper = this.pickBy(defs, (a) => a.e.speed + a.e.defense);
-      this.emit(minute, side, "dribbleFail", [runner.id, stopper.id]);
+      const stopper = this.pickBy(defs, stopW);
+      const ms = this.ms(stopper);
+      if (ms) ms.steals++;
+      this.emit(minute, side, "dribbleFail", [runner.id, stopper.id], undefined, { skill: stopper.t.skills.has("spaceCover") ? "spaceCover" : undefined });
       return;
     }
-    if (this.duelFoul(side, runner, this.pickBy(defs, (a) => a.e.speed + a.e.defense), minute)) return;
+    if (this.duelFoul(side, runner, this.pickBy(defs, stopW), minute)) return;
     // 1 対 1：GK の飛び出し（スピード・スタミナ）とフィジカル
     const gk = def.gk;
     this.emit(minute, side, "oneOnOne", [runner.id, gk.id]);
-    const gkV = (gk.e.speed + gk.e.stamina + gk.e.physical) / 3;
-    const runV = runner.e.dribble * 0.6 + runner.e.technique * 0.4;
+    const gkV = (gk.e.speed + gk.e.stamina + gk.e.physical) / 3 + styleBonus(gk.t, "gkRush") + this.line(gk, "gkOneOnOne") + this.single(gk, "gkRush");
+    const runV = runner.e.dribble * 0.6 + runner.e.technique * 0.4 + this.line(runner, "oneOnOne");
     if (this.rng.chance(sigmoid((gkV - runV + MATCH.oneOnOneBias) / MATCH.oneOnOneScale))) {
-      this.emit(minute, other(side), "gkRush", [gk.id, runner.id]);
+      const ms = this.ms(gk);
+      if (ms) ms.gkOneOnOneStops++;
+      this.emit(minute, other(side), "gkRush", [gk.id, runner.id], undefined, { skill: this.lineSkill(gk, "gkOneOnOne") ?? (gk.t.skills.has("gkRush") ? "gkRush" : undefined) });
       return;
     }
-    this.shoot(side, runner, MATCH.counterChanceQ, minute, "oneOnOne", 0);
+    const gold = runner.t.lines.oneOnOne === "oneOnOneG" ? SKILL_EFFECTS.oneOnOneGoldQ : 0;
+    this.assist = undefined;
+    this.shoot(side, runner, MATCH.counterChanceQ + gold, minute, "oneOnOne", 0);
   }
 
   /** ボックス内のチャンス：ファウルで PK になることもある */
@@ -877,15 +1213,24 @@ class SegmentSim {
     this.bumpMomentum(side, MATCH.momentum.chance);
     if (this.rng.chance(MATCH.pkFoulChance * (0.5 + q))) {
       const def = this.ctx[other(side)];
-      const fouler = this.pickBy(this.defenders(def), (a) => 100 - a.e.decision);
+      const fouler = this.pickBy(this.defenders(def), (a) => (100 - a.e.decision) * a.t.foulMult);
       this.emit(minute, side, "pkAwarded", [shooter.id, fouler.id]);
       this.card(def.side, fouler, minute, true);
       this.foulInjury(side, shooter, minute);
       return this.penalty(side, minute);
     }
     if (!this.rng.chance(sigmoid((q - MATCH.shotQBias) / MATCH.shotQScale))) return;
-    const middle = this.rng.chance(MATCH.middleShotBase * (1 - q));
+    const middle = this.rng.chance(MATCH.middleShotBase * (1 - q) * (shooter.t.skills.has("middleShot") ? SKILL_EFFECTS.middleShotChooseMult : 1));
     this.shoot(side, shooter, q, minute, middle ? "middle" : "normal", depth);
+  }
+
+  /** PK の読みに足す値（PK 系・冷静沈着。GK は PK ストッパー） */
+  private pkKickerRead(a: Actor) {
+    return this.line(a, "pk") * SKILL_EFFECTS.pkReadMult + (a.t.personality === "calm" ? PERSONALITY_MATCH.calmPkRead : 0);
+  }
+
+  private pkGkRead(a: Actor) {
+    return this.single(a, "pkStopper", SKILL_EFFECTS.pkStopperRead) + (a.t.personality === "calm" ? PERSONALITY_MATCH.calmPkRead : 0);
   }
 
   /** 試合中の PK（PK 戦と同じ判定） */
@@ -896,31 +1241,53 @@ class SegmentSim {
     if (field.length === 0) return;
     const kicker = field.reduce((b, a) => (a.e.pkSkill * 0.5 + a.e.shooting * 0.5 > b.e.pkSkill * 0.5 + b.e.shooting * 0.5 ? a : b), field[0]);
     atk.team.stats.shots++;
-    const r = resolvePkKick(this.rng, kicker.e, def.gk.e, pkScoutingTerm(atk.team), pkScoutingTerm(def.team));
+    const r = resolvePkKick(this.rng, kicker.e, def.gk.e, pkScoutingTerm(atk.team) + this.pkKickerRead(kicker), pkScoutingTerm(def.team) + this.pkGkRead(def.gk));
+    this.ms(kicker)?.pkKicks.push(r.scored);
+    this.assist = undefined;
     if (r.result === "goal") {
       atk.team.stats.onTarget++;
-      this.goal(side, kicker, minute, "pk");
+      this.goal(side, kicker, minute, "pk", this.lineSkill(kicker, "pk"));
     } else if (r.result === "saved") {
       atk.team.stats.onTarget++;
-      this.emit(minute, other(side), "pkSaved", [def.gk.id, kicker.id]);
+      this.emit(minute, other(side), "pkSaved", [def.gk.id, kicker.id], undefined, { skill: def.gk.t.skills.has("pkStopper") ? "pkStopper" : undefined });
       this.bumpMomentum(other(side), MATCH.momentum.onTarget * 2);
     } else {
       this.emit(minute, side, "pkMiss", [kicker.id]);
     }
   }
 
-  private goal(side: Side, scorer: Actor, minute: number, note?: string) {
+  private goal(side: Side, scorer: Actor, minute: number, note?: string, skill?: SkillId) {
     const s = this.state;
     s.score[side]++;
     s.teams[side].players[scorer.id].goals++;
     const ev: MatchEvent = { minute, side, type: note === "pk" ? "pkGoal" : "goal", players: [scorer.id], score: [s.score[0], s.score[1]] };
     if (note) ev.note = note;
+    if (skill) ev.skill = skill;
+    // 試合での成果（P2b）
+    const ms = this.ms(scorer);
+    if (ms && note === "oneOnOne") ms.oneOnOneGoals++;
+    if (ms && note === "header") ms.headerGoals++;
+    if (ms && note === "freeKick") ms.fkGoals++;
+    const a = this.assist;
+    if (a && a.id !== scorer.id && s.teams[side].players[a.id]) {
+      ev.assist = a.id;
+      const ams = s.teams[side].players[a.id].ms;
+      if (ams) {
+        ams.assists++;
+        if (a.kind === "corner") ams.cornerAssists++;
+        if (a.kind === "cross") ams.crossAssists++;
+        if (a.kind === "feed") ams.feedAssists++;
+      }
+    }
     this.events.push(ev);
     this.bumpMomentum(side, MATCH.momentum.goal);
+    // 慎重派のキャプテン：失点した後しばらく、相手に流れが行く量を減らす
+    const conceded = this.ctx[other(side)];
+    if (conceded.cap?.personality === "cautious") conceded.team.momentumGuardUntil = this.segStart + MATCH.segmentMinutes * (CAPTAIN.cautiousSegments + 1);
   }
 
   /** シュート：シュート × キック力 → GK のポジショニング → セービング → キャッチング（7.3） */
-  shoot(side: Side, shooter: Actor, q: number, minute: number, kind: "normal" | "middle" | "header" | "rebound" | "oneOnOne" | "freeKick", depth: number) {
+  shoot(side: Side, shooter: Actor, q: number, minute: number, kind: ShotKind, depth: number) {
     const atk = this.ctx[side];
     const def = this.ctx[other(side)];
     const e = shooter.e;
@@ -939,6 +1306,35 @@ class SegmentSim {
       default:
         acc = e.shooting * 0.75 + e.technique * 0.25;
         power = e.kickPower * 0.7 + e.shooting * 0.3;
+    }
+    // スタイル・特殊能力・性格の補正（P2b）
+    let skill: SkillId | undefined;
+    acc += styleBonus(shooter.t, "shotAccuracy");
+    if (kind === "normal" || kind === "rebound" || kind === "oneOnOne") acc += styleBonus(shooter.t, "finishing");
+    if (kind === "header") {
+      acc += this.line(shooter, "heading") + (this.setPieceKick ? this.setPieceBonus(side, shooter) : 0);
+      skill = this.lineSkill(shooter, "heading");
+    } else {
+      acc -= this.weakFoot(shooter);
+    }
+    if (kind === "oneOnOne") {
+      acc += this.line(shooter, "oneOnOne");
+      skill = this.lineSkill(shooter, "oneOnOne");
+    }
+    if (kind === "middle" && shooter.t.skills.has("middleShot")) {
+      acc += this.single(shooter, "middleShot");
+      skill = "middleShot";
+    }
+    if (kind === "freeKick") {
+      acc += this.setPieceBonus(side, shooter);
+      if (shooter.t.skills.has("fkMaster")) {
+        acc += this.single(shooter, "fkMaster", SKILL_EFFECTS.fkMasterAcc);
+        skill = "fkMaster";
+      }
+    }
+    if (kind === "normal" && this.fromSide && shooter.t.skills.has("curveShot")) {
+      acc += this.single(shooter, "curveShot");
+      skill = "curveShot";
     }
     atk.team.stats.shots++;
     this.emit(minute, side, "shot", [shooter.id], kind);
@@ -962,8 +1358,9 @@ class SegmentSim {
     atk.team.stats.onTarget++;
     this.bumpMomentum(side, MATCH.momentum.onTarget);
     const gk = def.gk;
-    const outcome = goalkeeperOutcome(this.rng, { acc, power, q }, gk.e);
-    if (outcome === "goal") return this.goal(side, shooter, minute);
+    const gkStats = { positioning: gk.e.positioning, saving: gk.e.saving + styleBonus(gk.t, "gkSave"), catching: gk.e.catching };
+    const outcome = goalkeeperOutcome(this.rng, { acc, power, q }, gkStats);
+    if (outcome === "goal") return this.goal(side, shooter, minute, kind === "normal" ? undefined : kind, skill);
     if (outcome === "catch") {
       this.emit(minute, other(side), "catch", [gk.id, shooter.id]);
       return;
@@ -974,6 +1371,7 @@ class SegmentSim {
     if (this.rng.chance(MATCH.reboundToAttacker)) {
       const s = this.pickBy(this.attackers(atk, "C"), (a) => a.e.speed + a.e.decision);
       this.emit(minute, side, "rebound", [s.id]);
+      this.assist = undefined;
       this.shoot(side, s, MATCH.reboundChanceQ, minute, "rebound", depth + 1);
     }
   }
@@ -1025,6 +1423,15 @@ class SegmentSim {
   }
 }
 
+/** PK 戦の読みに足す値（PK 系・冷静沈着。区間の外なので、ひらめき型の終盤の補正は無し） */
+function pkKickerRead(a: Actor) {
+  return linePoints(a.t, "pk") * SKILL_EFFECTS.pkReadMult + (a.t.personality === "calm" ? PERSONALITY_MATCH.calmPkRead : 0);
+}
+
+function pkGkRead(a: Actor) {
+  return singlePoints(a.t, "pkStopper", 1, SKILL_EFFECTS.pkStopperRead) + (a.t.personality === "calm" ? PERSONALITY_MATCH.calmPkRead : 0);
+}
+
 /** PK の読みに足すスカウティングの項（分析担当がいなければ 0。SPEC 10.6） */
 export function pkScoutingTerm(team: Pick<MatchTeamState, "scouting">): number {
   return (team.scouting ?? 0) * STAFF_EFFECTS.pkScouting;
@@ -1038,8 +1445,10 @@ function drainStamina(state: MatchState, segMinutes: number) {
       const p = team.players[id];
       if (!p || isOut(p)) return;
       const gkM = i === 0 ? MATCH.gkDrainMult : 1;
-      const drain = MATCH.drainBase * pressM * gkM * (MATCH.drainStamA - (p.stats.stamina / 100) * MATCH.drainStamB) * scale;
+      const slot = FORMATIONS[team.formation][i] ?? { pos: p.mainPosition };
+      const drain = MATCH.drainBase * pressM * gkM * (MATCH.drainStamA - (p.stats.stamina / 100) * MATCH.drainStamB) * scale * staminaDrainMult(p, slot);
       p.stamina = clamp(p.stamina - drain, 0, 100);
+      if (p.minutes !== undefined) p.minutes += segMinutes;
     });
   }
 }
@@ -1091,12 +1500,15 @@ export function stepPk(state: MatchState) {
   const kickerId = order[taken % order.length];
   const defTeam = state.teams[other(side)];
   const rng = Rng.fromState(state.rng);
-  const kickerActor = buildActors(state.teams[side]).find((a) => a.id === kickerId)!;
-  const defActors = buildActors(defTeam);
+  const kickerActor = buildActors(state.teams[side], actorEnv(state, side)).find((a) => a.id === kickerId)!;
+  const defActors = buildActors(defTeam, actorEnv(state, other(side)));
   const gkActor = defActors.find((a) => a.slot.pos === "GK") ?? defActors[0];
   const gkId = gkActor.id;
-  const r = resolvePkKick(rng, kickerActor.e, gkActor.e, pkScoutingTerm(state.teams[side]), pkScoutingTerm(defTeam));
+  const r = resolvePkKick(rng, kickerActor.e, gkActor.e, pkScoutingTerm(state.teams[side]) + pkKickerRead(kickerActor), pkScoutingTerm(defTeam) + pkGkRead(gkActor));
   state.rng = rng.state();
+  // PK 系の成果（連続成功・PK 戦で止めた本数）
+  kickerActor.mp.ms?.pkKicks.push(r.scored);
+  if (r.result === "saved" && gkActor.mp.ms) gkActor.mp.ms.pkShootoutSaves++;
   const kick = { side, kickerId, gkId, scored: r.scored, kickerWonRead: r.kickerWonRead, result: r.result };
   pk.kicks.push(kick);
   if (r.scored) pk.score[side]++;

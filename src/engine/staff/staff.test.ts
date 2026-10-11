@@ -115,7 +115,8 @@ describe("雇用・枠・臨時コーチ", () => {
     const other = s.alumni.find((a) => a.id !== ob.id)!;
     expect(hire(s, other.id, "gk")).not.toBeNull();
     expect(finishStaff(s)).toBeNull();
-    expect(s.pending).toBeUndefined();
+    // 編成の後はキャプテンの指名
+    expect(s.pending?.type).toBe("captain");
   });
 
   it("年度の途中は欠員があるときだけ補充できる。解任した人はその年度は雇い直せない", () => {

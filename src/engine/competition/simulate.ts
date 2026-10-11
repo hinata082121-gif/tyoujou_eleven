@@ -29,13 +29,14 @@ export function schoolTeamInput(school: School, rules: MatchRules, isUser: boole
     isUser,
     players,
     setup: autoSetup(players, school.formation, school.tactics, rules.benchSize),
+    captainId: school.captainId,
     ...(school.cpuStaff ? { scouting: school.cpuStaff.scouting, aiQuality: school.cpuStaff.tactics / 100 } : {}),
   };
 }
 
-/** CPU 同士の試合（表示なし。同じ試合エンジンで計算する） */
-export function simulateCpuMatch(rng: Rng, a: School, b: School, rules: MatchRules): MatchOutcome {
-  const state = simulateToEnd(createMatch(rules, rng, schoolTeamInput(a, rules, false, rng), schoolTeamInput(b, rules, false, rng)));
+/** CPU 同士の試合（表示なし。同じ試合エンジンで計算する）。bigStage は全国大会・県予選の決勝 */
+export function simulateCpuMatch(rng: Rng, a: School, b: School, rules: MatchRules, bigStage = false): MatchOutcome {
+  const state = simulateToEnd(createMatch(rules, rng, schoolTeamInput(a, rules, false, rng), schoolTeamInput(b, rules, false, rng), undefined, bigStage));
   const w = state.winner ?? (rng.chance(0.5) ? 0 : 1);
   return {
     winner: w === 0 ? a.id : b.id,

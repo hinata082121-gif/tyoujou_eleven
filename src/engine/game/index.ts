@@ -31,7 +31,17 @@ import { Rng } from "../rng";
 import { generateWorld } from "../school/generate";
 import { autumnCpuGrowth } from "../school/season";
 import { rankFromStrength, rankIndex, teamStrength } from "../school/strength";
-import { addLog, chooseCaptain, graduate, playerSchool, retireThirdYears, rolloverCpuSchools, rolloverPlayerSchool } from "../season";
+import { addLog, graduate, playerSchool, retireThirdYears, rolloverCpuSchools, rolloverPlayerSchool } from "../season";
+import { appointCaptain, autoCaptain, captainConditionMults, captainOf, captainPracticeMult } from "../captain";
+import { SKILL_NAMES } from "../config/names";
+import { MATCH_EXP, PERSONALITY_MATCH } from "../config/personality";
+import { POSITION_RATING_WEIGHTS } from "../config/player";
+import { PROFICIENCY } from "../config/playStyle";
+import { durabilityMult } from "../match/traits";
+import { addExp } from "../player/growth";
+import { gainProficiency } from "../player/traits";
+import { applyMatchFeats } from "../skills/feats";
+import type { LearnEvent } from "../skills/learn";
 import { MATCH } from "../config/match";
 import { STAFF_LIFE } from "../config/staff";
 import {
@@ -119,7 +129,8 @@ function startYear(state: GameState, rng: Rng) {
     practiceMatchCount: 0,
   };
   updatePlayerRank(state);
-  chooseCaptain(state);
+  // キャプテンはスタッフの編成の後に指名する（おすすめを初期選択にしておく）
+  autoCaptain(playerSchool(state));
   startStaffYear(state, rng);
   addLog(state, `${MAJOR_NAMES.entrance}。新入生が入部した。`, "info");
 }
@@ -185,10 +196,17 @@ export function playCard(state: GameState, cardId: string): CardResult | null {
     const gainsAll: NonNullable<GameState["calendar"]["lastGain"]>["perPlayer"] = {};
     const injured: Player[] = [];
     let to = from;
+    const mood = captainConditionMults(school);
     const staffOpts = {
       staffMult: (p: Player) => practiceStaffMult(state.staff, p, card.practice),
       recoveryMult: recoveryMult(state.staff),
       injuryMult: injuryMult(state.staff),
+      teamMult: captainPracticeMult(school),
+      conditionDownMult: mood.down,
+      conditionUpMult: mood.up,
+      // ひらめき型の倍率は、カード 1 枚の間は同じ
+      rolls: {} as Record<string, number>,
+      playerInjuryMult: (p: Player) => durabilityMult(p.skills),
     };
     for (let d = from + 1; d <= last; d++) {
       const r = runPractice(rng, school.players, card.practice, 1, mult, staffOpts);
@@ -217,7 +235,7 @@ export function playCard(state: GameState, cardId: string): CardResult | null {
       stoppedAt = sq.major.kind;
       setPendingForMajor(state, rng, sq);
     } else {
-      const ctx = { rng, players: school.players, reputation: state.reputation, calendar: cal };
+      const ctx = { rng, players: school.players, reputation: state.reputation, calendar: cal, practice: card.practice, alumni: state.alumni, staff: state.staff };
       const o = landOnSquare(ctx, sq.baseType);
       outcomes.push(o);
       addLog(state, `${o.title}：${o.text}`, o.tone);
@@ -296,11 +314,16 @@ function rulesFor(b: Bracket, round: number): MatchRules {
   return winterRulesForRound(totalRounds(b), round);
 }
 
+/** 大舞台（全国大会と、県予選の決勝。SPEC 7.5・7.7） */
+export function isBigStage(b: Bracket, round: number): boolean {
+  return b.kind === "national" || round === totalRounds(b) - 1;
+}
+
 function simulateRemainingRound(state: GameState, rng: Rng, b: Bracket) {
   const r = b.roundsDone;
   for (const m of b.rounds[r]) {
     if (m.winner !== undefined || !m.a || !m.b) continue;
-    recordResult(m, simulateCpuMatch(rng.fork(m.id), state.schools[m.a], state.schools[m.b], rulesFor(b, r)));
+    recordResult(m, simulateCpuMatch(rng.fork(m.id), state.schools[m.a], state.schools[m.b], rulesFor(b, r), isBigStage(b, r)));
   }
   advanceRound(b, rng);
   if (isFinished(b)) onBracketFinished(state, rng, b);
@@ -374,6 +397,14 @@ export function defaultSetup(state: GameState): TeamSetup {
 }
 
 /** 次の試合が公式戦か */
+/** 次の試合が大舞台か（全国大会・県予選の決勝） */
+export function pendingIsBigStage(state: GameState): boolean {
+  const p = state.pending;
+  if (p?.type !== "match" || p.kind === "practice" || p.round === undefined) return false;
+  const b = p.kind === "prefQualifier" ? state.competitions.prefQualifier : state.competitions.national;
+  return !!b && isBigStage(b, p.round);
+}
+
 export function pendingIsOfficial(state: GameState): boolean {
   return state.pending?.type === "match" && state.pending.kind !== "practice";
 }
@@ -427,7 +458,7 @@ export function startPlayerMatch(state: GameState, setup: TeamSetup, mode: "watc
       bracketMatchId: p.bracketMatchId,
       userSide: 0,
       opponentId: opp.id,
-      state: createMatch(rules, rng, home, away, p.kind),
+      state: createMatch(rules, rng, home, away, p.kind, pendingIsBigStage(state)),
       started: true,
       mode,
     };
@@ -456,6 +487,8 @@ export interface MatchSummary {
   rankDiff: number;
   /** 得点の記録（結果のみの画面などで使う） */
   goals: { minute: number; mine: boolean; name: string; pk: boolean }[];
+  /** 試合での成果で習得した・段階が上がった特殊能力 */
+  learned: LearnEvent[];
 }
 
 /** 試合終了後の処理（評判・トーナメントの進行・引退） */
@@ -474,11 +507,25 @@ export function finishPlayerMatch(state: GameState): MatchSummary | null {
     const myScore = ms.score[am.userSide];
     const oppScore = ms.score[am.userSide === 0 ? 1 : 0];
     const won = ms.winner === am.userSide;
+    const result: MatchSummary["result"] = ms.winner === null || ms.winner === undefined ? "draw" : won ? "win" : "loss";
+    // 全国大会の決勝の決勝点（相手の得点 + 1 点目）
+    const isNationalFinal = am.kind === "national" && am.round !== undefined && state.competitions.national && am.round === totalRounds(state.competitions.national) - 1;
+    const winnerGoal = isNationalFinal && won && !ms.pk ? ms.events.filter((e) => e.side === am.userSide && (e.type === "goal" || e.type === "pkGoal"))[oppScore] : undefined;
+    const learned: LearnEvent[] = [];
+    const fullMinutes = ms.rules.halfMinutes * 2;
     // 試合に出た選手：体力の消耗・成績・退場・ケガ
     for (const id of [...me.onPitch, ...me.subbedOff]) {
       const pl = school.players.find((x) => x.id === id);
       const mp = me.players[id];
       if (!pl || !mp) continue;
+      // 試合経験点・熟練度（出場時間で按分。P2b）
+      const share = Math.min(1.5, (mp.minutes ?? fullMinutes) / fullMinutes);
+      giveMatchExp(pl, share);
+      gainProficiency(pl, (official ? PROFICIENCY.perOfficialMatch : PROFICIENCY.perMatch) * share);
+      // 試合での成果
+      learned.push(...applyMatchFeats(rng, pl, mp, { official, nationalFinalWinner: winnerGoal?.players?.[0] === id }));
+      // 負けず嫌い：負けた後に調子を落とすことがある
+      if (result === "loss" && pl.personality === "competitive" && rng.chance(PERSONALITY_MATCH.competitiveLossSlumpChance)) pl.condition = Math.max(-2, pl.condition - 1) as Player["condition"];
       pl.fitness = Math.max(0, pl.fitness - (MATCH_FATIGUE.base + (100 - mp.stamina) * MATCH_FATIGUE.fromStamina));
       pl.record.apps++;
       pl.record.goals += mp.goals;
@@ -510,7 +557,7 @@ export function finishPlayerMatch(state: GameState): MatchSummary | null {
       if (won) season.pkShootoutWins++;
     }
     season.inMatchPkGood += ms.events.filter((e) => e.side === am.userSide && (e.type === "pkGoal" || e.type === "pkSaved")).length;
-    const result: MatchSummary["result"] = ms.winner === null || ms.winner === undefined ? "draw" : won ? "win" : "loss";
+    for (const l of learned) addLog(state, learnLog(l), "good");
     const viaPk = !!ms.pk;
     updatePlayerRank(state);
     const levelBefore = state.reputation.level;
@@ -563,6 +610,11 @@ export function finishPlayerMatch(state: GameState): MatchSummary | null {
     }
     state.activeMatch = undefined;
     state.pending = undefined;
+    // 3 年生の引退でキャプテンがいなくなったら、新しいキャプテンを指名する
+    if (!captainOf(school) && school.players.some((x) => x.status === "active")) {
+      autoCaptain(school);
+      state.pending = { type: "captain" };
+    }
     return {
       kind: am.kind,
       label,
@@ -584,8 +636,34 @@ export function finishPlayerMatch(state: GameState): MatchSummary | null {
           name: ms.teams[e.side].players[e.players![0]]?.name ?? "",
           pk: e.type === "pkGoal",
         })),
+      learned,
     };
   });
+}
+
+/** 試合経験点：出場した選手のポジションに合う能力に入る（負けず嫌いは多い。SPEC 7.5） */
+function giveMatchExp(p: Player, share: number) {
+  const w = POSITION_RATING_WEIGHTS[p.mainPosition];
+  const total = Object.values(w).reduce((a, b) => a + (b ?? 0), 0);
+  const amount = MATCH_EXP.perFullMatch * share * (p.personality === "competitive" ? MATCH_EXP.competitiveMult : 1);
+  for (const [k, v] of Object.entries(w) as [keyof typeof w, number][]) addExp(p, k, (amount * v) / total);
+}
+
+function learnLog(l: LearnEvent): string {
+  return l.kind === "remove" ? `${l.name}の「${SKILL_NAMES[l.skill]}」が消えた。` : `${l.name}が試合での活躍から「${SKILL_NAMES[l.skill]}」を身につけた！`;
+}
+
+// ================= キャプテン（UI から呼ぶ） =================
+
+/** キャプテン指名の画面で決める（年度初め・3 年生の引退後） */
+export function confirmCaptain(state: GameState, playerId: string): string | null {
+  if (state.pending?.type !== "captain") return "キャプテンを選ぶ時期ではありません";
+  const school = playerSchool(state);
+  if (!appointCaptain(school, playerId)) return "在籍している部員から選んでください";
+  const p = captainOf(school)!;
+  addLog(state, `${p.name}（${p.grade}年）をキャプテンに指名した。`, "info");
+  state.pending = undefined;
+  return null;
 }
 
 // ================= 卒業・年度替わり =================
@@ -647,9 +725,13 @@ export function changeRole(state: GameState, memberId: string, role: StaffRole):
 
 /** スタッフの編成を終える（ゲーム開始時・年度初め） */
 export function finishStaff(state: GameState): string | null {
+  const wasPending = state.pending?.type === "staff";
   return withRng(state, (rng) => {
     ensureHeadCoach(state, rng);
-    return finishStaffReview(state, rng);
+    const err = finishStaffReview(state, rng);
+    // 年度初めの編成の後に、キャプテンを指名する
+    if (!err && wasPending) state.pending = { type: "captain" };
+    return err;
   });
 }
 
