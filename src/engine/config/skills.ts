@@ -262,14 +262,14 @@ export const GOLD_REQUIREMENTS: Partial<Record<SkillId, { requires?: SkillId; ch
   // FK・CK・クロスの名手は前提の特殊能力（◎）がなく条件をそろえる人が多いので、判定の確率を下げて（chanceMult）ほかとそろえる
   oneOnOneG: { requires: "oneOnOne2", feat: { key: "oneOnOneGoals", count: 2 } },
   headingG: { requires: "heading2", feat: { key: "headerGoals", count: 2 } },
-  duelG: { requires: "duel2", feat: { key: "duelWins", count: 6 } },
-  aerialDefG: { requires: "aerialDef2", feat: { key: "aerialWins", count: 5 } },
-  gkOneOnOneG: { requires: "gkOneOnOne2", feat: { key: "gkOneOnOneStops", count: 7 } },
+  duelG: { requires: "duel2", feat: { key: "duelWins", count: 5 } },
+  aerialDefG: { requires: "aerialDef2", feat: { key: "aerialWins", count: 4 } },
+  gkOneOnOneG: { requires: "gkOneOnOne2", feat: { key: "gkOneOnOneStops", count: 5 } },
   feedG: { requires: "feed2", feat: { key: "feedAssists", count: 1 } },
   pkG: { requires: "pk2", feat: { key: "pkStreak", count: 2 } },
-  fkMaster: { chanceMult: 0.4, feat: { key: "fkGoals", count: 1 } },
-  ckMaster: { chanceMult: 0.4, feat: { key: "cornerAssists", count: 1 } },
-  crossMaster: { chanceMult: 0.4, feat: { key: "crossAssists", count: 2 } },
+  fkMaster: { chanceMult: 0.6, feat: { key: "fkGoals", count: 1 } },
+  ckMaster: { chanceMult: 0.6, feat: { key: "cornerAssists", count: 1 } },
+  crossMaster: { chanceMult: 0.6, feat: { key: "crossAssists", count: 2 } },
 };
 
 /** 試合での成果で段階が上がる条件 */

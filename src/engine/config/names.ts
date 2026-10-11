@@ -590,9 +590,9 @@ export const SKILL_TEXTS: Partial<Record<SkillId | keyof typeof SKILL_LINE_NAMES
 export const SKILL_HINTS: Partial<Record<SkillId | keyof typeof SKILL_LINE_NAMES, string>> = {
   oneOnOne: "特訓：シュート練習／公式戦の1試合で3得点で段階アップ。1対1職人は公式戦での1対1からの通算2得点が条件",
   heading: "特訓：フィジカル・セットプレー／公式戦の1試合でヘディング2得点で段階アップ。ボンバーヘッドは公式戦でのヘディングの通算2得点が条件",
-  duel: "特訓：守備練習。対人の鬼は公式戦での1対1の守備の勝ち通算9が条件",
-  aerialDef: "特訓：フィジカル。空中戦の要は公式戦での守備の空中戦の勝ち通算7が条件",
-  gkOneOnOne: "特訓：GK練習。1対1の壁は公式戦で1対1を通算10回止めるのが条件",
+  duel: "特訓：守備練習。対人の鬼は公式戦での1対1の守備の勝ち通算5が条件",
+  aerialDef: "特訓：フィジカル。空中戦の要は公式戦での守備の空中戦の勝ち通算4が条件",
+  gkOneOnOne: "特訓：GK練習。1対1の壁は公式戦で1対1を通算5回止めるのが条件",
   feed: "特訓：GK練習。フィードの名手は公式戦でGKのロングボールから得点が生まれるのが条件",
   pk: "特訓：PK練習／PKを5本続けて決めると段階アップ。PK職人は2本連続が条件",
   bigStage: "特訓：PK練習／全国大会の決勝で決勝点を決めると段階アップ",
