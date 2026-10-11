@@ -151,6 +151,7 @@ export function playerTraitMult(p: MatchPlayer, env: ActorEnv): number {
   if (p.personality === "cautious" && env.bigStage) m *= PERSONALITY_MATCH.cautiousBigStageMult;
   for (const id of p.skills ?? []) {
     const d = SKILL_DEFS[id];
+    if (d.tier === "gold") m *= SKILL_EFFECTS.goldPresence;
     if (d.line === "bigStage" && env.bigStage) m *= SKILL_EFFECTS.bigStage[d.tier as "minus" | "plus" | "double"];
     if (d.line === "adversity" && env.behind) m *= SKILL_EFFECTS.adversity[d.tier as "plus" | "double"];
   }

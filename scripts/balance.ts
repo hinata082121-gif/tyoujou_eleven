@@ -1,6 +1,6 @@
 /**
  * npm run balance:quick … 普段使う軽い版（数十秒）。試合数・年数を減らした参考値
- * npm run balance:full  … すべての検証（4 分ほど）。PR の前に実行する
+ * npm run balance:full  … すべての検証（15 分ほど）。PR の前に実行する
  * 大量の試合をシミュレーションして、SPEC 14章のバランス目標と比べる。
  * 試合数などは環境変数で上書きできる（BALANCE_N など）。
  */
@@ -17,11 +17,12 @@ import { simulateSeasons } from "./seasonSim";
 import { tacticsMatrix } from "./tacticsMatrix";
 import { underdogTable } from "./underdog";
 import { cardTable, notesTable, pkTable, scenarioTable, staffGrowthTable } from "./phase2a";
+import { captainTable, goldTable, graduateSkillTable, styleContributionTable, styleWinTable } from "./phase2b";
 
 const MODE = process.argv[2] === "full" ? "full" : "quick";
 const PRESETS = {
-  quick: { n: 2000, tactics: 200, combos: false, underdog: 300, seasonGames: 6, seasonYears: 8, cards: 1000, pk: 2000, notes: 500, scenes: 800, growthGames: 3, growthYears: 6 },
-  full: { n: 10000, tactics: 600, combos: true, underdog: 1500, seasonGames: 20, seasonYears: 12, cards: 5000, pk: 10000, notes: 3000, scenes: 4000, growthGames: 12, growthYears: 10 },
+  quick: { n: 2000, tactics: 200, combos: false, underdog: 300, seasonGames: 6, seasonYears: 8, cards: 1000, pk: 2000, notes: 500, scenes: 800, growthGames: 3, growthYears: 6, p2bMatches: 600, p2bStyle: 200, p2bTeam: 400 },
+  full: { n: 10000, tactics: 600, combos: true, underdog: 1500, seasonGames: 20, seasonYears: 12, cards: 5000, pk: 10000, notes: 3000, scenes: 4000, growthGames: 12, growthYears: 10, p2bMatches: 3000, p2bStyle: 1000, p2bTeam: 2000 },
 }[MODE];
 const env = (key: string, fallback: number) => Number(process.env[key] ?? fallback);
 const N = env("BALANCE_N", PRESETS.n);
@@ -159,7 +160,7 @@ tacticsMatrix(env("BALANCE_TACTICS_N", PRESETS.tactics), "tactics", PRESETS.comb
 underdogTable(env("BALANCE_UNDERDOG_N", PRESETS.underdog));
 
 // ---- 評判の推移と成長（うまい采配の自動プレイで何年分も進める） ----
-simulateSeasons(env("BALANCE_SEASON_GAMES", PRESETS.seasonGames), env("BALANCE_SEASON_YEARS", PRESETS.seasonYears));
+const graduates = simulateSeasons(env("BALANCE_SEASON_GAMES", PRESETS.seasonGames), env("BALANCE_SEASON_YEARS", PRESETS.seasonYears));
 
 // ---- Phase 2a（docs/PHASE2A_PLAN.md 10.2） ----
 cardTable(env("BALANCE_CARDS_N", PRESETS.cards));
@@ -167,3 +168,10 @@ pkTable(env("BALANCE_PK_N", PRESETS.pk));
 notesTable(env("BALANCE_NOTES_N", PRESETS.notes));
 scenarioTable(env("BALANCE_SCENES_N", PRESETS.scenes));
 staffGrowthTable(env("BALANCE_GROWTH_GAMES", PRESETS.growthGames), env("BALANCE_GROWTH_YEARS", PRESETS.growthYears));
+
+// ---- Phase 2b（docs/PHASE2B_PLAN.md 9.2） ----
+graduateSkillTable(graduates);
+styleContributionTable(env("BALANCE_P2B_MATCHES", PRESETS.p2bMatches));
+styleWinTable(env("BALANCE_P2B_STYLE_N", PRESETS.p2bStyle));
+captainTable(env("BALANCE_P2B_TEAM_N", PRESETS.p2bTeam));
+goldTable(env("BALANCE_P2B_TEAM_N", PRESETS.p2bTeam));

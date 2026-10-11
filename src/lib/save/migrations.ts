@@ -137,7 +137,7 @@ export function migrateV3toV4(data: RawSave): RawSave {
   log.push({
     day: game.calendar?.position ?? 0,
     year: game.year,
-    text: "性格・プレースタイル・特殊能力が加わった。選手の詳細で確かめられます。キャプテンはいつでも選び直せます。",
+    text: "性格・プレースタイル・特殊能力が加わった。選手の詳細で確かめられます。キャプテンはひとまず自動で選んだ。年度初めに選び直せます。",
     tone: "info",
   });
   game.log = log;

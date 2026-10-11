@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SKILL_LEARN, TRAINING_POOLS } from "../config/skills";
+import { GOLD_REQUIREMENTS, SKILL_LEARN, TRAINING_POOLS } from "../config/skills";
 import { generatePlayer } from "../player/generate";
 import { Rng } from "../rng";
 import { emptyMatchPlayerStats, type MatchPlayer } from "../match/types";
@@ -185,9 +185,10 @@ describe("試合での成果", () => {
     const p = make();
     p.skills = ["oneOnOne2"];
     expect(stepUpLine(p, "oneOnOne")).toBeNull();
-    p.feats = { ...emptyFeats(), oneOnOneGoals: 2 };
+    const need = GOLD_REQUIREMENTS.oneOnOneG!.feat!.count;
+    p.feats = { ...emptyFeats(), oneOnOneGoals: need - 1 };
     expect(goldReady(p, "oneOnOneG")).toBe(false);
-    p.feats.oneOnOneGoals = 3;
+    p.feats.oneOnOneGoals = need;
     expect(goldReady(p, "oneOnOneG")).toBe(true);
     p.skills = ["oneOnOne1"];
     expect(goldReady(p, "oneOnOneG")).toBe(false);

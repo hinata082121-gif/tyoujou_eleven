@@ -214,6 +214,8 @@ describe("作戦ノート（SPEC 10.5）", () => {
     // 控えの GK を PK の名手にする
     const benchGk = base.players.find((p) => p.mainPosition === "GK" && !base.setup.lineup.includes(p.id) && base.setup.bench.includes(p.id))!;
     benchGk.stats.pkSkill = 95;
+    // 特殊能力（PK ストッパーなど）で結果が変わらないように外す
+    for (const p of base.players) p.skills = [];
     const input = { ...base, note: { noteName: "PK", rules: [templateRule("pkPrep", "pk")], kind: "prefQualifier" as const } };
     const s = findMatch(
       (m) => m.phase === "END" && !!m.pk,

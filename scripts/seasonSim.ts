@@ -3,7 +3,7 @@ import { newGame } from "../src/engine/game";
 import { autoplayYears } from "../src/engine/game/autoplay";
 import { statRank } from "../src/engine/player/rank";
 import { rankIndex } from "../src/engine/school/strength";
-import { SCHOOL_RANKS, type ReputationLevel } from "../src/engine/types";
+import { SCHOOL_RANKS, type Alumnus, type ReputationLevel } from "../src/engine/types";
 import { staffAge } from "../src/engine/staff";
 import { STAFF_LIFE } from "../src/engine/config/staff";
 
@@ -11,7 +11,7 @@ import { STAFF_LIFE } from "../src/engine/config/staff";
  * 何年分も自動で遊んで、評判の推移と成長を測る（SPEC 14章）。
  * ある程度うまい采配をする自動プレイ（skilled）を使う。
  */
-export function simulateSeasons(games: number, years: number) {
+export function simulateSeasons(games: number, years: number): Alumnus[] {
   const t0 = Date.now();
   // levelByYear[y][g] = y 年目の終わりの評判
   const levelByYear: ReputationLevel[][] = Array.from({ length: years }, () => []);
@@ -22,6 +22,7 @@ export function simulateSeasons(games: number, years: number) {
   const rankByYear: number[][] = Array.from({ length: years }, () => []);
   const winter: Record<string, number> = {};
   const graduatesOverall: number[] = [];
+  const graduates: Alumnus[] = [];
   let practiceMatchesPerYear = 0;
   // スタッフの入れ替わり（自動プレイは空き枠に一番合う OB を入れる）
   const turnover = { hired: 0, retired: 0, poached: 0, other: 0, tempYears: 0, staffYears: 0, maxAbility: 0 };
@@ -70,7 +71,11 @@ export function simulateSeasons(games: number, years: number) {
     }
     for (let l = 0; l < 4; l++) firstReach[l].push(reached[l]);
     // 初期の部員を除いた、一般入部の卒業生（4 年目以降の卒業）
-    for (const a of state.alumni) if (a.graduatedYear >= 4) graduatesOverall.push(a.overall);
+    for (const a of state.alumni)
+      if (a.graduatedYear >= 4 && !a.fictional) {
+        graduatesOverall.push(a.overall);
+        graduates.push(a);
+      }
   }
 
   const pct = (x: number) => `${(x * 100).toFixed(0)}%`;
@@ -117,4 +122,5 @@ export function simulateSeasons(games: number, years: number) {
   console.log(`| 総合C以上 | ${share((x) => x >= 60)} | — |`);
   console.log(`| 総合A以上 | ${share((x) => x >= 80)} | — |`);
   console.log(`(計算時間 ${((Date.now() - t0) / 1000).toFixed(1)} 秒)`);
+  return graduates;
 }

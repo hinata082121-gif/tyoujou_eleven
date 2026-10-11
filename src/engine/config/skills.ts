@@ -91,9 +91,11 @@ export const SKILL_LINE_TIERS: Record<SkillLine, { minus: SkillId | null; plus: 
 // ================= 試合での効果（PLAN 4.1） =================
 
 /** 段階ごとの「実効値に足す点数」（判定の尺度はほぼ 10） */
-export const TIER_POINTS = { minus: -3, plus: 2.5, double: 5, gold: 8, single: 4 };
+export const TIER_POINTS = { minus: -3, plus: 2.5, double: 5, gold: 12, single: 4 };
 
 export const SKILL_EFFECTS = {
+  /** 金色を持つ選手は、その場面以外でも一段上の存在感がある（実効能力の倍率。調子と同じく圧縮の前に掛ける） */
+  goldPresence: 1.09,
   /** 1 対 1 系の金色：決定機の質に足す */
   oneOnOneGoldQ: 0.05,
   /** PK 系：PK の読みは尺度が 22 なので点数を倍にする */
@@ -108,18 +110,18 @@ export const SKILL_EFFECTS = {
   /** キャプテンシー系：キャプテンのとき、チーム全体の実効能力の倍率 */
   captaincy: { plus: 1.01, double: 1.02 },
   /** フィード系の金色：GK のロングボールがカウンターの起点になる率 */
-  feedGoldCounterMult: 1.2,
+  feedGoldCounterMult: 1.1,
   /** 逆足で蹴る場面の割合と、精度の減点（ふつう／逆足×）。両利きは減点なし */
   weakFootChance: 0.25,
   weakFootPenalty: 1.5,
   weakFootPenaltyMinus: 6,
   /** 両利き：サイドのカットインとクロスの質（実効値） */
-  footGoldSide: 4,
+  footGoldSide: 6,
   /** FK の名手：直接 FK のシュート精度、キッカーに選ばれやすさ */
-  fkMasterAcc: 8,
+  fkMasterAcc: 12,
   /** CK の名手・クロスの名手：クロスの質（0〜1 に足す） */
-  ckMasterQ: 0.12,
-  crossMasterQ: 0.12,
+  ckMasterQ: 0.2,
+  crossMasterQ: 0.2,
   crossMasterHeaderMult: 1.1,
   /** セットプレーの名手がキッカーに選ばれやすさ */
   setPieceKickerMult: 3,
@@ -162,18 +164,18 @@ export const SKILL_LEARN = {
   styleAffinityPerProficiency: 0.7,
   /** 性格との相性 */
   personalityMult: 1.4,
-  /** 段階の補正（◎は○の半分） */
-  doubleMult: 0.5,
+  /** 段階の補正（◎は ○ を持つ選手だけが候補になるので、○ より高くする） */
+  doubleMult: 2.5,
   /** 特訓マス：対象者 1 人あたりの基本確率と、関係する × が消える確率 */
-  trainingBase: 0.06,
+  trainingBase: 0.03,
   trainingRemoveMinus: 0.15,
   /** 新入生：プラス（○か段階なし）とマイナス（×）を持つ確率 */
   freshmanPlus: 0.05,
   freshmanMinus: 0.04,
   /** 金色の判定：成果の条件をそろえた後の、関係する特訓・金色の OB の直伝・条件を満たした試合の直後 */
-  goldTraining: 0.02,
+  goldTraining: 0.08,
   goldObTeach: 0.2,
-  goldAfterFeat: 0.1,
+  goldAfterFeat: 0.4,
   /** 両利き：熟練度の下限と、シュートかドリブルの特訓での確率 */
   footGoldMinProficiency: 80,
   footGoldTraining: 0.01,
@@ -232,16 +234,17 @@ export const TRAINING_GOLDS: Record<PracticeKind, SkillId[]> = {
 
 /** 金色の前提（下の段階）と成果の条件（PLAN 5.4） */
 export const GOLD_REQUIREMENTS: Partial<Record<SkillId, { requires?: SkillId; feat?: { key: "oneOnOneGoals" | "headerGoals" | "fkGoals" | "cornerAssists" | "crossAssists" | "feedAssists" | "duelWins" | "aerialWins" | "gkOneOnOneStops" | "pkStreak"; count: number } }>> = {
-  oneOnOneG: { requires: "oneOnOne2", feat: { key: "oneOnOneGoals", count: 5 } },
-  headingG: { requires: "heading2", feat: { key: "headerGoals", count: 4 } },
-  duelG: { requires: "duel2", feat: { key: "duelWins", count: 30 } },
-  aerialDefG: { requires: "aerialDef2", feat: { key: "aerialWins", count: 30 } },
-  gkOneOnOneG: { requires: "gkOneOnOne2", feat: { key: "gkOneOnOneStops", count: 5 } },
-  feedG: { requires: "feed2", feat: { key: "feedAssists", count: 3 } },
-  pkG: { requires: "pk2", feat: { key: "pkStreak", count: 8 } },
-  fkMaster: { feat: { key: "fkGoals", count: 2 } },
-  ckMaster: { feat: { key: "cornerAssists", count: 3 } },
-  crossMaster: { feat: { key: "crossAssists", count: 5 } },
+  // 自校の公式戦は 1 人あたり 3 年で数試合（balance で測定。卒業生の平均 3 試合）しかないので、回数は 1〜4 にしている
+  oneOnOneG: { requires: "oneOnOne2", feat: { key: "oneOnOneGoals", count: 2 } },
+  headingG: { requires: "heading2", feat: { key: "headerGoals", count: 1 } },
+  duelG: { requires: "duel2", feat: { key: "duelWins", count: 3 } },
+  aerialDefG: { requires: "aerialDef2", feat: { key: "aerialWins", count: 4 } },
+  gkOneOnOneG: { requires: "gkOneOnOne2", feat: { key: "gkOneOnOneStops", count: 3 } },
+  feedG: { requires: "feed2", feat: { key: "feedAssists", count: 1 } },
+  pkG: { requires: "pk2", feat: { key: "pkStreak", count: 3 } },
+  fkMaster: { feat: { key: "fkGoals", count: 1 } },
+  ckMaster: { feat: { key: "cornerAssists", count: 1 } },
+  crossMaster: { feat: { key: "crossAssists", count: 1 } },
 };
 
 /** 試合での成果で段階が上がる条件 */
