@@ -16,7 +16,7 @@ const SQUARE_STYLE: Record<string, string> = {
   white: "bg-white text-gray-600 border border-gray-300",
   green: "bg-emerald-400 text-white",
   yellow: "bg-yellow-300 text-yellow-900",
-  training: "bg-purple-500 text-white",
+  training: "bg-fuchsia-500 text-white",
   major: "bg-violet-700 text-white",
 };
 
@@ -97,6 +97,7 @@ export function HomeView() {
           <span><i className="mr-0.5 inline-block h-2 w-2 rounded-sm bg-emerald-400" />体力回復</span>
           <span><i className="mr-0.5 inline-block h-2 w-2 rounded-sm bg-yellow-300" />練習効率UP</span>
           <span><i className="mr-0.5 inline-block h-2 w-2 rounded-sm bg-violet-700" />必ず止まる</span>
+          <span><i className="mr-0.5 inline-block h-2 w-2 rounded-sm bg-fuchsia-500" />特訓</span>
         </div>
       </section>
 

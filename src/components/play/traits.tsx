@@ -112,7 +112,11 @@ export function StyleChangeSheet({ player, onClose }: { player: Player; onClose:
   const [pick, setPick] = useState<PlayStyle | null>(null);
   const [error, setError] = useState<string | null>(null);
   const options = styleOptions(player);
-  const groups = (["FW", "MF", "DF", "GK"] as StyleGroup[]).map((g) => ({ g, styles: options.filter((s) => PLAY_STYLE_DEFS[s].groups.includes(g)) })).filter((x) => x.styles.length > 0);
+  // 複数の区分に入るスタイル（ウイングドリブラーなど）は、最初の区分にだけ並べる
+  const seen = new Set<PlayStyle>();
+  const groups = (["FW", "MF", "DF", "GK"] as StyleGroup[])
+    .map((g) => ({ g, styles: options.filter((s) => PLAY_STYLE_DEFS[s].groups.includes(g) && !seen.has(s) && (seen.add(s), true)) }))
+    .filter((x) => x.styles.length > 0);
   const easy = PERSONALITY_STYLES[player.personality];
   if (pick)
     return (
