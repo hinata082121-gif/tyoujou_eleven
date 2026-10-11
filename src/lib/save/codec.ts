@@ -2,12 +2,28 @@
  * セーブデータの圧縮形式。
  * 部員（CPU 校を含めて数千人）は配列に詰めて保存し、容量を抑える。
  */
-import { ALL_STATS, POSITIONS, type Aptitude, type Condition, type Foot, type GameState, type Player, type School, type StatKey } from "@/engine/types";
+import {
+  ALL_STATS,
+  PERSONALITIES,
+  PLAY_STYLES,
+  POSITIONS,
+  PRACTICE_KINDS,
+  SKILL_IDS,
+  type Aptitude,
+  type Condition,
+  type Foot,
+  type GameState,
+  type Player,
+  type PlayerFeats,
+  type School,
+  type StatKey,
+} from "@/engine/types";
 
 /**
  * [id, name, grade, enrolledYear, retired, mainPos, height, heightLeft, foot, aptitude, stats, exp, potential, fitness, condition, injuryDays,
- *  suspended, [apps, goals, officialApps, officialGoals]]
- * 末尾の 2 つはスキーマ v3 で追加（v2 のデータには無い）
+ *  traits, suspended, [apps, goals, officialApps, officialGoals]]
+ * traits はスキーマ v4 で追加（v3 以前は無いので、マイグレーションで差し込む）。
+ * 末尾の 2 つはスキーマ v3 で追加（記録が空なら省く）
  */
 export type PackedPlayer = [
   string,
@@ -26,9 +42,48 @@ export type PackedPlayer = [
   number,
   number,
   number,
+  PackedTraits,
   number?,
   number[]?,
 ];
+
+/** [性格, スタイル, 熟練度, 特殊能力, 得意な練習（無ければ -1）, 成果（無ければ省く）]。どれも番号で持つ */
+export type PackedTraits = [number, number, number, number[], number, number[]?];
+
+/** 成果の並び（PlayerFeats のキー。goldReady は最後の配列） */
+const FEAT_KEYS = ["oneOnOneGoals", "headerGoals", "fkGoals", "cornerAssists", "crossAssists", "feedAssists", "duelWins", "aerialWins", "gkOneOnOneStops", "pkStreak"] as const;
+
+export function packTraits(p: Player): PackedTraits {
+  const t: PackedTraits = [
+    PERSONALITIES.indexOf(p.personality),
+    PLAY_STYLES.indexOf(p.playStyle),
+    round1(p.styleProficiency),
+    p.skills.map((s) => SKILL_IDS.indexOf(s)),
+    p.favoritePractice ? PRACTICE_KINDS.indexOf(p.favoritePractice) : -1,
+  ];
+  const f = p.feats;
+  if (f) t.push([...FEAT_KEYS.map((k) => f[k]), ...(f.goldReady ?? []).map((s) => SKILL_IDS.indexOf(s))]);
+  return t;
+}
+
+function unpackTraits(t: PackedTraits): Pick<Player, "personality" | "playStyle" | "styleProficiency" | "skills" | "favoritePractice" | "feats"> {
+  const [pers, style, prof, skills, fav, feats] = t;
+  const out: ReturnType<typeof unpackTraits> = {
+    personality: PERSONALITIES[pers],
+    playStyle: PLAY_STYLES[style],
+    styleProficiency: prof,
+    skills: skills.map((i) => SKILL_IDS[i]),
+  };
+  if (fav >= 0) out.favoritePractice = PRACTICE_KINDS[fav];
+  if (feats) {
+    const f = {} as PlayerFeats;
+    FEAT_KEYS.forEach((k, i) => (f[k] = feats[i] ?? 0));
+    const ready = feats.slice(FEAT_KEYS.length).map((i) => SKILL_IDS[i]);
+    if (ready.length > 0) f.goldReady = ready;
+    out.feats = f;
+  }
+  return out;
+}
 
 const round1 = (v: number) => Math.round(v * 10) / 10;
 
@@ -51,6 +106,7 @@ export function packPlayer(p: Player): PackedPlayer {
     round1(p.fitness),
     p.condition,
     p.injuryDays,
+    packTraits(p),
   ];
   // CPU 校の部員（数千人）は記録が空なので、容量のために省く
   if (p.suspended || r.apps || r.goals || r.officialApps || r.officialGoals) packed.push(p.suspended, [r.apps, r.goals, r.officialApps, r.officialGoals]);
@@ -58,7 +114,7 @@ export function packPlayer(p: Player): PackedPlayer {
 }
 
 export function unpackPlayer(a: PackedPlayer): Player {
-  const [id, name, grade, enrolledYear, retired, pos, height, heightLeft, foot, apt, stats, exp, potential, fitness, condition, injuryDays, suspended, rec] = a;
+  const [id, name, grade, enrolledYear, retired, pos, height, heightLeft, foot, apt, stats, exp, potential, fitness, condition, injuryDays, traits, suspended, rec] = a;
   const aptitude = {} as Record<(typeof POSITIONS)[number], Aptitude>;
   POSITIONS.forEach((p, i) => (aptitude[p] = Number(apt[i]) as Aptitude));
   const s = {} as Record<StatKey, number>;
@@ -87,6 +143,7 @@ export function unpackPlayer(a: PackedPlayer): Player {
     admission: "general",
     suspended: suspended ?? 0,
     record: { apps: rec?.[0] ?? 0, goals: rec?.[1] ?? 0, officialApps: rec?.[2] ?? 0, officialGoals: rec?.[3] ?? 0 },
+    ...unpackTraits(traits),
   };
 }
 
