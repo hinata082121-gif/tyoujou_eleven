@@ -45,16 +45,16 @@ export const EVENTS: EventDef[] = [
   { id: "goodWeather", tone: "good", title: "絶好の練習日和", text: "グラウンドの状態が良い。次の練習の効率が上がる。", effect: { type: "nextPractice", mult: 1.3 }, weight: 8 },
   { id: "quickRecovery", tone: "good", title: "治療がうまくいった", text: "ケガをしていた部員の回復が早まった。", effect: { type: "healInjuries", days: 6 }, weight: 4 },
   // ---- 特殊能力（P2b）----
-  { id: "obTeach", tone: "good", title: "OBの直伝", text: "OBが練習に来て、得意のプレーを教えてくれた。", effect: { type: "obTeach", base: 0.35 }, weight: 5 },
-  { id: "staffTeach", tone: "good", title: "スタッフの個別指導", text: "スタッフが部員の1人を付きっきりで指導した。", effect: { type: "staffTeach", base: 0.3, removeChance: 0.4 }, weight: 5 },
-  { id: "seniorTeach", tone: "good", title: "先輩の背中", text: "3年生が後輩に自分の技を伝えた。", effect: { type: "seniorTeach", base: 0.25 }, weight: 4 },
-  { id: "selfAwake", tone: "good", title: "自主練の開眼", text: "居残り練習で、何かをつかんだ部員がいる。", effect: { type: "selfAwake", base: 0.4, minProficiency: 60 }, weight: 4 },
+  { id: "obTeach", tone: "good", title: "OBの直伝", text: "OBが練習に来て、得意のプレーを教えてくれた。", effect: { type: "obTeach", base: 0.35 }, weight: 3 },
+  { id: "staffTeach", tone: "good", title: "スタッフの個別指導", text: "スタッフが部員の1人を付きっきりで指導した。", effect: { type: "staffTeach", base: 0.3, removeChance: 0.4 }, weight: 3 },
+  { id: "seniorTeach", tone: "good", title: "先輩の背中", text: "3年生が後輩に自分の技を伝えた。", effect: { type: "seniorTeach", base: 0.25 }, weight: 2 },
+  { id: "selfAwake", tone: "good", title: "自主練の開眼", text: "居残り練習で、何かをつかんだ部員がいる。", effect: { type: "selfAwake", base: 0.4, minProficiency: 60 }, weight: 2 },
   // ---- 悪いイベント（赤マス）----
   { id: "rain", tone: "bad", title: "雨で練習中止", text: "大雨でグラウンドが使えない。次の練習の効率が下がる。", effect: { type: "nextPractice", mult: 0.6 }, weight: 10 },
   { id: "injury", tone: "bad", title: "ケガ", text: "練習中に部員がケガをしてしまった。", effect: { type: "injury", days: [5, 18] }, weight: 6 },
   { id: "cold", tone: "bad", title: "風邪が流行", text: "部内で風邪が流行した。何人かの体力と調子が落ちた。", effect: { type: "someFitness", count: [3, 6], amount: -20, condition: -1 }, weight: 8 },
   { id: "slump", tone: "bad", title: "調子を崩す", text: "何人かの部員が調子を崩している。", effect: { type: "someCondition", count: [2, 4], amount: -1 }, weight: 9 },
-  { id: "badHabit", tone: "bad", title: "悪い癖", text: "部員の1人に悪い癖がついてしまった。", effect: { type: "badHabit" }, weight: 2 },
+  { id: "badHabit", tone: "bad", title: "悪い癖", text: "部員の1人に悪い癖がついてしまった。", effect: { type: "badHabit" }, weight: 1 },
   { id: "tired", tone: "bad", title: "疲れがたまる", text: "連日の練習で疲れがたまっている。", effect: { type: "teamFitness", amount: -10 }, weight: 9 },
   // ---- どちらとも言える（白マスで追加で出る）----
   { id: "scrimmage", tone: "good", title: "紅白戦", text: "白熱した紅白戦で、判断と視野が磨かれた。ただし体力は消耗した。", effect: { type: "teamExp", stats: ["decision", "vision"], exp: 6, fitness: -10 }, weight: 6 },

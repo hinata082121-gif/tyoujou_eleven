@@ -32,12 +32,12 @@ export const emptyFeats = (): PlayerFeats => ({
 });
 
 /** スタイルとの相性・性格との相性・段階の補正をかけた習得の確率（金色は 0。金色は goldChance） */
-export function learnChance(p: Player, id: SkillId, base: number): number {
+export function learnChance(p: Player, id: SkillId, base: number, doubleMult: number = SKILL_LEARN.doubleMult): number {
   if (isGold(id) || !canLearn(p, id)) return 0;
   let c = base;
   if (PLAY_STYLE_DEFS[p.playStyle].skillAffinity.includes(id)) c *= SKILL_LEARN.styleAffinityBase + SKILL_LEARN.styleAffinityPerProficiency * (p.styleProficiency / 100);
   if (PERSONALITY_SKILLS[p.personality].includes(id)) c *= SKILL_LEARN.personalityMult;
-  if (SKILL_DEFS[id].tier === "double") c *= SKILL_LEARN.doubleMult;
+  if (SKILL_DEFS[id].tier === "double") c *= doubleMult;
   return Math.min(0.95, c);
 }
 
@@ -62,9 +62,9 @@ export function goldChance(p: Player, id: SkillId, base: number): number {
 }
 
 /** 候補を順に判定し、最初に当たったものを習得する（1 回に 1 つまで） */
-export function tryLearn(rng: Rng, p: Player, pool: readonly SkillId[], base: number): SkillId | null {
+export function tryLearn(rng: Rng, p: Player, pool: readonly SkillId[], base: number, doubleMult?: number): SkillId | null {
   for (const id of rng.shuffle([...pool])) {
-    const c = learnChance(p, id, base);
+    const c = learnChance(p, id, base, doubleMult);
     if (c > 0 && rng.chance(c) && learnSkill(p, id)) return id;
   }
   return null;
@@ -154,7 +154,7 @@ export function catchUpSkills(rng: Rng, p: Player, expectedRolls: number) {
 export function cpuLearn(rng: Rng, p: Player, withGold: boolean) {
   const def = PLAY_STYLE_DEFS[p.playStyle];
   const pool = [...new Set([...def.skillAffinity, ...def.practices.flatMap((k) => TRAINING_POOLS[k])])].filter((id) => !isGold(id));
-  tryLearn(rng, p, pool, SKILL_LEARN.cpuBase);
+  tryLearn(rng, p, pool, SKILL_LEARN.cpuBase, SKILL_LEARN.cpuDoubleMult);
   if (withGold && p.grade === 3) {
     const golds = def.skillAffinity.filter((id) => isGold(id) && id !== "footG" && canLearn(p, id) && (!GOLD_REQUIREMENTS[id]?.requires || hasSkill(p, GOLD_REQUIREMENTS[id]!.requires!)));
     for (const id of golds) if (rng.chance(SKILL_LEARN.cpuGold) && learnSkill(p, id)) break;

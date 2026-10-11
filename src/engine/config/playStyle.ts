@@ -256,7 +256,7 @@ export const PROFICIENCY = {
   perMatch: 2.5,
   perOfficialMatch: 3.5,
   /** スタイルに合う練習 1 日で上がる量 */
-  perPracticeDay: 0.3,
+  perPracticeDay: 0.45,
   /** 上がるほど上がりにくい：×(1 − 熟練度 / slowdown) */
   slowdown: 130,
   /** 性格の「伸ばしやすいスタイル」 */

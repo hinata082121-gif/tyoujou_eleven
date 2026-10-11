@@ -180,7 +180,9 @@ export const SKILL_LEARN = {
   footGoldMinProficiency: 80,
   footGoldTraining: 0.01,
   /** CPU 校：年 2 回の判定の基本確率（候補はスタイルの相性から） */
-  cpuBase: 0.16,
+  cpuBase: 0.1,
+  /** CPU 校の ◎ の補正（候補がスタイルの相性に絞られていて ◎ に届きやすいので、自校より低くする） */
+  cpuDoubleMult: 0.5,
   /** CPU 校：◎ を持つ 3 年生が金色になる確率（年 1 回） */
   cpuGold: 0.015,
   /** P2a のセーブを読み込んだときの学年ごとの習得の回数の期待値 */
