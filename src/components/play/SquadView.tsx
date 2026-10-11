@@ -135,6 +135,7 @@ export function SquadView() {
                   <span className="truncate text-sm font-bold">{p.name}</span>
                   {school.captainId === p.id && <span className="rounded bg-pitch-dark px-1 text-[10px] font-bold text-white">C</span>}
                   <span className="text-[11px] text-gray-500">{p.grade}年</span>
+                  {p.admission === "scholarship" && <span className="rounded bg-amber-100 px-1 text-[10px] font-bold text-amber-800">特待</span>}
                   {p.status === "retired" && <span className="rounded bg-gray-200 px-1 text-[10px]">引退</span>}
                   {p.suspended > 0 && <span className="rounded bg-red-600 px-1 text-[10px] text-white">出場停止</span>}
                   {p.injuryDays > 0 && <span className="rounded bg-red-100 px-1 text-[10px] text-red-700">ケガ{p.injuryDays}日</span>}

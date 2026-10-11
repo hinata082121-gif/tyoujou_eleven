@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { FORMATIONS } from "@/engine/config/formations";
 import { APTITUDE_MARKS, POSITION_NAMES, TACTICS_LABELS } from "@/engine/config/names";
-import { canSkipWatching, defaultSetup, eligiblePlayers, opponentOf, pendingIsOfficial, pendingMatchLabel, pendingMatchRules } from "@/engine/game";
+import { canSkipWatching, defaultSetup, isCarryKind, eligiblePlayers, opponentOf, pendingIsOfficial, pendingMatchLabel, pendingMatchRules } from "@/engine/game";
 import { analystScouting } from "@/engine/staff";
 import { assignToSlots, autoSetup } from "@/engine/match/lineup";
 import { isAvailable, positionRating } from "@/engine/player/rating";
@@ -100,6 +100,10 @@ export function PreMatchScreen() {
     setSel(null);
   };
 
+  const pend = game.pending;
+  const carry = pend?.type === "match" && isCarryKind(pend.kind) && (game.competitions[pend.kind as "national"]?.roundsDone ?? 0) > 0;
+  const actives = eligiblePlayers(game).filter((p) => p.status === "active");
+  const avgFit = actives.reduce((a, p) => a + p.fitness, 0) / Math.max(1, actives.length);
   const valid = setup.lineup.length === 11 && setup.lineup.every((id) => byId.get(id) && isAvailable(byId.get(id)!) && poolIds.has(id));
   const isSel = (s: NonNullable<Sel>) => JSON.stringify(sel) === JSON.stringify(s);
 
@@ -124,6 +128,11 @@ export function PreMatchScreen() {
             <div className="mt-1 text-[11px] text-gray-400">分析担当がいれば、相手のプレスとラインもわかります。</div>
           )}
           <div className="mt-1 text-[11px] text-gray-500">{rulesText(rules)}</div>
+          {carry && (
+            <div className="mt-1 rounded bg-violet-50 px-2 py-1 text-[11px] text-violet-900">
+              連戦中：前の試合の疲れが残っている（部の平均体力 {Math.round(avgFit)}）。体力の低い選手は控えと入れ替えよう。相手も同じく疲れている。
+            </div>
+          )}
           {canSkipWatching(game) && <div className="mt-1 text-[11px] text-gray-500">練習試合は「結果のみ」も選べます（試合中の采配はAIの監督が行います）。</div>}
           <div className="mt-1 text-[11px] text-gray-500">
             自校のランク <RankBadge rank={school.rank} size="sm" />
