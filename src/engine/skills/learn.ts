@@ -106,7 +106,8 @@ export function trainingSquare(rng: Rng, players: Player[], practice: PracticeKi
 /** 合宿（P2c）：練習方針の候補で、複数の選手が判定する。goldBase を渡すと、○◎で身につかなかった選手は金色も判定する */
 export function campLearning(rng: Rng, players: Player[], policy: PracticeKind[], base = SKILL_LEARN.trainingBase, goldBase = 0): LearnEvent[] {
   const pool = [...new Set(policy.flatMap((k) => TRAINING_POOLS[k]))];
-  const golds = [...new Set(policy.flatMap((k) => TRAINING_GOLDS[k]))];
+  // 両利きは特訓マスだけ（SPEC 7.7。合宿では判定しない）
+  const golds = [...new Set(policy.flatMap((k) => TRAINING_GOLDS[k]))].filter((id) => id !== "footG");
   const out: LearnEvent[] = [];
   for (const p of players) {
     if (p.status !== "active" || p.injuryDays > 0) continue;

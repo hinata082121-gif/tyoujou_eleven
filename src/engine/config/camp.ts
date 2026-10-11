@@ -10,8 +10,12 @@ export const CAMP = {
   fitnessCostMult: 1.5,
   /** 熟練度の伸びの倍率（選んだ練習がスタイルに合うとき） */
   proficiencyMult: 2,
-  /** 特殊能力の判定の基本確率（特訓マスの基本確率の何倍か） */
-  learnBaseMult: 3,
+  /**
+   * 特殊能力の判定の基本確率（特訓マスの基本確率の何倍か）。
+   * 合宿は部員全員が判定するので、計画の初期案（3 倍）では 1 回で 10 個前後も身につき、卒業生のプラスの数が目標（1〜3 個）を超えた。
+   * 0.6 倍で 1 回 2〜3 個（balance:full で確認）
+   */
+  learnBaseMult: 0.6,
   /** グラウンドのレベル 1 つ・ヘッドコーチの指導力 100 での判定の倍率の加算。合計は maxLearnMult まで */
   learnPerGround: 0.05,
   learnFromCoaching: 0.15,
