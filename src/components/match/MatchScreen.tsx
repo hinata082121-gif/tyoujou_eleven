@@ -12,6 +12,7 @@ import type { MatchState, MatchTeamState, Side } from "@/engine/match/types";
 import { FORMATION_IDS } from "@/engine/types";
 import { useGameStore } from "@/store/gameStore";
 import { Bar, Button, fitnessColor, Segmented, Sheet } from "../ui";
+import { Pitch2D } from "./Pitch2D";
 import { PkScreen } from "./PkScreen";
 import { TacticsEditor } from "./TacticsEditor";
 
@@ -47,6 +48,7 @@ export function MatchScreen() {
   const finishMatch = useGameStore((s) => s.finishMatch);
   const switchToAuto = useGameStore((s) => s.switchToAuto);
   const speed = useGameStore((s) => s.settings.matchSpeed);
+  const view2d = useGameStore((s) => s.settings.matchView) === "2d";
   const updateSettings = useGameStore((s) => s.updateSettings);
   const am = game.activeMatch!;
   const ms = am.state;
@@ -148,6 +150,16 @@ export function MatchScreen() {
         </div>
       </div>
 
+      {view2d && (
+        <div className="relative h-[42dvh] shrink-0 bg-pitch">
+          <Pitch2D ms={ms} display={Math.min(display, ms.minute)} userSide={side} />
+        </div>
+      )}
+      <div className="flex justify-end border-b border-gray-100 px-2">
+        <button type="button" className="min-h-8 px-2 text-[11px] font-bold text-pitch-dark" onClick={() => updateSettings({ matchView: view2d ? "text" : "2d" })}>
+          {view2d ? "テキストだけにする" : "2D を表示する"}
+        </button>
+      </div>
       <ul className="flex-1 overflow-y-auto px-3 py-2 text-sm">
         {events.map((e, i) => (
           <li
