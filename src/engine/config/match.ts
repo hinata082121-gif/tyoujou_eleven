@@ -126,6 +126,11 @@ export const MATCH = {
    * P2c：パワープレイ（ライン高・ロングボール）のロングボールの 6 割が届かず、効果が +2.6pt にとどまっていた
    */
   longHighLineReach: 12,
+  /**
+   * P3：上の「届きやすさ」が効くのは、ビハインドで残りこの分以内（パワープレイの場面）だけ。
+   * 常に効かせると、ふつうの時間帯のロングボール主体・ライン高の型が強くなりすぎた
+   */
+  powerPlayMinutes: 15,
   longAccScale: 12,
   longAccBias: 38,
   aerialHeightPerCm: 0.8,
@@ -270,7 +275,8 @@ export const MATCH = {
   drainBase: 2.25,
   drainStamA: 1.35,
   drainStamB: 0.7,
-  drainPress: { high: 1.4, mid: 1.0, low: 0.82 },
+  /** P3：プレス高 1.4 → 1.25（ハイプレスの型が後半に失速し、型ごとの平均の勝ち点が 1.28 と低すぎた） */
+  drainPress: { high: 1.25, mid: 1.0, low: 0.82 },
   gkDrainMult: 0.35,
 
   // ---- モメンタム ----

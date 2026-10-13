@@ -1111,6 +1111,19 @@ class SegmentSim {
     }
   }
 
+  /**
+   * パワープレイの場面（P3）：ビハインドで、試合の終わり（延長があれば延長の終わり）まで残り powerPlayMinutes 分以内。
+   * ロングボール主体＋ライン高の「届きやすさ」は、この場面でだけ効く
+   */
+  private powerPlayScene(side: Side, minute: number): boolean {
+    if (this.state.score[side] >= this.state.score[other(side)]) return false;
+    const h = this.state.rules.halfMinutes;
+    const et = this.state.rules.extraTimeHalfMinutes ?? 0;
+    const inExtra = this.state.phase === "ET1" || this.state.phase === "ET2";
+    const end = inExtra ? 2 * h + 2 * et : 2 * h;
+    return end - minute <= MATCH.powerPlayMinutes;
+  }
+
   /** ロングボール：パス（精度）× キック力（届く距離）（7.3） */
   private longBall(side: Side, minute: number) {
     const atk = this.ctx[side];
@@ -1127,7 +1140,7 @@ class SegmentSim {
     const feed = fromGk ? this.line(kicker, "feed") : 0;
     const lp = styleBonus(kicker.t, "longPass") + feed;
     const ks = st(kicker, fromGk ? "gk" : "pass");
-    const reach = atk.team.tactics.line === "high" && atk.team.tactics.buildUp === "long" ? MATCH.longHighLineReach : 0;
+    const reach = atk.team.tactics.line === "high" && atk.team.tactics.buildUp === "long" && this.powerPlayScene(side, minute) ? MATCH.longHighLineReach : 0;
     const lb = longBallOutcome(this.rng, ks.kickPower + lp + reach, ks.pass + lp);
     if (lb !== "ok") {
       this.emit(minute, side, lb === "short" ? "longBallShort" : "longBallLost", [kicker.id]);
