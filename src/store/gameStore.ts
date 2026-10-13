@@ -49,11 +49,15 @@ export interface Settings {
   matchSpeed: 1 | 2 | 4;
   /** リーグ戦・練習試合の試合前に、初めに選ばれているモード（P3） */
   leagueMode: "manage" | "auto";
-  /** 観戦の表示（P3。簡易2D かテキスト） */
+  /** リーグ戦・練習試合の観戦の表示（P3。簡易2D かテキスト。P4 からトーナメントは tournamentView） */
   matchView: "2d" | "text";
+  /** トーナメントの観戦の表示（P4。標準は 3D） */
+  tournamentView: "3d" | "2d" | "text";
+  /** 3D の画質（P4） */
+  quality3d: "standard" | "light";
 }
 
-const defaultSettings: Settings = { skipMove: false, matchSpeed: 1, leagueMode: "manage", matchView: "2d" };
+const defaultSettings: Settings = { skipMove: false, matchSpeed: 1, leagueMode: "manage", matchView: "2d", tournamentView: "3d", quality3d: "standard" };
 
 function readSettings(): Settings {
   try {
