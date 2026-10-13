@@ -48,6 +48,9 @@ export const SCOUT = {
   /** 候補の能力の基準値：ふつうの候補は CPU の強豪校（格 3）、最上位は一段上（格 4）の新入生と同じ */
   normalPrestige: 3,
   topPrestige: 4,
+  /** P3：評判がこれ以上（強豪・名門）なら、候補の水準を一段上げる（ふつう 格 4・最上位 格 5。計画 Q7） */
+  eliteFromLevel: 3,
+  eliteStep: 1,
   baseSd: 2.5,
   /** 最上位の候補の割合（ジュニアユースは ×topYouthMult） */
   topShare: 0.2,
