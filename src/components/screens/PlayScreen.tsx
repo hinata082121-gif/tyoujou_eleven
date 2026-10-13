@@ -11,6 +11,7 @@ import { CaptainScreen } from "../play/CaptainScreen";
 import { SkillBook } from "../play/SkillBook";
 import { FreshmenScreen, GraduationScreen, MatchResultScreen, YearEndScreen, AlumniScreen } from "../play/FlowScreens";
 import { HomeView } from "../play/HomeView";
+import { BranchScreen, CampResultScreen, CampScreen, FacilitiesScreen, ScoutReplyScreen, ScoutScreen } from "../play/Phase2cScreens";
 import { MenuView } from "../play/MenuView";
 import { PlayerDetail } from "../play/PlayerDetail";
 import { RecordsView } from "../play/RecordsView";
@@ -41,6 +42,9 @@ export function PlayScreen() {
   const notesOpen = useGameStore((s) => s.notesOpen);
   const skillBookOpen = useGameStore((s) => s.skillBookOpen);
   const teamOpen = useGameStore((s) => s.teamOpen);
+  const scoutOpen = useGameStore((s) => s.scoutOpen);
+  const facilitiesOpen = useGameStore((s) => s.facilitiesOpen);
+  const lastCamp = useGameStore((s) => s.lastCamp);
 
   if (!game) return null;
 
@@ -48,6 +52,7 @@ export function PlayScreen() {
   if (lastMatch) return <MatchResultScreen />;
   if (lastAlumni) return <AlumniScreen />;
   if (lastFreshmen) return <FreshmenScreen />;
+  if (lastCamp) return <CampResultScreen />;
   if (game.activeMatch) return <MatchScreen />;
   if (notesOpen) return <NotesScreen />;
   if (!moving && game.pending?.type === "staff") return <StaffReviewScreen />;
@@ -67,6 +72,11 @@ export function PlayScreen() {
       </>
     );
   if (!moving && game.pending?.type === "match") return <PreMatchScreen />;
+  if (!moving && game.pending?.type === "camp") return <CampScreen />;
+  if (!moving && game.pending?.type === "branch") return <BranchScreen />;
+  if (!moving && game.pending?.type === "scoutReply") return <ScoutReplyScreen />;
+  if (scoutOpen) return <ScoutScreen />;
+  if (facilitiesOpen) return <FacilitiesScreen />;
   if (!moving && game.pending?.type === "graduation") return <GraduationScreen />;
   if (!moving && game.pending?.type === "yearEnd") return <YearEndScreen />;
 

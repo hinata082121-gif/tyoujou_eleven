@@ -20,10 +20,18 @@ import {
   release,
   setPlayStyle,
   startPlayerMatch,
+  advanceToNextMatch,
+  chooseBranch,
+  confirmCamp,
+  confirmScoutReply,
+  setScoutPriority,
+  visitScout,
   type CardResult,
   type MatchSummary,
 } from "@/engine/game";
-import type { Alumnus, GameState, Player, PlayStyle, SkillId, StaffRole, TeamSetup } from "@/engine/types";
+import type { CampResult } from "@/engine/camp";
+import type { VisitResult } from "@/engine/scout";
+import type { Alumnus, CampPolicy, GameState, Player, PlayStyle, SkillId, StaffRole, TeamSetup } from "@/engine/types";
 import { SaveManager, type SlotSummary } from "@/lib/save";
 
 export type Screen = "title" | "slots" | "new" | "play";
@@ -89,6 +97,14 @@ interface GameStore {
   /** すごろくの移動演出中（演出が終わるまで次の画面に進まない） */
   moving: boolean;
   setMoving(v: boolean): void;
+  /** P2c：スカウト・設備の画面、合宿の結果、直前の訪問 */
+  scoutOpen: boolean;
+  setScoutOpen(v: boolean): void;
+  facilitiesOpen: boolean;
+  setFacilitiesOpen(v: boolean): void;
+  lastCamp: CampResult | null;
+  clearLastCamp(): void;
+  lastVisit: VisitResult | null;
 
   init(): void;
   goto(screen: Screen): void;
@@ -123,6 +139,14 @@ interface GameStore {
   /** キャプテン・プレースタイル（戻り値はエラーの理由。成功なら null） */
   confirmCaptain(playerId: string): string | null;
   setPlayStyle(playerId: string, style: PlayStyle): string | null;
+
+  /** P2c */
+  nextMatch(): CardResult | null;
+  confirmCamp(policy: CampPolicy): void;
+  chooseBranch(index: number): string | null;
+  visitScout(candidateId: string): VisitResult | null;
+  setScoutPriority(ids: string[]): void;
+  confirmScoutReply(): void;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -162,6 +186,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setMoving(v) {
     set({ moving: v });
   },
+  scoutOpen: false,
+  setScoutOpen(v) {
+    set({ scoutOpen: v, lastVisit: null });
+  },
+  facilitiesOpen: false,
+  setFacilitiesOpen(v) {
+    set({ facilitiesOpen: v });
+  },
+  lastCamp: null,
+  clearLastCamp() {
+    set({ lastCamp: null });
+  },
+  lastVisit: null,
 
   init() {
     set({ settings: readSettings() });
@@ -193,7 +230,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     } catch {
       // 無視
     }
-    set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null, notesOpen: false, skillBookOpen: false, teamOpen: false, squadSkillFilter: null, matchDraft: null });
+    set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null, notesOpen: false, skillBookOpen: false, teamOpen: false, squadSkillFilter: null, matchDraft: null, scoutOpen: false, facilitiesOpen: false, lastCamp: null, lastVisit: null });
   },
 
   async createGame(slot, schoolName, prefectureId) {
@@ -201,7 +238,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     crypto.getRandomValues(buf);
     const seed = `${Date.now().toString(36)}-${buf[0].toString(36)}${buf[1].toString(36)}`;
     const game = newGame(seed, schoolName, prefectureId);
-    set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null, notesOpen: false, skillBookOpen: false, teamOpen: false, squadSkillFilter: null, matchDraft: null });
+    set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null, notesOpen: false, skillBookOpen: false, teamOpen: false, squadSkillFilter: null, matchDraft: null, scoutOpen: false, facilitiesOpen: false, lastCamp: null, lastVisit: null });
     try {
       window.localStorage.setItem(LAST_SLOT_KEY, String(slot));
     } catch {
@@ -299,6 +336,50 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
   setPlayStyle(playerId, style) {
     return withGame(get, (g) => setPlayStyle(g, playerId, style));
+  },
+
+  nextMatch() {
+    const game = get().game;
+    if (!game) return null;
+    const r = advanceToNextMatch(game);
+    if (r) {
+      set({ lastCard: r, moving: false });
+      get().touch();
+    }
+    return r;
+  },
+  confirmCamp(policy) {
+    const game = get().game;
+    if (!game) return;
+    const r = confirmCamp(game, policy);
+    if (r) {
+      set({ lastCamp: r });
+      get().touch();
+    }
+  },
+  chooseBranch(index) {
+    return withGame(get, (g) => chooseBranch(g, index));
+  },
+  visitScout(candidateId) {
+    const game = get().game;
+    if (!game) return null;
+    const r = visitScout(game, candidateId);
+    if (!r) return null;
+    set({ lastVisit: r.visit, lastCard: r.card });
+    get().touch();
+    return r.visit;
+  },
+  setScoutPriority(ids) {
+    const game = get().game;
+    if (!game) return;
+    setScoutPriority(game, ids);
+    get().touch();
+  },
+  confirmScoutReply() {
+    const game = get().game;
+    if (!game) return;
+    confirmScoutReply(game);
+    get().touch();
   },
 }));
 

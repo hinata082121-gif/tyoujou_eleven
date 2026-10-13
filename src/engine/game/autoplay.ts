@@ -36,8 +36,18 @@ import {
   startPlayerMatch,
   defaultSetup,
   squareDisplay,
+  advanceToNextMatch,
+  chooseBranch,
+  confirmCamp,
+  confirmScoutReply,
+  inTournamentRun,
+  visitScout,
   type MatchSummary,
 } from ".";
+import { defaultCampPolicy, type CampResult } from "../camp";
+import { branchPreview } from "../calendar";
+import { REPUTATION_TABLE } from "../config/reputation";
+import type { RandomSquareType, ScoutCandidate } from "../types";
 
 export type AutoPolicy = "simple" | "skilled";
 
@@ -49,6 +59,8 @@ export interface AutoplayOptions {
   staff?: "none" | "auto" | "best";
   /** 作戦ノート（4 種類のテンプレート）を使う */
   notes?: boolean;
+  /** スカウトカードを使う（P2c） */
+  scout?: boolean;
 }
 
 /**
@@ -56,7 +68,7 @@ export interface AutoplayOptions {
  * ノートを入れると自分の采配と重なり、同じランクへの勝率が少し下がるため）
  */
 const defaultOptions = (policy: AutoPolicy): Required<AutoplayOptions> =>
-  policy === "skilled" ? { staff: "auto", notes: false } : { staff: "none", notes: false };
+  policy === "skilled" ? { staff: "auto", notes: false, scout: true } : { staff: "none", notes: false, scout: true };
 
 /** 役割に合う度合い（主な能力の平均） */
 function roleValue(abilities: Record<string, number>, role: StaffRole) {
@@ -109,9 +121,13 @@ export interface AutoplayStats {
   matches: MatchSummary[];
   graduations: number;
   yearEnds: number;
+  /** 合宿の結果（P2c） */
+  camps: CampResult[];
+  /** 年度替わりに入った特待生の数と、そのときの評判（P2c） */
+  scholars: { level: number; count: number }[];
 }
 
-export const newAutoplayStats = (): AutoplayStats => ({ cards: 0, matches: [], graduations: 0, yearEnds: 0 });
+export const newAutoplayStats = (): AutoplayStats => ({ cards: 0, matches: [], graduations: 0, yearEnds: 0, camps: [], scholars: [] });
 
 /** 練習カードの役に立つ度合い（対象の広さ） */
 const PRACTICE_USEFULNESS = { all: 1, field: 0.9, gk: 0.35 } as const;
@@ -132,7 +148,7 @@ function chooseCard(state: GameState, policy: AutoPolicy) {
   const pos = state.calendar.position;
   const matchSoon = state.calendar.squares.slice(pos + 1, pos + 1 + SKILLED_REST.lookAhead).some((sq) => {
     const kind = sq.major?.kind;
-    return (kind === "practiceMatch" || kind === "prefQualifier" || kind === "national") && squareDisplay(state, sq).type === "major";
+    return !!kind && kind !== "camp" && kind !== "scoutReply" && kind !== "graduation" && kind !== "yearEnd" && kind !== "entrance" && squareDisplay(state, sq).type === "major";
   });
   if (matchSoon && avgFit < SKILLED_REST.beforeMatch && rest) return rest;
   const score = (c: (typeof hand)[number]) => (c.practice === "rest" ? 0.1 : c.value * PRACTICE_USEFULNESS[PRACTICES[c.practice].target]);
@@ -180,6 +196,41 @@ export function skilledSetup(state: GameState): TeamSetup {
     return { ...p, stats };
   });
   return autoSetup(judged, formation, tactics, rules?.benchSize ?? 9);
+}
+
+/** 分かれ道の価値（うまい監督が見える情報から選ぶ。特訓・緑・青を好み、赤を避ける） */
+const BRANCH_VALUE: Record<RandomSquareType, number> = { training: 3, green: 1.5, blue: 1.2, yellow: 0.5, white: 0, red: -1.5 };
+
+function chooseBranchIndex(state: GameState, policy: AutoPolicy, day: number): number {
+  const b = state.calendar.branches?.find((x) => x.day === day);
+  if (!b || policy === "simple") return 0;
+  const value = (pv: ReturnType<typeof branchPreview>[number]) =>
+    pv.first.reduce((s, t) => s + BRANCH_VALUE[t], 0) + Object.entries(pv.rest).reduce((s, [t, n]) => s + BRANCH_VALUE[t as RandomSquareType] * (n ?? 0), 0);
+  const list = branchPreview(b);
+  return list.reduce((best, pv, i) => (value(pv) > value(list[best]) ? i : best), 0);
+}
+
+/** 候補の見かけの良さ（推定値の幅の真ん中の平均） */
+export function candidateLooks(c: ScoutCandidate): number {
+  const vs = Object.values(c.meter).filter((v): v is [number, number] => !!v);
+  return vs.length === 0 ? 0 : vs.reduce((s, [lo, hi]) => s + (lo + hi) / 2, 0) / vs.length;
+}
+
+/**
+ * スカウトカードを使う候補。simple は先頭から順に。
+ * skilled は、見かけの良い候補を枠の数まで訪ね、反応が「良好」でない候補を訪ね直す
+ */
+function chooseScoutTarget(state: GameState, policy: AutoPolicy): string | null {
+  const sc = state.scout!;
+  const open = sc.candidates.filter((c) => c.status === "open" || c.status === "courting");
+  if (open.length === 0) return null;
+  if (policy === "simple") return open[0].id;
+  const slots = REPUTATION_TABLE[state.reputation.level].scholarshipSlots;
+  const courting = open.filter((c) => c.status === "courting");
+  const fresh = open.filter((c) => c.status === "open").sort((a, b) => candidateLooks(b) - candidateLooks(a));
+  if (courting.length < slots + 1 && fresh.length > 0) return fresh[0].id;
+  const weak = courting.filter((c) => c.reaction !== "good").sort((a, b) => candidateLooks(b) - candidateLooks(a));
+  return (weak[0] ?? fresh[0] ?? courting[0]).id;
 }
 
 /** 次の操作を 1 つ行う */
@@ -230,13 +281,36 @@ export function autoStep(state: GameState, stats: AutoplayStats, policy: AutoPol
     else startPlayerMatch(state, defaultSetup(state), "watch", noteId);
     return;
   }
+  if (p?.type === "camp") {
+    const r = confirmCamp(state, defaultCampPolicy(state.campPolicy));
+    if (r) stats.camps.push(r);
+    return;
+  }
+  if (p?.type === "branch") {
+    chooseBranch(state, chooseBranchIndex(state, policy, p.day));
+    return;
+  }
+  if (p?.type === "scoutReply") {
+    confirmScoutReply(state);
+    return;
+  }
+  if (inTournamentRun(state)) {
+    advanceToNextMatch(state);
+    return;
+  }
+  if (opts.scout && state.scout && !state.scout.replied && state.scout.cards > 0) {
+    const id = chooseScoutTarget(state, policy);
+    if (id && visitScout(state, id)) return;
+  }
   if (p?.type === "graduation") {
     confirmGraduation(state);
     stats.graduations++;
     return;
   }
   if (p?.type === "yearEnd") {
-    confirmYearEnd(state);
+    const level = state.reputation.level;
+    const freshmen = confirmYearEnd(state);
+    stats.scholars.push({ level, count: freshmen.filter((x) => x.admission === "scholarship").length });
     stats.yearEnds++;
     return;
   }

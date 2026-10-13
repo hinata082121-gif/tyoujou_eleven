@@ -113,13 +113,23 @@ export const COMPETITION_NAMES = {
   winter: "冬の全国大会",
   prefQualifier: "冬の全国大会 予選",
   national: "冬の全国大会",
-  /** P2 */
   summer: "夏の全国大会",
+  summerQualifier: "夏の全国大会 予選",
+  summerNational: "夏の全国大会",
+  rookie: "新人戦",
+  rookiePref: "新人戦 県大会",
+  rookieRegion: "新人戦 地域大会",
   practice: "練習試合",
 } as const;
 
 /** 都道府県予選の表示名（例：冬の全国大会 東京都予選） */
 export const prefQualifierName = (prefName: string) => `${COMPETITION_NAMES.winter} ${prefName}予選`;
+/** 夏の全国大会の都道府県予選（例：夏の全国大会 東京都予選） */
+export const summerQualifierName = (prefName: string) => `${COMPETITION_NAMES.summer} ${prefName}予選`;
+/** 新人戦の県大会（例：新人戦 東京都大会） */
+export const rookiePrefName = (prefName: string) => `${COMPETITION_NAMES.rookie} ${prefName}大会`;
+/** 新人戦の地域大会（例：新人戦 関東地域大会。北海道は「全道大会」） */
+export const rookieRegionName = (regionName: string) => (regionName === "北海道" ? `${COMPETITION_NAMES.rookie} 全道大会` : `${COMPETITION_NAMES.rookie} ${regionName}地域大会`);
 
 /**
  * ラウンドの表示名。qualifiers が 2 以上（東京の予選など）のときは、最終ラウンドを「代表決定戦」と呼ぶ
@@ -201,6 +211,7 @@ export const SQUARE_NAMES: Record<SquareType, string> = {
   green: "緑マス",
   yellow: "黄マス",
   training: "特訓マス",
+  branch: "分岐マス",
   major: "大マス",
 };
 
@@ -209,6 +220,12 @@ export const MAJOR_NAMES: Record<MajorKind, string> = {
   practiceMatch: "練習試合",
   prefQualifier: "予選",
   national: "全国大会",
+  summerQualifier: "夏の予選",
+  summerNational: "夏の全国",
+  rookiePref: "新人戦",
+  rookieRegion: "新人戦（地域）",
+  camp: "合宿",
+  scoutReply: "スカウトの返事",
   graduation: "卒業式",
   yearEnd: "年度末",
 };
@@ -274,7 +291,41 @@ export const NOTE_ACTION_NAMES = {
   position: "ポジション変更",
 } as const;
 
-export const MATCH_KIND_NAMES = { practice: "練習試合", prefQualifier: "予選", national: "全国大会" } as const;
+export const MATCH_KIND_NAMES = {
+  practice: "練習試合",
+  prefQualifier: "冬の予選",
+  national: "冬の全国大会",
+  summerQualifier: "夏の予選",
+  summerNational: "夏の全国大会",
+  rookiePref: "新人戦（県）",
+  rookieRegion: "新人戦（地域）",
+} as const;
+
+// ---- 設備（P2c） ----
+export const FACILITY_NAMES = { ground: "グラウンド", trainingRoom: "トレーニングルーム", careRoom: "ケアルーム", dorm: "寮" } as const;
+/** グラウンドの段階の名前（SPEC 15章） */
+export const GROUND_LEVEL_NAMES = ["土", "人工芝", "ナイター設備付き", "人工芝2面＋ナイター設備"] as const;
+
+// ---- 合宿・分岐・スカウト（P2c） ----
+export const CAMP_NAMES = { summer: "夏合宿", winter: "冬合宿" } as const;
+export const POSITION_GROUP_NAMES = { GK: "GK", DF: "DF", MF: "MF", FW: "FW" } as const;
+export const BRANCH_THEME_NAMES = { normal: "ふつうの道", blue: "青の道", training: "特訓の道", rest: "休養の道", yellow: "集中の道" } as const;
+export const AFFILIATION_NAMES = { juniorHigh: "中学の部活", townClub: "街クラブ", juniorYouth: "ジュニアユース" } as const;
+export const ACHIEVEMENT_NAMES = ["実績なし", "県大会", "地域大会", "全国大会"] as const;
+export const REACTION_NAMES = { good: "良好", normal: "普通", bad: "悪い" } as const;
+/** ジュニアユースから上がる架空のユースチーム */
+export const YOUTH_TEAM_NAME = "ユースチーム";
+export const METER_NAMES = {
+  attack: "攻撃",
+  pass: "パス",
+  dribble: "ドリブル",
+  defense: "守備",
+  physical: "フィジカル",
+  speed: "スピード",
+  saving: "セービング",
+  kick: "キック",
+  highBall: "ハイボール",
+} as const;
 
 export const TACTICS_LABELS = {
   attack: { attacking: "攻撃的", balanced: "バランス", defensive: "守備的" },
@@ -538,12 +589,12 @@ export const SKILL_TEXTS: Partial<Record<SkillId | keyof typeof SKILL_LINE_NAMES
 /** 入手のヒント（図鑑） */
 export const SKILL_HINTS: Partial<Record<SkillId | keyof typeof SKILL_LINE_NAMES, string>> = {
   oneOnOne: "特訓：シュート練習／公式戦の1試合で3得点で段階アップ。1対1職人は公式戦での1対1からの通算2得点が条件",
-  heading: "特訓：フィジカル・セットプレー／公式戦の1試合でヘディング2得点で段階アップ。ボンバーヘッドは公式戦でのヘディングの得点が条件",
-  duel: "特訓：守備練習。対人の鬼は公式戦での1対1の守備の勝ち通算3が条件",
+  heading: "特訓：フィジカル・セットプレー／公式戦の1試合でヘディング2得点で段階アップ。ボンバーヘッドは公式戦でのヘディングの通算2得点が条件",
+  duel: "特訓：守備練習。対人の鬼は公式戦での1対1の守備の勝ち通算5が条件",
   aerialDef: "特訓：フィジカル。空中戦の要は公式戦での守備の空中戦の勝ち通算4が条件",
-  gkOneOnOne: "特訓：GK練習。1対1の壁は公式戦で1対1を通算3回止めるのが条件",
+  gkOneOnOne: "特訓：GK練習。1対1の壁は公式戦で1対1を通算5回止めるのが条件",
   feed: "特訓：GK練習。フィードの名手は公式戦でGKのロングボールから得点が生まれるのが条件",
-  pk: "特訓：PK練習／PKを5本続けて決めると段階アップ。PK職人は3本連続が条件",
+  pk: "特訓：PK練習／PKを5本続けて決めると段階アップ。PK職人は2本連続が条件",
   bigStage: "特訓：PK練習／全国大会の決勝で決勝点を決めると段階アップ",
   adversity: "特訓：戦術ミーティング",
   durability: "特訓：フィジカル・走り込み",
@@ -552,7 +603,7 @@ export const SKILL_HINTS: Partial<Record<SkillId | keyof typeof SKILL_LINE_NAMES
   foot: "両利き：逆足×がなく、熟練度80以上の選手が、シュートかドリブルの特訓でごくまれに",
   fkMaster: "公式戦の直接FKで得点したあと、セットプレーの特訓などで",
   ckMaster: "公式戦のCKからアシストしたあと、セットプレーの特訓などで",
-  crossMaster: "公式戦のクロスからアシストしたあと、パス・セットプレーの特訓などで",
+  crossMaster: "公式戦のクロスから2回アシストしたあと、パス・セットプレーの特訓などで",
   middleShot: "特訓：シュート練習",
   curveShot: "特訓：シュート練習",
   offBall: "特訓：シュート練習",

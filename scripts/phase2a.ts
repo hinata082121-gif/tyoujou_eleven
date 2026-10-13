@@ -131,7 +131,7 @@ export function staffGrowthTable(games: number, years: number) {
     for (let g = 0; g < games; g++) {
       const state = newGame(`growth-${g}`, "検証高校", PREFECTURES[(g * 7) % PREFECTURES.length].id);
       autoplayYears(state, years, "skilled", opt);
-      for (const a of state.alumni) if (!a.fictional && a.graduatedYear >= 4) xs.push(a.overall);
+      for (const a of state.alumni) if (!a.fictional && !a.scholarship && a.graduatedYear >= 4) xs.push(a.overall);
     }
     return xs;
   };

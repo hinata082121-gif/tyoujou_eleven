@@ -217,8 +217,10 @@ describe("作戦ノート（SPEC 10.5）", () => {
     // 特殊能力（PK ストッパーなど）で結果が変わらないように外す
     for (const p of base.players) p.skills = [];
     const input = { ...base, note: { noteName: "PK", rules: [templateRule("pkPrep", "pk")], kind: "prefQualifier" as const } };
+    // ノートは区間の終わりに判定する。最後の区間で追いついた試合は判定の機会がないので、終盤（残り 8 分以降）に点が動いていない試合を選ぶ
+    const tiedLate = (m: MatchState) => !m.events.some((e) => e.type === "goal" && e.minute >= m.rules.halfMinutes * 2 - 8);
     const s = findMatch(
-      (m) => m.phase === "END" && !!m.pk,
+      (m) => m.phase === "END" && !!m.pk && tiedLate(m),
       (seed) => createMatch(WINTER_RULES.early, Rng.fromSeed(seed), structuredClone(input), team("Opp", 2), "prefQualifier"),
     );
     expect(s.events.some((e) => e.type === "note" && e.note === "PK準備")).toBe(true);

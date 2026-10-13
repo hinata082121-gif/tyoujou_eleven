@@ -14,6 +14,8 @@ export function MenuView() {
   const setNotesOpen = useGameStore((s) => s.setNotesOpen);
   const setSkillBookOpen = useGameStore((s) => s.setSkillBookOpen);
   const setTeamOpen = useGameStore((s) => s.setTeamOpen);
+  const setScoutOpen = useGameStore((s) => s.setScoutOpen);
+  const setFacilitiesOpen = useGameStore((s) => s.setFacilitiesOpen);
   const [msg, setMsg] = useState<string | null>(null);
 
   const exportJson = async () => {
@@ -39,6 +41,12 @@ export function MenuView() {
       </Button>
       <Button variant="secondary" onClick={() => setTeamOpen(true)}>
         🅲 チーム（キャプテン）
+      </Button>
+      <Button variant="secondary" onClick={() => setFacilitiesOpen(true)}>
+        🏟️ 設備
+      </Button>
+      <Button variant="secondary" onClick={() => setScoutOpen(true)}>
+        🎓 特待生スカウト
       </Button>
       <label className="flex min-h-12 items-center justify-between rounded-xl border border-gray-200 px-3">
         <span className="text-sm">すごろくの移動演出をスキップ</span>

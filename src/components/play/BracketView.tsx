@@ -2,34 +2,65 @@
 
 import { useState } from "react";
 import { formatDay } from "@/engine/calendar";
-import { COMPETITION_NAMES, prefQualifierName, roundLabel } from "@/engine/config/names";
+import { roundLabel } from "@/engine/config/names";
+import { competitionName, nationalSize, rookieRegionSize, summerNationalSize } from "@/engine/game";
 import { totalRounds } from "@/engine/competition/bracket";
-import type { Bracket, BracketMatch } from "@/engine/types";
+import type { Bracket, BracketMatch, CompetitionKind } from "@/engine/types";
 import { useGameStore } from "@/store/gameStore";
 import { RankBadge, Segmented } from "../ui";
+
+type Season = "winter" | "summer" | "rookie";
+const SEASON_KINDS: Record<Season, [CompetitionKind, CompetitionKind]> = {
+  winter: ["prefQualifier", "national"],
+  summer: ["summerQualifier", "summerNational"],
+  rookie: ["rookiePref", "rookieRegion"],
+};
 
 export function BracketView() {
   const game = useGameStore((s) => s.game)!;
   useGameStore((s) => s.rev);
-  const [tab, setTab] = useState<"prefQualifier" | "national">(game.competitions.national ? "national" : "prefQualifier");
-  const b = tab === "prefQualifier" ? game.competitions.prefQualifier : game.competitions.national;
+  const c = game.competitions;
+  // 開いたときは、いま進んでいる大会
+  const initial = (): [Season, 0 | 1] => {
+    const pos = game.calendar.position;
+    for (const [season, kinds] of Object.entries(SEASON_KINDS) as [Season, [CompetitionKind, CompetitionKind]][]) {
+      for (const [i, k] of kinds.entries()) {
+        const b = c[k];
+        if (b && !b.championId && !b.qualifiedIds && b.roundDays[0] <= pos + 30) return [season, i as 0 | 1];
+      }
+    }
+    return ["winter", c.national ? 1 : 0];
+  };
+  const [init] = useState(initial);
+  const [season, setSeason] = useState<Season>(init[0]);
+  const [stage, setStage] = useState<0 | 1>(init[1]);
+  const kind = SEASON_KINDS[season][stage];
+  const b = c[kind];
   const pref = game.prefectures.find((p) => p.isPlayerPref)!;
+  const region = game.regions.find((r) => r.id === pref.regionId)?.name ?? "";
+  const result = season === "winter" ? c.winterResult : season === "summer" ? c.summerResult : c.rookieResult;
+  const reps = kind === "summerQualifier" ? pref.summerReps : pref.reps;
+  const size = kind === "national" ? nationalSize(game) : kind === "summerNational" ? summerNationalSize(game) : kind === "rookieRegion" ? rookieRegionSize(game) : pref.schoolIds.length;
+  const host = game.prefectures.find((p) => p.id === c.summerHostPrefId);
+  const stageLabels: Record<Season, { 0: string; 1: string }> = {
+    winter: { 0: `${pref.name}予選`, 1: "全国大会" },
+    summer: { 0: `${pref.name}予選`, 1: "全国大会" },
+    rookie: { 0: `${pref.name}大会`, 1: region ? `${region}大会` : "地域大会" },
+  };
 
   return (
     <div className="flex flex-col gap-3 p-3">
-      <Segmented
-        options={["prefQualifier", "national"] as const}
-        value={tab}
-        onChange={setTab}
-        labels={{ prefQualifier: `${pref.name}予選`, national: "全国大会" }}
-      />
+      <Segmented options={["summer", "winter", "rookie"] as const} value={season} onChange={(v) => setSeason(v)} labels={{ summer: "夏", winter: "冬", rookie: "新人戦" }} />
+      <Segmented options={["0", "1"] as const} value={String(stage) as "0" | "1"} onChange={(v) => setStage(Number(v) as 0 | 1)} labels={{ "0": stageLabels[season][0], "1": stageLabels[season][1] }} />
       <h2 className="text-sm font-black">
-        {tab === "prefQualifier" ? prefQualifierName(pref.name) : `${COMPETITION_NAMES.national}（${game.prefectures.reduce((n, p) => n + p.reps, 0)}校）`}
+        {competitionName(game, kind)}（{size}校）
       </h2>
-      {tab === "prefQualifier" && pref.reps > 1 && <p className="text-xs text-gray-500">代表決定戦に勝った{pref.reps}校が全国大会に出場します。</p>}
-      {game.competitions.winterResult && <p className="rounded-lg bg-green-50 p-2 text-sm font-bold text-pitch-dark">今年の成績：{game.competitions.winterResult}</p>}
+      {season === "summer" && host && <p className="text-xs text-gray-500">今年の開催県：{host.name}（開催県は 2 校が出場）</p>}
+      {season === "rookie" && <p className="text-xs text-gray-500">1・2年生だけで戦う。県大会の上位 8 校は、次の夏の県予選のシードになる。</p>}
+      {stage === 0 && reps > 1 && season !== "rookie" && <p className="text-xs text-gray-500">代表決定戦に勝った{reps}校が全国大会に出場します。</p>}
+      {result && <p className="rounded-lg bg-green-50 p-2 text-sm font-bold text-pitch-dark">今年の成績：{result}</p>}
       {!b ? (
-        <p className="text-sm text-gray-500">予選が終わると、全国大会（{game.prefectures.reduce((n, p) => n + p.reps, 0)}校）の組み合わせが決まります。</p>
+        <p className="text-sm text-gray-500">{stage === 0 ? "組み合わせはまだ決まっていません。" : `前の大会が終わると、組み合わせ（${size}校）が決まります。`}</p>
       ) : (
         <BracketRounds bracket={b} />
       )}

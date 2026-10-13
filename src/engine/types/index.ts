@@ -58,8 +58,8 @@ export interface Player {
   condition: Condition;
   /** ケガの残り日数（0 なら健康） */
   injuryDays: number;
-  /** 入部の種類。P2b で特待生を追加する */
-  admission: "general";
+  /** 入部の種類（一般入部・特待生。P2c） */
+  admission: "general" | "scholarship";
   /** 出場停止の残り試合数（公式戦のみ数える。レッドカードで 1） */
   suspended: number;
   /** 在学中の成績（OB の記録に引き継ぐ） */
@@ -115,6 +115,23 @@ export interface School {
   captainId?: string;
   /** CPU 校の簡略化したスタッフの値（自校は GameState.staff を使う） */
   cpuStaff?: CpuStaff;
+  /** CPU 校の設備（格に応じた簡略な値。自校は GameState.facilities。P2c） */
+  cpuFacilities?: Facilities;
+  /** CPU 校の、大会の本戦の間だけ持ち越す体力（選手 ID → 体力）。本戦が終わったら消す（P2c） */
+  carryFitness?: { day: number; fit: Record<string, number> };
+}
+
+// ================= 設備（SPEC 15章。P2c） =================
+
+export const FACILITY_IDS = ["ground", "trainingRoom", "careRoom", "dorm"] as const;
+export type FacilityId = (typeof FACILITY_IDS)[number];
+export type FacilityLevel = 0 | 1 | 2 | 3;
+export type Facilities = Record<FacilityId, FacilityLevel>;
+export interface FacilityLogEntry {
+  year: number;
+  facility: FacilityId;
+  level: FacilityLevel;
+  source: "reputation" | "result" | "donation";
 }
 
 export interface Prefecture {
@@ -127,20 +144,40 @@ export interface Prefecture {
   tier: "competitive" | "normal" | "small";
   /** 冬の全国大会の代表校の数（東京のみ 2） */
   reps: number;
+  /** 夏の全国大会の代表校の数（東京・神奈川・大阪は 2。開催県はその年だけ +1。P2c） */
+  summerReps: number;
   schoolIds: string[];
   isPlayerPref: boolean;
 }
 
 // ================= カレンダー =================
 
-export type SquareType = "blue" | "red" | "white" | "green" | "yellow" | "training" | "major";
-export type MajorKind = "entrance" | "practiceMatch" | "prefQualifier" | "national" | "graduation" | "yearEnd";
+/** ランダムに並ぶ通常マス */
+export type RandomSquareType = "blue" | "red" | "white" | "green" | "yellow" | "training";
+/** branch = 分岐マス（P2c。止まると道を選べる） */
+export type BaseSquareType = RandomSquareType | "branch";
+export type SquareType = BaseSquareType | "major";
+/** 大会（トーナメント）の種類（P2c で夏の全国大会・新人戦を追加） */
+export const COMPETITION_KINDS = ["prefQualifier", "national", "summerQualifier", "summerNational", "rookiePref", "rookieRegion"] as const;
+export type CompetitionKind = (typeof COMPETITION_KINDS)[number];
+/** camp：合宿の出発（round 0 = 夏、1 = 冬）。scoutReply：特待生スカウトの返事 */
+export type MajorKind = "entrance" | "practiceMatch" | CompetitionKind | "camp" | "scoutReply" | "graduation" | "yearEnd";
 
 export interface Square {
   day: number;
   /** 大マスが無効（大会で敗退済みなど）のときに使う通常マスの種類 */
-  baseType: Exclude<SquareType, "major">;
+  baseType: BaseSquareType;
   major?: { kind: MajorKind; round?: number };
+}
+
+/** 分岐マス（SPEC 5.1。P2c） */
+export type BranchTheme = "normal" | "blue" | "training" | "rest" | "yellow";
+export interface Branch {
+  /** 分岐マスの日 */
+  day: number;
+  /** 道（paths[0] は「ふつうの道」で、カレンダーのマスと同じ）。どの道も長さは同じ */
+  paths: { theme: BranchTheme; squares: RandomSquareType[] }[];
+  chosen?: number;
 }
 
 export const PRACTICE_KINDS = ["shoot", "pass", "dribble", "defense", "physical", "run", "tactics", "gk", "setPiece", "pk", "rest"] as const;
@@ -161,6 +198,8 @@ export interface Calendar {
   lastGain?: { practice: PracticeKind; perPlayer: Record<string, Partial<Record<StatKey, number>>> };
   /** 次の練習の効率補正（イベントで変わる） */
   nextPracticeMult: number;
+  /** 分岐マス（P2c） */
+  branches?: Branch[];
 }
 
 // ================= 試合 =================
@@ -197,7 +236,7 @@ export interface MatchRules {
   benchSize: number;
 }
 
-export type MatchKind = "practice" | "prefQualifier" | "national";
+export type MatchKind = "practice" | CompetitionKind;
 
 // ================= 大会 =================
 
@@ -212,7 +251,7 @@ export interface BracketMatch {
 }
 
 export interface Bracket {
-  kind: "prefQualifier" | "national";
+  kind: CompetitionKind;
   /** rounds[0] が 1 回戦 */
   rounds: BracketMatch[][];
   /** 各ラウンドの日（day インデックス） */
@@ -251,6 +290,8 @@ export interface Alumnus {
   personality: Personality;
   playStyle: PlayStyle;
   skills: SkillId[];
+  /** 特待生として入部した（P2c） */
+  scholarship?: boolean;
 }
 
 export interface SeasonRecord {
@@ -258,7 +299,67 @@ export interface SeasonRecord {
   reputationLevel: ReputationLevel;
   rank: SchoolRank;
   winterResult: string;
+  /** P2c */
+  summerResult?: string;
+  rookieResult?: string;
 }
+
+// ================= 特待生スカウト（SPEC 8章。P2c） =================
+
+export type Affiliation = "juniorHigh" | "townClub" | "juniorYouth";
+export type Reaction = "good" | "normal" | "bad";
+/** 中学時代の実績 0=なし 1=県大会 2=地域大会 3=全国大会 */
+export type Achievement = 0 | 1 | 2 | 3;
+export const METER_KEYS = ["attack", "pass", "dribble", "defense", "physical", "speed", "saving", "kick", "highBall"] as const;
+export type MeterKey = (typeof METER_KEYS)[number];
+
+export interface ScoutCandidate {
+  id: string;
+  /** 本当の能力（入部が決まったら、そのまま部員になる） */
+  player: Player;
+  prefectureId: string;
+  affiliation: Affiliation;
+  achievement: Achievement;
+  /** 1 = 取り合いになる最上位の候補 */
+  tier: 0 | 1;
+  /** 取り合いの相手（"youth" = ユースチーム、それ以外は CPU 校の ID） */
+  rivals: string[];
+  /** 表示する推定値の幅 [下限, 上限] */
+  meter: Partial<Record<MeterKey, [number, number]>>;
+  /** 寸評（訪問すると見える） */
+  comments?: string[];
+  reaction?: Reaction;
+  visits: number;
+  status: "open" | "courting" | "joined" | "declined" | "lost";
+  /** 取り合いに負けたときの行き先（"youth" か学校 ID） */
+  lostTo?: string;
+}
+
+export interface ScoutState {
+  /** 候補リストを作った年度（11 月の年度） */
+  year: number;
+  candidates: ScoutCandidate[];
+  cardsTotal: number;
+  cardDays: number[];
+  cardsDelivered: number;
+  /** 未使用のスカウトカード */
+  cards: number;
+  /** 勧誘中の候補の優先順（枠を超えて入部が決まったとき、前から枠まで） */
+  priority: string[];
+  /** 入部が決まり、4 月に入部する特待生 */
+  committed: Player[];
+  /** 他校に決まった候補（4 月にその学校の新入生になる） */
+  toCpu: { schoolId: string; player: Player }[];
+  /** 返事が届いたか */
+  replied: boolean;
+}
+
+// ================= 合宿（P2c） =================
+
+export const POSITION_GROUPS = ["GK", "DF", "MF", "FW"] as const;
+export type PositionGroup = (typeof POSITION_GROUPS)[number];
+export type CampSeason = "summer" | "winter";
+export type CampPolicy = Record<PositionGroup, PracticeKind>;
 
 export interface LogEntry {
   day: number;
@@ -289,7 +390,29 @@ export interface GameState {
     winterResult?: string;
     /** 今年の練習試合の回数（格上と組む頻度の調整用） */
     practiceMatchCount: number;
+    /** 夏の全国大会・新人戦（P2c） */
+    summerQualifier?: Bracket;
+    summerNational?: Bracket;
+    rookiePref?: Bracket;
+    rookieRegion?: Bracket;
+    /** その年の夏の全国大会の開催県 */
+    summerHostPrefId?: string;
+    summerResult?: string;
+    rookieResult?: string;
+    /** 新人戦の県大会の成績から決めた、次の夏の県予選のシード順（自県の学校 ID。強い順） */
+    rookieSeeds?: string[];
   };
+  /** 設備（SPEC 15章。P2c） */
+  facilities: Facilities;
+  facilityLog: FacilityLogEntry[];
+  /** 評判で整備される設備を、どの評判まで受け取ったか */
+  facilityGrantedLevel: ReputationLevel;
+  /** OB からの寄付が最後にあった年度 */
+  lastDonationYear?: number;
+  /** 特待生スカウト（P2c） */
+  scout?: ScoutState;
+  /** 前回の合宿の方針（次の合宿の初期値） */
+  campPolicy?: CampPolicy;
   /** 進行中の試合（区間ごとにセーブされる） */
   activeMatch?: import("../match/types").ActiveMatch;
   /** 次に処理を待っているもの（試合前・年度末など） */
@@ -312,4 +435,10 @@ export type PendingAction =
   | { type: "staff" }
   /** キャプテンの指名（年度初めと、3 年生の引退でいなくなったとき） */
   | { type: "captain" }
+  /** 合宿の方針を選ぶ（P2c） */
+  | { type: "camp"; season: CampSeason }
+  /** 分岐マスで道を選ぶ（P2c） */
+  | { type: "branch"; day: number }
+  /** 特待生スカウトの返事（P2c） */
+  | { type: "scoutReply" }
   | { type: "yearEnd" };

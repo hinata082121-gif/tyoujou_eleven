@@ -1,6 +1,6 @@
 "use client";
 
-import { CAREER_NAMES, MAJOR_NAMES, POSITION_NAMES, REPUTATION_NAMES, SKILL_NAMES, yearLabel } from "@/engine/config/names";
+import { CAREER_NAMES, COMPETITION_NAMES, MAJOR_NAMES, POSITION_NAMES, REPUTATION_NAMES, SKILL_NAMES, yearLabel } from "@/engine/config/names";
 import { overall } from "@/engine/player/rating";
 import { statRank } from "@/engine/player/rank";
 import { playerSchool } from "@/engine/season";
@@ -48,9 +48,16 @@ export function MatchResultScreen() {
             ))}
           </ul>
         )}
-        {r.qualifiedNational && <p className="rounded-xl bg-amber-100 px-4 py-2 font-black text-amber-900">🏆 予選を勝ち抜いた！ 冬の全国大会に出場！</p>}
-        {r.champion && !r.qualifiedNational && <p className="rounded-xl bg-amber-100 px-4 py-2 font-black text-amber-900">🏆 全国制覇！</p>}
-        {r.eliminated && r.kind !== "practice" && <p className="text-sm text-gray-600">冬の全国大会はここで敗退。3年生は引退となる。</p>}
+        {r.qualifiedNational && (
+          <p className="rounded-xl bg-amber-100 px-4 py-2 font-black text-amber-900">🏆 予選を勝ち抜いた！ {r.kind === "summerQualifier" ? COMPETITION_NAMES.summerNational : COMPETITION_NAMES.national}に出場！</p>
+        )}
+        {r.champion && !r.qualifiedNational && (
+          <p className="rounded-xl bg-amber-100 px-4 py-2 font-black text-amber-900">
+            🏆 {r.kind === "national" || r.kind === "summerNational" ? "全国制覇！" : r.kind === "rookiePref" ? "新人戦の県大会で優勝！" : "新人戦の地域大会で優勝！"}
+          </p>
+        )}
+        {r.eliminated && (r.kind === "prefQualifier" || r.kind === "national") && <p className="text-sm text-gray-600">冬の全国大会はここで敗退。3年生は引退となる。</p>}
+        {r.eliminated && (r.kind === "summerQualifier" || r.kind === "summerNational") && <p className="text-sm text-gray-600">夏の全国大会はここで敗退。冬に向けて鍛え直そう。</p>}
         <div className="w-full rounded-xl bg-gray-50 p-3 text-sm">
           評判ゲージ {r.reputationDelta >= 0 ? "+" : ""}
           {r.reputationDelta}

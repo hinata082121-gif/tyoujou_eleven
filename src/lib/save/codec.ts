@@ -21,9 +21,10 @@ import {
 
 /**
  * [id, name, grade, enrolledYear, retired, mainPos, height, heightLeft, foot, aptitude, stats, exp, potential, fitness, condition, injuryDays,
- *  traits, suspended, [apps, goals, officialApps, officialGoals]]
+ *  traits, suspended, [apps, goals, officialApps, officialGoals], scholarship]
  * traits はスキーマ v4 で追加（v3 以前は無いので、マイグレーションで差し込む）。
- * 末尾の 2 つはスキーマ v3 で追加（記録が空なら省く）
+ * suspended と記録はスキーマ v3 で追加（記録が空なら省く）。
+ * 最後の scholarship（特待生なら 1）はスキーマ v5 で追加（一般入部なら省く）
  */
 export type PackedPlayer = [
   string,
@@ -45,6 +46,7 @@ export type PackedPlayer = [
   PackedTraits,
   number?,
   number[]?,
+  (0 | 1)?,
 ];
 
 /** [性格, スタイル, 熟練度, 特殊能力, 得意な練習（無ければ -1）, 成果（無ければ省く）]。どれも番号で持つ */
@@ -109,12 +111,14 @@ export function packPlayer(p: Player): PackedPlayer {
     packTraits(p),
   ];
   // CPU 校の部員（数千人）は記録が空なので、容量のために省く
-  if (p.suspended || r.apps || r.goals || r.officialApps || r.officialGoals) packed.push(p.suspended, [r.apps, r.goals, r.officialApps, r.officialGoals]);
+  const scholar = p.admission === "scholarship";
+  if (scholar || p.suspended || r.apps || r.goals || r.officialApps || r.officialGoals) packed.push(p.suspended, [r.apps, r.goals, r.officialApps, r.officialGoals]);
+  if (scholar) packed.push(1);
   return packed;
 }
 
 export function unpackPlayer(a: PackedPlayer): Player {
-  const [id, name, grade, enrolledYear, retired, pos, height, heightLeft, foot, apt, stats, exp, potential, fitness, condition, injuryDays, traits, suspended, rec] = a;
+  const [id, name, grade, enrolledYear, retired, pos, height, heightLeft, foot, apt, stats, exp, potential, fitness, condition, injuryDays, traits, suspended, rec, scholarship] = a;
   const aptitude = {} as Record<(typeof POSITIONS)[number], Aptitude>;
   POSITIONS.forEach((p, i) => (aptitude[p] = Number(apt[i]) as Aptitude));
   const s = {} as Record<StatKey, number>;
@@ -140,7 +144,7 @@ export function unpackPlayer(a: PackedPlayer): Player {
     fitness,
     condition: condition as Condition,
     injuryDays,
-    admission: "general",
+    admission: scholarship ? "scholarship" : "general",
     suspended: suspended ?? 0,
     record: { apps: rec?.[0] ?? 0, goals: rec?.[1] ?? 0, officialApps: rec?.[2] ?? 0, officialGoals: rec?.[3] ?? 0 },
     ...unpackTraits(traits),

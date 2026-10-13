@@ -56,7 +56,7 @@ export function PlayerDetail() {
             {isCaptain && <span className="rounded bg-pitch-dark px-1.5 text-xs text-white" title="キャプテン">C</span>}
           </div>
           <div className="text-xs text-gray-600">
-            {p.grade}年・{POSITION_NAMES[p.mainPosition]}・{p.heightCm}cm・利き足 {FOOT_NAMES[p.foot]}
+            {p.grade}年{p.admission === "scholarship" && "（特待生）"}・{POSITION_NAMES[p.mainPosition]}・{p.heightCm}cm・利き足 {FOOT_NAMES[p.foot]}
             {p.status === "retired" && "・引退済み"}
           </div>
         </div>

@@ -1,4 +1,4 @@
-import type { PracticeKind, SquareType } from "../types";
+import type { BranchTheme, PracticeKind, RandomSquareType } from "../types";
 
 /** 1 年 = 365 マス（4/1〜3/31） */
 export const MONTH_DAYS = [30, 31, 30, 31, 31, 30, 31, 30, 31, 31, 28, 31] as const; // 4月始まり
@@ -6,7 +6,7 @@ export const MONTH_NUMBERS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3] as const;
 export const DAYS_IN_YEAR = 365;
 
 /** 通常マスの出やすさ */
-export const SQUARE_WEIGHTS: Record<Exclude<SquareType, "major">, number> = {
+export const SQUARE_WEIGHTS: Record<RandomSquareType, number> = {
   blue: 28,
   red: 17,
   white: 13,
@@ -39,6 +39,8 @@ export const FIXED_DATES = {
   entrance: [4, 1] as const,
   graduation: [3, 1] as const,
   yearEnd: [3, 31] as const,
+  /** 特待生スカウトの返事（P2c） */
+  scoutReply: [2, 28] as const,
 };
 
 /** 練習試合：年に 6〜8 回（同じ月に 2 回は入れない） */
@@ -46,9 +48,37 @@ export const PRACTICE_MATCH = {
   perYearMin: 6,
   perYearMax: 8,
   /** 練習試合を入れない月（大会期間など）。月の番号 */
-  excludeMonths: [12, 1, 3] as number[],
+  excludeMonths: [12, 1, 2, 3] as number[],
   /** 他の大マスとの最低間隔（日） */
   minGap: 4,
   /** 格上（ランク +1〜+2）と組む確率（2〜3 回に 1 回） */
   strongerChance: 0.4,
+};
+
+/** 合宿（P2c）。出発の日（大マス）の翌日から days 日間 */
+export const CAMP_DATES = {
+  summer: { depart: [8, 9] as const, days: 5 },
+  winter: { depart: [12, 14] as const, days: 4 },
+};
+
+/** 分岐マス（SPEC 5.1。P2c） */
+export const BRANCH = {
+  perYear: 8,
+  /** 道の長さ（分岐マスの次の日から） */
+  length: 7,
+  /** 分岐を置かない月（大会・合宿の月） */
+  excludeMonths: [7, 8, 12, 1, 3] as number[],
+  /** テーマのある道の数（1〜2 本。ふつうの道と合わせて 2〜3 本） */
+  extraPaths: [1, 2] as [number, number],
+  /** テーマごとの出やすさの倍率 */
+  themes: {
+    blue: { blue: 2, red: 1.3 },
+    training: { red: 1.3 },
+    rest: { green: 2.5 },
+    yellow: { yellow: 2 },
+  } as Record<Exclude<BranchTheme, "normal">, Partial<Record<RandomSquareType, number>>>,
+  /** 特訓の道で必ず入る特訓マスの数 */
+  trainingGuaranteed: 2,
+  /** 選ぶ画面で正確に見えるマスの数（残りは種類ごとの数。うち 1 つは「？」） */
+  revealFirst: 3,
 };

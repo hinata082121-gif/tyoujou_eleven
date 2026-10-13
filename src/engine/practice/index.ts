@@ -39,6 +39,12 @@ export interface PracticeStaffOptions {
   rolls?: Record<string, number>;
   /** ケガしにくさ系の倍率（選手ごと） */
   playerInjuryMult?: (p: Player) => number;
+  /** ケガの離脱日数の倍率（ケアルーム。P2c） */
+  injuryDaysMult?: number;
+  /** 練習の体力の消耗の倍率（合宿。P2c） */
+  fitnessCostMult?: number;
+  /** 熟練度の伸びの倍率（合宿。P2c） */
+  proficiencyMult?: number;
 }
 
 /** 性格による練習の倍率（PLAN 2.2）。ひらめき型は練習 1 回ごとに引く */
@@ -93,8 +99,9 @@ export function practiceOneDay(rng: Rng, players: Player[], kind: PracticeKind, 
         const g = (gains[p.id] ??= {});
         g[stat] = (g[stat] ?? 0) + exp;
       }
-      if (kind !== "rest" && styleUsesPractice(p.playStyle, kind)) gainProficiency(p, PROFICIENCY.perPracticeDay);
-      p.fitness = clampFit(p.fitness + def.fitness + recovery);
+      if (kind !== "rest" && styleUsesPractice(p.playStyle, kind)) gainProficiency(p, PROFICIENCY.perPracticeDay * (opts.proficiencyMult ?? 1));
+      const cost = def.fitness < 0 ? def.fitness * (opts.fitnessCostMult ?? 1) : def.fitness;
+      p.fitness = clampFit(p.fitness + cost + recovery);
     } else {
       p.fitness = clampFit(p.fitness + NON_TARGET_FITNESS + recovery);
     }
@@ -102,13 +109,23 @@ export function practiceOneDay(rng: Rng, players: Player[], kind: PracticeKind, 
     if (p.fitness < INJURY.safeFitness) {
       const risk = INJURY.maxDailyChance * (1 - p.fitness / INJURY.safeFitness) * (opts.injuryMult ?? 1) * (opts.playerInjuryMult?.(p) ?? 1);
       if (rng.chance(risk)) {
-        p.injuryDays = rng.int(INJURY.minDays, INJURY.maxDays);
+        p.injuryDays = Math.max(1, Math.round(rng.int(INJURY.minDays, INJURY.maxDays) * (opts.injuryDaysMult ?? 1)));
         injured.push(p);
       }
     }
     driftCondition(rng, p, opts);
   }
   return injured;
+}
+
+/** 練習しない日（スカウトの訪問・大会の調整日。P2c）：ケガの日数を減らし、体力を recovery だけ戻す */
+export function idleDay(rng: Rng, players: Player[], recovery: number, opts: Pick<PracticeStaffOptions, "conditionDownMult" | "conditionUpMult"> = {}) {
+  for (const p of players) {
+    if (p.status !== "active") continue;
+    if (p.injuryDays > 0) p.injuryDays--;
+    p.fitness = clampFit(p.fitness + recovery);
+    driftCondition(rng, p, opts);
+  }
 }
 
 /** 複数日の練習 */

@@ -1,7 +1,8 @@
 import { FRESHMAN_BASE, FRESHMAN_BASE_SD } from "../config/player";
 import { autoCaptain } from "../captain";
 import { REPUTATION_TABLE } from "../config/reputation";
-import { PLAYER_START, PRESTIGE_GRADE_SIZE, PRESTIGE_LEVEL_BASE, prefReps, prefTier, TIER_SETTINGS } from "../config/school";
+import { PLAYER_START, PRESTIGE_GRADE_SIZE, PRESTIGE_LEVEL_BASE, prefReps, prefSummerReps, prefTier, TIER_SETTINGS } from "../config/school";
+import { cpuFacilities } from "../facilities";
 import { DEFAULT_PREFECTURE_ID, PREFECTURES, REGIONS, SCHOOL_NAME_HEADS, SCHOOL_NAME_TAILS } from "../config/names";
 import { DEFAULT_TACTICS } from "../match/lineup";
 import { STYLE_WEIGHTS, TACTIC_STYLE_IDS, TACTIC_STYLES } from "../config/tactics";
@@ -71,7 +72,7 @@ export function generalFreshmen(rng: Rng, count: number, year: number): Player[]
   return generateGradeGroup(rng, count, { grade: 1, enrolledYear: year, base: FRESHMAN_BASE }, FRESHMAN_BASE_SD);
 }
 
-class NameGen {
+export class NameGen {
   private used = new Set<string>();
   constructor(private rng: Rng) {}
   next(): string {
@@ -107,6 +108,7 @@ export function makeCpuSchool(rng: Rng, id: string, name: string, prefectureId: 
     tactics,
   };
   school.rank = rankFromStrength(teamStrength(players, formation));
+  school.cpuFacilities = cpuFacilities(rng, prestige);
   return school;
 }
 
@@ -118,6 +120,7 @@ export function generateWorld(rng: Rng, playerSchoolName: string, year = 1, play
     regionId: p.region,
     tier: prefTier(p.id),
     reps: prefReps(p.id),
+    summerReps: prefSummerReps(p.id),
     schoolIds: [],
     isPlayerPref: p.id === playerPrefId,
   }));
