@@ -1,4 +1,5 @@
-import { FACILITY_NAMES, PREFECTURES, REPUTATION_NAMES } from "../src/engine/config/names";
+import { FACILITY_NAMES, PREF_TIER_NAMES, PREFECTURES, REPUTATION_NAMES } from "../src/engine/config/names";
+import { prefTier, type PrefTier } from "../src/engine/config/school";
 import { newGame } from "../src/engine/game";
 import { autoStep, newAutoplayStats } from "../src/engine/game/autoplay";
 import { statRank } from "../src/engine/player/rank";
@@ -45,6 +46,8 @@ export interface SeasonData {
   eliteRanks: number[];
   /** P3：県リーグ（年ごと） */
   league: { level: number; divisions: number; promoted: boolean; relegated: boolean; retired: boolean; canRelegate: boolean; year: number }[];
+  /** P3：学校ごとの県の区分（firstNational・firstReach と同じ並び） */
+  tiers: PrefTier[];
 }
 
 const emptyData = (games: number, years: number): SeasonData => ({
@@ -69,6 +72,7 @@ const emptyData = (games: number, years: number): SeasonData => ({
   championRanks: { winter: {}, summer: {} },
   eliteRanks: [],
   league: [],
+  tiers: [],
 });
 
 /** 全国大会のベスト4（準決勝・決勝で負けた、または優勝） */
@@ -84,13 +88,19 @@ const shortResult = (s: string | undefined) =>
     .replace(/(冬|夏)の全国大会 /, "全国 ")
     .replace(/^.*代表$/, "代表");
 
+const TIERS: PrefTier[] = ["competitive", "normal", "small"];
+/** 学校の番号から都道府県を決める。区分（激戦区・普通・少数）を順に回し、区分ごとの学校の数をそろえる（P3） */
+export function seasonPrefecture(g: number): string {
+  const list = PREFECTURES.filter((p) => prefTier(p.id) === TIERS[g % 3]);
+  return list[(Math.floor(g / 3) * 5) % list.length].id;
+}
+
 /** 学校 from〜to-1 を years 年ずつ遊ぶ（学校の番号で都道府県と種が決まる） */
 export function collectSeasons(from: number, to: number, years: number): SeasonData {
   const d = emptyData(to - from, years);
   const turnover = d.turnover;
   for (let g = from; g < to; g++) {
-    // 県の区分がばらけるように、都道府県を順番に使う
-    const pref = PREFECTURES[(g * 7) % PREFECTURES.length].id;
+    const pref = seasonPrefecture(g);
     const state = newGame(`season-${g}`, "検証高校", pref);
     const reached: (number | null)[] = [null, null, null, null];
     const nat: Record<string, number | null> = { winterBest4: null, winterWin: null, summerBest4: null, summerWin: null, anyBest4: null, anyWin: null };
@@ -171,6 +181,7 @@ export function collectSeasons(from: number, to: number, years: number): SeasonD
     }
     for (const id of FACILITY_IDS) (d.facilityEnd[id] ??= []).push(state.facilities[id]);
     for (let l = 0; l < 4; l++) d.firstReach[l].push(reached[l]);
+    d.tiers.push(prefTier(pref));
     for (const [k, v] of Object.entries(nat)) (d.firstNational[k] ??= []).push(v);
     // 初期の部員を除いた、一般入部の卒業生（4 年目以降の卒業）
     for (const a of state.alumni) if (a.graduatedYear >= 4 && !a.fictional) d.graduates.push(a);
@@ -214,6 +225,7 @@ export function mergeSeasons(parts: SeasonData[]): SeasonData {
     for (const key of ["winter", "summer"]) for (const [r, n] of Object.entries(p.championRanks[key])) out.championRanks[key][r] = (out.championRanks[key][r] ?? 0) + n;
     out.eliteRanks.push(...p.eliteRanks);
     out.league.push(...p.league);
+    out.tiers.push(...p.tiers);
     for (const [k, v] of Object.entries(p.camps)) {
       const e = (out.camps[k] ??= { n: 0, gain: 0, players: 0, learned: 0, gold: 0 });
       e.n += v.n;
@@ -331,7 +343,7 @@ function reportPhase3(d: SeasonData) {
     ["summerBest4", "夏の全国 ベスト4", "—"],
     ["summerWin", "夏の全国 優勝", "—"],
     ["anyBest4", "全国 ベスト4（夏か冬）", "—"],
-    ["anyWin", "全国 優勝（夏か冬）", "45〜55%"],
+    ["anyWin", "全国 優勝（夏か冬）", "—（区分ごと。下の表）"],
   ];
   for (const [k, label, target] of labels) {
     const all = d.firstNational[k] ?? [];
@@ -340,6 +352,7 @@ function reportPhase3(d: SeasonData) {
     const ok = target === "—" ? "" : share >= 0.45 && share <= 0.55 ? " OK" : " NG";
     console.log(`| ${label} | ${pct(share)} | ${xs.length ? `${xs[Math.floor((xs.length - 1) / 2)]}年目（最短 ${xs[0]}年目）` : "—"} | ${target}${ok} |`);
   }
+  reportByTier(d);
   for (const key of ["winter", "summer"]) {
     const rec = d.championRanks[key];
     const total = Object.values(rec).reduce((s, x) => s + x, 0);
@@ -374,4 +387,30 @@ function reportPhase3(d: SeasonData) {
   console.log(
     `冬の県予選で負けて3年生が引退した後にリーグ戦が残っていた年（最下部以外 ${retired.length}年）の降格：${share(retired, (x) => x.relegated)}（引退がリーグの後だった年 ${stayed.length}年：${share(stayed, (x) => x.relegated)}）（目標：極端に高くない）`,
   );
+}
+
+/** P3：全国優勝の経験の目標（20 年で一度でも夏か冬に優勝した学校の割合。区分ごと） */
+export const NATIONAL_WIN_TARGETS: Record<PrefTier, [number, number]> = { competitive: [0.3, 0.4], normal: [0.45, 0.55], small: [0.55, 0.65] };
+
+/** P3：県の区分ごとの、全国大会と名門に初めて届いた年 */
+function reportByTier(d: SeasonData) {
+  const median = (xs: number[]) => (xs.length ? xs[Math.floor((xs.length - 1) / 2)] : null);
+  console.log(`\n=== Phase 3：県の区分ごと（全国優勝の経験の目標：激戦区 30〜40%・普通 45〜55%・少数 60%前後） ===`);
+  console.log("| 区分 | 学校 | 全国優勝の経験 | 目標 | 全国ベスト4の経験 | 初めて優勝した年（中央値） | 名門に初めて届いた年（中央値。届いた割合） |");
+  console.log("|---|---|---|---|---|---|---|");
+  for (const tier of TIERS) {
+    const idx = d.tiers.map((t, i) => (t === tier ? i : -1)).filter((i) => i >= 0);
+    if (idx.length === 0) continue;
+    const got = (k: string) => idx.map((i) => d.firstNational[k]?.[i] ?? null).filter((x): x is number => x !== null).sort((a, b) => a - b);
+    const win = got("anyWin");
+    const best4 = got("anyBest4");
+    const elite = idx.map((i) => d.firstReach[3][i]).filter((x): x is number => x !== null).sort((a, b) => a - b);
+    const eliteAll = idx.map((i) => d.firstReach[3][i] ?? 999).sort((a, b) => a - b);
+    const [lo, hi] = NATIONAL_WIN_TARGETS[tier];
+    const share = win.length / idx.length;
+    const m = median(eliteAll);
+    console.log(
+      `| ${PREF_TIER_NAMES[tier]} | ${idx.length} | ${pct(share)} | ${pct(lo)}〜${pct(hi)}${share >= lo && share <= hi ? " OK" : " NG"} | ${pct(best4.length / idx.length)} | ${median(win) ?? "—"}年目 | ${m === 999 ? "届かない" : `${m}年目`}（${pct(elite.length / idx.length)}） |`,
+    );
+  }
 }
