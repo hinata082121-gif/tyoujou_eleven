@@ -57,20 +57,20 @@ export const TIER_SETTINGS: Record<
     playerPrefPrestige: [26, 26, 22, 15, 9, 2],
     otherPrefSchools: 4,
     /** P3 で格 5 を減らした（全国の上位に S が多すぎて、自校が全国で優勝できなかったため。計画 Q7） */
-    otherPrefPrestige: [0, 6, 22, 36, 30, 6],
+    otherPrefPrestige: [0, 8, 26, 38, 24, 4],
   },
   normal: {
     playerPrefSchools: { min: 20, max: 26 },
     playerPrefPrestige: [30, 28, 22, 13, 6, 1],
     otherPrefSchools: 3,
-    otherPrefPrestige: [3, 14, 30, 34, 17, 2],
+    otherPrefPrestige: [4, 16, 32, 32, 14, 2],
   },
   small: {
     playerPrefSchools: { min: 16, max: 19 },
     playerPrefPrestige: [36, 30, 20, 10, 4, 0],
     /** P2c で 2 → 3（開催県になったときに夏の予選の意味がなくならないように） */
     otherPrefSchools: 3,
-    otherPrefPrestige: [8, 24, 36, 24, 8, 0],
+    otherPrefPrestige: [10, 26, 36, 20, 8, 0],
   },
 };
 
@@ -108,6 +108,13 @@ export const PLAYER_START = {
 export const PRESTIGE_DRIFT = {
   /** 上下に 1 動く確率 */
   chance: 0.15,
+  /**
+   * もとの格から離れているとき、もとの格の方へ動く確率（P3）。
+   * 上下が半々だと 20 年で格が均等に散らばり、格 5 が 5 校 → 30 校近くまで増えていたため
+   */
+  returnChance: 0.8,
+  /** もとの格にいるとき、実際に動く割合（動かなければそのまま） */
+  leaveBaseChance: 0.5,
   /** 全国大会で好成績なら上がりやすい */
 };
 

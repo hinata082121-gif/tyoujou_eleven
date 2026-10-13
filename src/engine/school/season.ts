@@ -25,7 +25,10 @@ export function advanceCpuSchool(rng: Rng, school: School, newYear: number, inco
     cpuSeasonTraits(rng, p, true);
   }
   if (rng.chance(PRESTIGE_DRIFT.chance)) {
-    school.prestige = Math.max(0, Math.min(5, school.prestige + (rng.chance(0.5) ? 1 : -1)));
+    const base = (school.basePrestige ??= school.prestige);
+    // もとの格から離れていれば、戻る方へ動きやすい（P3）
+    const upChance = school.prestige < base ? PRESTIGE_DRIFT.returnChance : school.prestige > base ? 1 - PRESTIGE_DRIFT.returnChance : 0.5;
+    if (school.prestige !== base || rng.chance(PRESTIGE_DRIFT.leaveBaseChance)) school.prestige = Math.max(0, Math.min(5, school.prestige + (rng.chance(upChance) ? 1 : -1)));
   }
   // スカウトで取り合いに勝った中学生は、新入生の 1 人分として入る（P2c）
   const fresh = cpuFreshmen(rng, school.prestige, newYear).slice(incoming.length);

@@ -39,7 +39,7 @@ export function scholarQualityTable(seasons: number) {
   const elite = cpu(4);
   const top = cpu(5);
   console.log(`CPU の新入生の総合（平均／学年の上位 3 人）：格 3（強豪校。基準 ${PRESTIGE_LEVEL_BASE[3]}）${strong.avg.toFixed(1)}／${strong.top.toFixed(1)}・格 4（基準 ${PRESTIGE_LEVEL_BASE[4]}）${elite.avg.toFixed(1)}／${elite.top.toFixed(1)}・格 5（基準 ${PRESTIGE_LEVEL_BASE[5]}）${top.avg.toFixed(1)}`);
-  console.log("（P3：評判が強豪・名門のときは、ふつうの候補が格 4、最上位が格 5 の水準）");
+  console.log("（P3：強豪はふつうの候補が格 4・最上位が格 5、名門はふつうの候補が格 5・最上位はその上の水準）");
   console.log("| 評判 | 候補の数 | 候補の総合（平均） | 最上位の候補（平均） | 最上位の割合 | 取り合いの相手（最上位の平均） | 目標 |");
   console.log("|---|---|---|---|---|---|---|");
   const s = newGame("p2c-scholar", "検証高校");
@@ -59,11 +59,12 @@ export function scholarQualityTable(seasons: number) {
       }
     }
     const all = mean([...normal, ...tops]);
-    const [base, up] = level >= SCOUT.eliteFromLevel ? [elite, top] : [strong, elite];
+    const step = SCOUT.levelStep[level];
+    const [base, up] = step === 0 ? [strong, elite] : step === 1 ? [elite, top] : [top, { avg: top.avg + SCOUT.beyondTopBase }];
     const okAll = Math.abs(mean(normal) - base.avg) <= 2;
     const okTop = Math.abs(mean(tops) - up.avg) <= 2.5;
     console.log(
-      `| ${REPUTATION_NAMES[level]} | ${(count / seasons).toFixed(0)}人 | ${all.toFixed(1)}（ふつうの候補 ${mean(normal).toFixed(1)}） | ${mean(tops).toFixed(1)} | ${pct(tops.length / count)} | ${(rivals / Math.max(1, tops.length)).toFixed(1)} | ${level >= SCOUT.eliteFromLevel ? "格 4 並み・最上位は格 5" : "強豪の新入生並み・最上位は 1 段上"} ${okAll && okTop ? "OK" : "NG"} |`,
+      `| ${REPUTATION_NAMES[level]} | ${(count / seasons).toFixed(0)}人 | ${all.toFixed(1)}（ふつうの候補 ${mean(normal).toFixed(1)}） | ${mean(tops).toFixed(1)} | ${pct(tops.length / count)} | ${(rivals / Math.max(1, tops.length)).toFixed(1)} | ${step === 0 ? "強豪の新入生並み・最上位は 1 段上" : step === 1 ? "格 4 並み・最上位は格 5" : "格 5 並み・最上位はその上"} ${okAll && okTop ? "OK" : "NG"} |`,
     );
   }
   console.log(`(計算時間 ${((Date.now() - t0) / 1000).toFixed(1)} 秒)`);

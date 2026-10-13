@@ -109,6 +109,8 @@ export interface School {
   rank: SchoolRank;
   /** CPU 校の格（新入生の質と人数に使う。プレイヤー校は評判を使う） */
   prestige: number;
+  /** もとの格（P3。格の変動はここへ戻りやすい。ないセーブは最初の変動のときに今の格を入れる） */
+  basePrestige?: number;
   formation: FormationId;
   tactics: Tactics;
   /** キャプテン（SPEC 7.8。自校は年度初めに指名、CPU 校は自動） */

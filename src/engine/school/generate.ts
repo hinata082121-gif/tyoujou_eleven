@@ -104,6 +104,7 @@ export function makeCpuSchool(rng: Rng, id: string, name: string, prefectureId: 
     players,
     rank: "E",
     prestige,
+    basePrestige: prestige,
     formation,
     tactics,
   };
