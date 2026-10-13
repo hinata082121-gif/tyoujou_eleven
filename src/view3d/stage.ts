@@ -146,11 +146,34 @@ export function buildStage(venue: VenueStage, homeMain: string, homeSub: string,
       seats.push({ x: side * (PITCH_W / 2 + 8.5 + hash01(i, 1) * 3), y: 0, z: -45 + hash01(i, 2) * 90, home: side > 0 && hash01(i, 4) < 0.5 });
     }
   } else {
+    // 競技場（段階 2・3）は陸上のトラックで囲む。スタンドはトラックの外
+    const track = venue === 2 || venue === 3;
+    const d0 = track ? 15 : 9;
+    if (track) {
+      const t = add(new THREE.PlaneGeometry(PITCH_W + 28, PITCH_L + 36), new THREE.MeshLambertMaterial({ color: "#a85a3c" }));
+      t.rotation.x = -Math.PI / 2;
+      t.position.y = -0.2;
+    }
+    // ピッチの周りの低い板（広告は入れない）
+    const boards: THREE.BufferGeometry[] = [];
+    for (const sx of [-1, 1]) {
+      const b = new THREE.BoxGeometry(0.2, 0.9, PITCH_L + 12);
+      b.translate(sx * (PITCH_W / 2 + 5), 0.45, 0);
+      boards.push(b);
+    }
+    for (const sz of [-1, 1])
+      for (const sx of [-1, 1]) {
+        // ゴールの裏は真ん中をあける
+        const b = new THREE.BoxGeometry(PITCH_W / 2 - 5, 0.9, 0.2);
+        b.translate(sx * (PITCH_W / 4 + 5), 0.45, sz * (PITCH_L / 2 + 6));
+        boards.push(b);
+      }
+    add(mergeGeometries(boards)!, new THREE.MeshLambertMaterial({ color: "#1f3a6b" }));
     const steps: THREE.BufferGeometry[] = [];
     for (const [sx, sz] of look.sides) {
       const len = sx ? PITCH_L + 8 : PITCH_W + 8;
       for (let r = 0; r < look.rows; r++) {
-        const d = 9 + r * 1.0,
+        const d = d0 + r * 1.0,
           h = 0.6 + r * 0.55;
         const step = new THREE.BoxGeometry(sx ? 1.0 : len, h, sx ? len : 1.0);
         step.translate(sx * (PITCH_W / 2 + d), h / 2, sz * (PITCH_L / 2 + d));
