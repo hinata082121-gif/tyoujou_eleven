@@ -54,6 +54,8 @@ export const SCOUT = {
   levelStep: [0, 0, 0, 1, 2] as number[],
   /** 格 5 より上の水準（名門の最上位の候補）は、格 5 の基準値にこれを足す */
   beyondTopBase: 2.5,
+  /** P3：評判ごとに候補の基準値へ足す値（名門の自校が A に届くように。総合 B の割合は一般入部だけなので変わらない） */
+  levelBonus: [0, 0, 0, 0, 1.5] as number[],
   baseSd: 2.5,
   /** 最上位の候補の割合（ジュニアユースは ×topYouthMult） */
   topShare: 0.2,

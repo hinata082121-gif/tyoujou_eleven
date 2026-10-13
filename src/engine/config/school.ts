@@ -61,13 +61,15 @@ export const TIER_SETTINGS: Record<
   },
   normal: {
     playerPrefSchools: { min: 20, max: 26 },
-    playerPrefPrestige: [30, 28, 22, 13, 6, 1],
+    /** P3 で自県の格 4・5 を減らした（全国優勝の経験を区分ごとの目標に合わせる。報告書 4章 Q1） */
+    playerPrefPrestige: [33, 31, 23, 10, 2.5, 0.5],
     otherPrefSchools: 3,
     otherPrefPrestige: [4, 16, 32, 32, 14, 2],
   },
   small: {
     playerPrefSchools: { min: 16, max: 19 },
-    playerPrefPrestige: [36, 30, 20, 10, 4, 0],
+    /** P3 で自県の格 4・5 を減らした（同上） */
+    playerPrefPrestige: [40, 32, 19, 8, 1, 0],
     /** P2c で 2 → 3（開催県になったときに夏の予選の意味がなくならないように） */
     otherPrefSchools: 3,
     otherPrefPrestige: [10, 26, 36, 20, 8, 0],

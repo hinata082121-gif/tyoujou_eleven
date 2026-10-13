@@ -48,6 +48,8 @@ export interface SeasonData {
   league: { level: number; divisions: number; promoted: boolean; relegated: boolean; retired: boolean; canRelegate: boolean; year: number }[];
   /** P3：学校ごとの県の区分（firstNational・firstReach と同じ並び） */
   tiers: PrefTier[];
+  /** P3：評判が名門の年の、県の区分ごとの全国大会の出場と優勝（[年数, 冬の出場, 冬の優勝, 夏の出場, 夏の優勝]） */
+  eliteNational: Record<string, number[]>;
 }
 
 const emptyData = (games: number, years: number): SeasonData => ({
@@ -73,6 +75,7 @@ const emptyData = (games: number, years: number): SeasonData => ({
   eliteRanks: [],
   league: [],
   tiers: [],
+  eliteNational: {},
 });
 
 /** 全国大会のベスト4（準決勝・決勝で負けた、または優勝） */
@@ -155,7 +158,16 @@ export function collectSeasons(from: number, to: number, years: number): SeasonD
       const hit = { winterBest4: nationalBest4(h.winterResult), winterWin: nationalWin(h.winterResult), summerBest4: nationalBest4(h.summerResult), summerWin: nationalWin(h.summerResult) };
       const flags = { ...hit, anyBest4: hit.winterBest4 || hit.summerBest4, anyWin: hit.winterWin || hit.summerWin };
       for (const [k, v] of Object.entries(flags)) if (v && nat[k] === null) nat[k] = y + 1;
-      if (lv === 4) d.eliteRanks.push(rankIndex(h.rank));
+      if (lv === 4) {
+        d.eliteRanks.push(rankIndex(h.rank));
+        const e = (d.eliteNational[prefTier(pref)] ??= [0, 0, 0, 0, 0]);
+        const app = (r: string | undefined) => shortResult(r).startsWith("全国");
+        e[0]++;
+        e[1] += +app(h.winterResult);
+        e[2] += +hit.winterWin;
+        e[3] += +app(h.summerResult);
+        e[4] += +hit.summerWin;
+      }
       if (h.league) {
         const divisions = state.league?.divisions.length ?? 1;
         d.league.push({ level: h.league.level, divisions, promoted: h.league.promoted, relegated: h.league.relegated, retired: h.league.retiredBeforeEnd, canRelegate: h.league.level < divisions, year: y + 1 });
@@ -226,6 +238,10 @@ export function mergeSeasons(parts: SeasonData[]): SeasonData {
     out.eliteRanks.push(...p.eliteRanks);
     out.league.push(...p.league);
     out.tiers.push(...p.tiers);
+    for (const [k, xs] of Object.entries(p.eliteNational)) {
+      const e = (out.eliteNational[k] ??= [0, 0, 0, 0, 0]);
+      xs.forEach((x, i) => (e[i] += x));
+    }
     for (const [k, v] of Object.entries(p.camps)) {
       const e = (out.camps[k] ??= { n: 0, gain: 0, players: 0, learned: 0, gold: 0 });
       e.n += v.n;
@@ -412,5 +428,11 @@ function reportByTier(d: SeasonData) {
     console.log(
       `| ${PREF_TIER_NAMES[tier]} | ${idx.length} | ${pct(share)} | ${pct(lo)}〜${pct(hi)}${share >= lo && share <= hi ? " OK" : " NG"} | ${pct(best4.length / idx.length)} | ${median(win) ?? "—"}年目 | ${m === 999 ? "届かない" : `${m}年目`}（${pct(elite.length / idx.length)}） |`,
     );
+  }
+  console.log("評判が名門の年の全国大会（区分ごと。出場した割合・出場したときの優勝の割合）：");
+  for (const tier of TIERS) {
+    const e = d.eliteNational[tier];
+    if (!e || e[0] === 0) continue;
+    console.log(`  ${PREF_TIER_NAMES[tier]}（${e[0]}年）：冬 出場 ${pct(e[1] / e[0])}・優勝 ${pct(e[2] / Math.max(1, e[1]))}／夏 出場 ${pct(e[3] / e[0])}・優勝 ${pct(e[4] / Math.max(1, e[3]))}`);
   }
 }

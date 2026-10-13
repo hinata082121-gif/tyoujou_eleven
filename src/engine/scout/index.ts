@@ -162,7 +162,7 @@ export function makeCandidate(rng: Rng, ctx: ScoutContext, pref: Prefecture): Sc
   const tierPrestige = (tier ? SCOUT.topPrestige : SCOUT.normalPrestige) + SCOUT.levelStep[ctx.level];
   const top = PRESTIGE_LEVEL_BASE.length - 1;
   const level = tierPrestige > top ? PRESTIGE_LEVEL_BASE[top] + SCOUT.beyondTopBase * (tierPrestige - top) : PRESTIGE_LEVEL_BASE[tierPrestige];
-  const base = rng.normal(level, SCOUT.baseSd);
+  const base = rng.normal(level + SCOUT.levelBonus[ctx.level], SCOUT.baseSd);
   const player = generatePlayer(rng, { grade: 1, enrolledYear: ctx.year + 1, base, position: candidatePosition(rng, pref) });
   player.admission = "scholarship";
   const bias = { ...(REGION_TENDENCY[pref.regionId]?.stats ?? {}), ...(PREF_TENDENCY[pref.id]?.stats ?? {}) };
