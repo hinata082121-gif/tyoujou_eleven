@@ -1,5 +1,6 @@
 import type { RngState } from "../rng";
 import type { Aptitude, Condition, DribbleMove, Foot, FormationId, MatchKind, MatchRules, NoteRule, Personality, PlayStyle, Position, SchoolRank, SkillId, Stats, Tactics } from "../types";
+import type { Lane } from "../config/formations";
 
 export type Side = 0 | 1;
 
@@ -105,6 +106,8 @@ export interface MatchTeamState {
   rank: SchoolRank;
   /** プレイヤーが采配するチームか（false なら CPU の采配） */
   isUser: boolean;
+  /** 並びの記録（P3：2D の再生用。変わったときだけ足す） */
+  shapes?: { minute: number; formation: FormationId; onPitch: string[] }[];
   /** 采配できるのは試合前とハーフタイムだけ（リーグ戦・練習試合の采配あり。P3）。ケガ人は自動で交代する */
   breaksOnly?: boolean;
   players: Record<string, MatchPlayer>;
@@ -202,6 +205,9 @@ export type MatchEventType =
   | "switchPlay"
   | "longThrow";
 
+/** ピッチの辺り（イベントの側から見て。P3） */
+export type Zone = "ownBox" | "own" | "mid" | "opp" | "box";
+
 export interface MatchEvent {
   minute: number;
   side: Side;
@@ -218,6 +224,10 @@ export interface MatchEvent {
   move?: DribbleMove;
   /** 得点のアシスト（選手 ID） */
   assist?: string;
+  /** 起きたレーン（イベントの側から見た左・中央・右。P3：演出用で、計算には使わない） */
+  lane?: Lane;
+  /** 起きたピッチの辺り（P3：演出用） */
+  zone?: Zone;
 }
 
 export interface PkKick {
