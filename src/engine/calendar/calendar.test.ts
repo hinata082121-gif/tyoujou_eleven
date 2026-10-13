@@ -26,7 +26,7 @@ describe("カレンダー", () => {
     expect(kinds("practiceMatch").length).toBeLessThanOrEqual(8);
     // 通常マスの種類は 5 種類
     const types = new Set(squares.map((s) => s.baseType));
-    expect([...types].sort()).toEqual(["blue", "green", "red", "white", "yellow"]);
+    expect([...types].sort()).toEqual(["blue", "green", "red", "training", "white", "yellow"]);
   });
 
   it("必ず止まるマスがあれば、その手前で大きな数字を使ってもそこで止まる", () => {

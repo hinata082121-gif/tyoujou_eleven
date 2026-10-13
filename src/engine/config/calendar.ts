@@ -9,9 +9,11 @@ export const DAYS_IN_YEAR = 365;
 export const SQUARE_WEIGHTS: Record<Exclude<SquareType, "major">, number> = {
   blue: 28,
   red: 17,
-  white: 20,
+  white: 13,
   green: 18,
   yellow: 17,
+  /** 特訓マス（P2b）。止まると特殊能力の習得を判定する。白マスから回し、成長と体力に効くマスの割合は P2a のままにする */
+  training: 7,
 };
 
 /** 進行カードの数字の出やすさ（1〜5） */

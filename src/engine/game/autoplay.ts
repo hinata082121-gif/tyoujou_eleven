@@ -18,9 +18,11 @@ import { hasVacancy, isStaffWindow, staffByRole, staffCandidates, staffOverSlots
 import { STAFF_ABILITIES, type StaffMember, type StaffRole } from "../types";
 import { autoSetup } from "../match/lineup";
 import { playerSchool } from "../season";
+import { captainCandidates } from "../captain";
 import { rankIndex, teamStrength } from "../school/strength";
 import {
   canSkipWatching,
+  confirmCaptain,
   confirmGraduation,
   confirmYearEnd,
   dismiss,
@@ -202,7 +204,7 @@ export function autoStep(state: GameState, stats: AutoplayStats, policy: AutoPol
     if (opts.staff === "best") {
       installBestStaff(state);
       state.staff.needsReview = false;
-      state.pending = undefined;
+      state.pending = { type: "captain" };
       return;
     }
     if (finishStaff(state)) {
@@ -210,6 +212,12 @@ export function autoStep(state: GameState, stats: AutoplayStats, policy: AutoPol
       autoManageStaff(state);
       finishStaff(state);
     }
+    return;
+  }
+  if (p?.type === "captain") {
+    // おすすめ順の 1 位（年度初めと引退後に自動で初期選択されている）
+    const school = state.schools[state.playerSchoolId];
+    confirmCaptain(state, school.captainId ?? captainCandidates(school)[0].id);
     return;
   }
   if (p?.type === "match") {

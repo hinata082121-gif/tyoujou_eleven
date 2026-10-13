@@ -2,7 +2,7 @@
  * 表示名はすべてここに集約する（SPEC 3章）。
  * 県名・地域名・大会名は架空の仮の名前。実在の名称・商標は使わない。
  */
-import type { Career, MajorKind, Position, PracticeKind, ReputationLevel, SquareType, StaffAbility, StaffRole } from "../types";
+import type { Career, DribbleMove, MajorKind, MovementRange, Personality, PlayStyle, Position, PracticeKind, ReputationLevel, SkillCategory, SkillId, SquareType, StaffAbility, StaffRole } from "../types";
 
 export const GAME_TITLE = "頂上イレブン";
 export const GAME_SUBTITLE = "高校サッカー部 監督育成ゲーム";
@@ -155,7 +155,7 @@ export const POSITION_NAMES: Record<Position, string> = {
   CF: "CF",
 };
 export const APTITUDE_MARKS = { 3: "◎", 2: "○", 1: "△" } as const;
-export const FOOT_NAMES = { R: "右", L: "左", B: "両" } as const;
+export const FOOT_NAMES = { R: "右", L: "左" } as const;
 export const CONDITION_NAMES = { [-2]: "絶不調", [-1]: "不調", 0: "普通", 1: "好調", 2: "絶好調" } as const;
 
 // ---- 能力 ----
@@ -200,6 +200,7 @@ export const SQUARE_NAMES: Record<SquareType, string> = {
   white: "白マス",
   green: "緑マス",
   yellow: "黄マス",
+  training: "特訓マス",
   major: "大マス",
 };
 
@@ -284,3 +285,300 @@ export const TACTICS_LABELS = {
 export const TACTICS_ITEM_NAMES = { attack: "攻撃方針", buildUp: "組み立て", press: "プレス", line: "ライン" } as const;
 
 export const yearLabel = (year: number) => `${year}年目`;
+
+// ================= 性格・プレースタイル・特殊能力（P2b） =================
+
+export const PERSONALITY_NAMES: Record<Personality, string> = {
+  diligent: "努力家",
+  passionate: "情熱家",
+  calm: "冷静沈着",
+  craftsman: "職人気質",
+  competitive: "負けず嫌い",
+  moodMaker: "ムードメーカー",
+  cautious: "慎重派",
+  inspired: "ひらめき型",
+};
+
+export const PERSONALITY_TEXTS: Record<Personality, string> = {
+  diligent: "どの練習でも安定して伸びる。調子の波が小さい。",
+  passionate: "フィジカルと走り込みが得意。終盤に強いが、熱くなってカードをもらいやすい。",
+  calm: "戦術ミーティングとパスが得意。PKに強く、調子の波が小さい。",
+  craftsman: "こだわりの練習1つで大きく伸びる。セットプレーに強い。",
+  competitive: "試合で多くを学ぶ。格上相手に燃えるが、負けると落ち込む。",
+  moodMaker: "調子の波が大きいが、上向きやすい。キャプテンにするとチームの調子が安定する。",
+  cautious: "守備の練習が得意でシュートは苦手。ミスが少ないが、大舞台では少し硬くなる。",
+  inspired: "伸びは大きいが当たり外れも大きい。ここ一番で特殊能力が冴える。",
+};
+
+/** キャプテンにしたときの効果（表示用） */
+export const CAPTAIN_EFFECT_TEXTS: Record<Personality, string> = {
+  diligent: "チーム全体の練習効率が少し上がる",
+  passionate: "ビハインド時にチームの士気が上がる",
+  calm: "終盤の判断ミスが減る",
+  craftsman: "セットプレーのキッカーが少し良くなる",
+  competitive: "格上との試合でチームの士気が上がる",
+  moodMaker: "チーム全体の調子が安定し、上がりやすくなる",
+  cautious: "失点した後に崩れにくい",
+  inspired: "チームへの効果は小さい",
+};
+
+export const PLAY_STYLE_NAMES: Record<PlayStyle, string> = {
+  striker: "ストライカー",
+  postPlayer: "ポストプレーヤー",
+  speedster: "スピードスター",
+  linkman: "リンクマン",
+  poacher: "ポーチャー",
+  wingDribbler: "ウイングドリブラー",
+  insideDribbler: "インサイドドリブラー",
+  number10: "No.10",
+  boxToBox: "ボックストゥボックス",
+  anchor: "アンカー",
+  ballHunter: "ボールハンター",
+  crosser: "クロッサー",
+  stopper: "ストッパー",
+  coverer: "カバーリング",
+  attackingFullback: "攻撃的サイドバック",
+  buildUpDefender: "ビルドアップ型",
+  launcher: "砲台",
+  boxKeeper: "ボックスキーパー",
+  sweeperKeeper: "スイーパーキーパー",
+  aerialKeeper: "空中戦の番人",
+};
+
+/** 部員一覧などの短い名前 */
+export const PLAY_STYLE_SHORT: Record<PlayStyle, string> = {
+  striker: "ストライカー",
+  postPlayer: "ポスト",
+  speedster: "スピード",
+  linkman: "リンク",
+  poacher: "ポーチャー",
+  wingDribbler: "Wドリブル",
+  insideDribbler: "Iドリブル",
+  number10: "No.10",
+  boxToBox: "B2B",
+  anchor: "アンカー",
+  ballHunter: "ハンター",
+  crosser: "クロッサー",
+  stopper: "ストッパー",
+  coverer: "カバー",
+  attackingFullback: "攻撃的SB",
+  buildUpDefender: "ビルドアップ",
+  launcher: "砲台",
+  boxKeeper: "ボックスGK",
+  sweeperKeeper: "スイーパーGK",
+  aerialKeeper: "空中戦GK",
+};
+
+export const PLAY_STYLE_TEXTS: Record<PlayStyle, string> = {
+  striker: "ゴール前での決定力",
+  postPlayer: "体を張ったキープと空中戦",
+  speedster: "裏への抜け出しとカウンター",
+  linkman: "少し低い位置でMFとFWをつなぐ",
+  poacher: "ペナルティエリア内に特化し、そこで大きな力を出す。組み立てとポストプレーには参加しない",
+  wingDribbler: "大外に張って仕掛けるドリブラー",
+  insideDribbler: "内側に入り、味方と近い距離のコンビネーションで突破する",
+  number10: "視野とパスで決定機を作る",
+  boxToBox: "攻守に走り回る運動量",
+  anchor: "中盤の底で守備を固める",
+  ballHunter: "相手に積極的に奪いにいく",
+  crosser: "大外からクロスを多く入れる",
+  stopper: "対人の強さ",
+  coverer: "判断とスピードで背後を守る",
+  attackingFullback: "オーバーラップとクロス",
+  buildUpDefender: "後方から攻撃を組み立てる",
+  launcher: "前線へのロングボールや、逆サイドへのボールで打開する",
+  boxKeeper: "反応とセービング",
+  sweeperKeeper: "飛び出しと足元の技術",
+  aerialKeeper: "クロスへの強さ",
+};
+
+export const MOVEMENT_NAMES: Record<MovementRange, string> = {
+  free: "自由",
+  fixed: "定位置",
+  wideOnly: "大外のみ",
+  mostlyWide: "主に大外",
+  mostlyInside: "主に内側",
+};
+
+/** 最上位の特殊能力の呼び名（仮） */
+export const LEGEND_SKILL_NAME = "レジェンドスキル";
+
+export const SKILL_CATEGORY_NAMES: Record<SkillCategory, string> = {
+  shoot: "シュート",
+  dribble: "ドリブル",
+  pass: "パス",
+  setPiece: "セットプレー",
+  defense: "守備",
+  gk: "GK",
+  mental: "メンタル",
+  body: "からだ",
+};
+
+export const SKILL_NAMES: Record<SkillId, string> = {
+  oneOnOneX: "1対1×",
+  oneOnOne1: "1対1○",
+  oneOnOne2: "1対1◎",
+  oneOnOneG: "1対1職人",
+  heading1: "ヘディング○",
+  heading2: "ヘディング◎",
+  headingG: "ボンバーヘッド",
+  duel1: "対人○",
+  duel2: "対人◎",
+  duelG: "対人の鬼",
+  aerialDef1: "空中戦○",
+  aerialDef2: "空中戦◎",
+  aerialDefG: "空中戦の要",
+  gkOneOnOne1: "1対1ストップ○",
+  gkOneOnOne2: "1対1ストップ◎",
+  gkOneOnOneG: "1対1の壁",
+  feed1: "フィード○",
+  feed2: "フィード◎",
+  feedG: "フィードの名手",
+  pkX: "PK×",
+  pk1: "PK○",
+  pk2: "PK◎",
+  pkG: "PK職人",
+  bigStageX: "大舞台×",
+  bigStage1: "大舞台○",
+  bigStage2: "大舞台◎",
+  adversity1: "逆境○",
+  adversity2: "逆境◎",
+  durabilityX: "ケガしにくさ×",
+  durability1: "ケガしにくさ○",
+  durability2: "ケガしにくさ◎",
+  staminaKeepX: "スタミナ持続×",
+  staminaKeep1: "スタミナ持続○",
+  staminaKeep2: "スタミナ持続◎",
+  captaincy1: "キャプテンシー○",
+  captaincy2: "キャプテンシー◎",
+  footX: "逆足×",
+  footG: "両利き",
+  fkMaster: "FKの名手",
+  ckMaster: "CKの名手",
+  crossMaster: "クロスの名手",
+  middleShot: "ミドルシュート",
+  curveShot: "カーブシュート",
+  offBall: "消える動き",
+  doubleTouch: "ダブルタッチ",
+  roulette: "ルーレット",
+  uraKaido: "裏街道",
+  chopTouch: "チョップタッチ",
+  scissors: "シザース",
+  chanceMaker: "チャンスメイカー",
+  throughPass: "スルーパス",
+  switchPlay: "サイドチェンジ",
+  longThrow: "ロングスロー",
+  interception: "インターセプト",
+  spaceCover: "スペースカバー",
+  manMark: "マンマーク",
+  coverShadow: "カバーシャドウ",
+  slidingTackle: "スライディングタックル",
+  pkStopper: "PKストッパー",
+  gkRush: "飛び出し",
+  roughPlay: "ラフプレー×",
+};
+
+/** 系統の名前（図鑑の 1 行） */
+export const SKILL_LINE_NAMES = {
+  oneOnOne: "1対1（シュート）",
+  heading: "ヘディング",
+  duel: "対人（守備）",
+  aerialDef: "空中戦（守備）",
+  gkOneOnOne: "GKの1対1",
+  feed: "フィード（GK）",
+  pk: "PK",
+  bigStage: "大舞台",
+  adversity: "逆境",
+  durability: "ケガしにくさ",
+  staminaKeep: "スタミナ持続",
+  captaincy: "キャプテンシー",
+  foot: "利き足",
+} as const;
+
+/** 効果の説明（系統は系統ごと、ほかは 1 つずつ） */
+export const SKILL_TEXTS: Partial<Record<SkillId | keyof typeof SKILL_LINE_NAMES, string>> = {
+  oneOnOne: "GKとの1対1でのシュートと突破が強くなる（1対1の場面でだけ効く）。",
+  heading: "攻撃の空中戦とヘディングの精度が上がる。",
+  duel: "1対1の守備が強くなる。",
+  aerialDef: "守備の空中戦（クロス・ロングボール）が強くなる。",
+  gkOneOnOne: "GKとして、相手との1対1を止めやすくなる。",
+  feed: "GKのロングボールの距離と精度が上がり、つなぐときのミスが減る。",
+  pk: "PKの読み合いに強くなる（キッカーでもGKでも）。",
+  bigStage: "全国大会と県予選の決勝で力を出せる。",
+  adversity: "ビハインドのときに力を出せる。",
+  durability: "試合中・練習中のケガが減る。",
+  staminaKeep: "試合中の体力の減りが小さく、終盤の低下が小さい。",
+  captaincy: "キャプテンのとき、チーム全体が少し力を出せる。",
+  foot: "両利きは、逆足で蹴る場面でも精度が落ちず、サイドからのカットインとクロスが良くなる。逆足×は逆足で蹴ると精度が大きく落ちる。",
+  fkMaster: "直接FKでの得点率が上がり、キッカーを任されやすい。",
+  ckMaster: "CKからの得点チャンスの質が上がり、キッカーを任されやすい。",
+  crossMaster: "サイドからのクロスの質が上がる。",
+  middleShot: "ペナルティエリアの外からのシュートの精度が上がる。",
+  curveShot: "斜めの角度（サイドから）のシュートの成功率が上がる。",
+  offBall: "マークを外して抜け出すチャンスが増える。",
+  doubleTouch: "相手が飛び込んできたときの突破。",
+  roulette: "相手を背負った状態や、プレスを受けたときの突破。",
+  uraKaido: "スピード勝負で、相手の背後にスペースがあるときの突破。",
+  chopTouch: "縦に走りながら内側へ切り返すときの突破。",
+  scissors: "止まった状態からの1対1で、相手を揺さぶっての突破。",
+  chanceMaker: "決定的なパスが増える。",
+  throughPass: "裏へのパスの成功率が上がる。",
+  switchPlay: "逆サイドへのロングパスで、サイドの1対1を有利にする。",
+  longThrow: "スローインがCKに近いチャンスになる。",
+  interception: "パスを奪う確率が上がる。",
+  spaceCover: "危険なスペースを察知して埋めやすくなる（カウンターに強い）。",
+  manMark: "マークを外されにくくなる。",
+  coverShadow: "相手のパスコースを消すのがうまくなる。",
+  slidingTackle: "スライディングで止めやすく、ファウルになりにくい。",
+  pkStopper: "GKとして、PKでの読みと反応に補正がかかる。",
+  gkRush: "GKとして、裏へのボールと1対1への飛び出しが良くなる。",
+  roughPlay: "ファウルやカードが多い。",
+};
+
+/** 入手のヒント（図鑑） */
+export const SKILL_HINTS: Partial<Record<SkillId | keyof typeof SKILL_LINE_NAMES, string>> = {
+  oneOnOne: "特訓：シュート練習／公式戦の1試合で3得点で段階アップ。1対1職人は公式戦での1対1からの通算2得点が条件",
+  heading: "特訓：フィジカル・セットプレー／公式戦の1試合でヘディング2得点で段階アップ。ボンバーヘッドは公式戦でのヘディングの得点が条件",
+  duel: "特訓：守備練習。対人の鬼は公式戦での1対1の守備の勝ち通算3が条件",
+  aerialDef: "特訓：フィジカル。空中戦の要は公式戦での守備の空中戦の勝ち通算4が条件",
+  gkOneOnOne: "特訓：GK練習。1対1の壁は公式戦で1対1を通算3回止めるのが条件",
+  feed: "特訓：GK練習。フィードの名手は公式戦でGKのロングボールから得点が生まれるのが条件",
+  pk: "特訓：PK練習／PKを5本続けて決めると段階アップ。PK職人は3本連続が条件",
+  bigStage: "特訓：PK練習／全国大会の決勝で決勝点を決めると段階アップ",
+  adversity: "特訓：戦術ミーティング",
+  durability: "特訓：フィジカル・走り込み",
+  staminaKeep: "特訓：走り込み",
+  captaincy: "特訓：戦術ミーティング",
+  foot: "両利き：逆足×がなく、熟練度80以上の選手が、シュートかドリブルの特訓でごくまれに",
+  fkMaster: "公式戦の直接FKで得点したあと、セットプレーの特訓などで",
+  ckMaster: "公式戦のCKからアシストしたあと、セットプレーの特訓などで",
+  crossMaster: "公式戦のクロスからアシストしたあと、パス・セットプレーの特訓などで",
+  middleShot: "特訓：シュート練習",
+  curveShot: "特訓：シュート練習",
+  offBall: "特訓：シュート練習",
+  doubleTouch: "特訓：ドリブル練習",
+  roulette: "特訓：ドリブル練習",
+  uraKaido: "特訓：ドリブル練習",
+  chopTouch: "特訓：ドリブル練習",
+  scissors: "特訓：ドリブル練習",
+  chanceMaker: "特訓：パス練習",
+  throughPass: "特訓：パス練習",
+  switchPlay: "特訓：パス練習",
+  longThrow: "特訓：セットプレー",
+  interception: "特訓：守備練習",
+  spaceCover: "特訓：守備練習・戦術ミーティング",
+  manMark: "特訓：守備練習",
+  coverShadow: "特訓：守備練習・戦術ミーティング",
+  slidingTackle: "特訓：守備練習",
+  pkStopper: "特訓：GK練習・PK練習／PK戦で2本止める",
+  gkRush: "特訓：GK練習",
+  roughPlay: "守備練習・戦術ミーティング・休養の特訓や、スタッフの指導で消せる",
+};
+
+export const DRIBBLE_MOVE_NAMES: Record<DribbleMove, string> = {
+  doubleTouch: "ダブルタッチ",
+  roulette: "ルーレット",
+  uraKaido: "裏街道",
+  chopTouch: "チョップタッチ",
+  scissors: "シザース",
+};

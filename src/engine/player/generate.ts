@@ -14,6 +14,8 @@ import {
 } from "../config/player";
 import { FAMILY_NAMES, GIVEN_NAMES } from "../config/names";
 import type { Rng } from "../rng";
+import { initialSkills } from "../skills/learn";
+import { assignPlayStyle, randomFavoritePractice, randomPersonality } from "./traits";
 import { ALL_STATS, FIELD_STATS, GK_STATS, POSITIONS, type Aptitude, type Foot, type Player, type Position, type Stats } from "../types";
 
 export const clampStat = (v: number) => Math.max(STAT_MIN, Math.min(STAT_MAX, Math.round(v)));
@@ -66,12 +68,12 @@ export function randomName(rng: Rng): string {
 export function generatePlayer(rng: Rng, opts: GenerateOptions): Player {
   const main = opts.position ?? randomPosition(rng);
   const isGk = main === "GK";
-  const foot = rng.weighted(["R", "L", "B"] as Foot[], (f) => FOOT_WEIGHTS[f]);
+  const foot = rng.weighted(["R", "L"] as Foot[], (f) => FOOT_WEIGHTS[f]);
   const height = clamp(Math.round(rng.normal(isGk ? HEIGHT.gkMean : HEIGHT.fieldMean, HEIGHT.sd)), HEIGHT.min, HEIGHT.max);
   // 学年が上の選手は、すでに伸びた分を引く
   const growthTotal = rng.int(0, HEIGHT.growthMax);
   const growthLeft = opts.grade === 1 ? growthTotal : opts.grade === 2 ? Math.floor(growthTotal / 2) : 0;
-  return {
+  const p: Player = {
     id: rng.id("p"),
     name: randomName(rng),
     grade: opts.grade,
@@ -91,7 +93,17 @@ export function generatePlayer(rng: Rng, opts: GenerateOptions): Player {
     admission: "general",
     suspended: 0,
     record: { apps: 0, goals: 0, officialApps: 0, officialGoals: 0 },
+    personality: "diligent",
+    playStyle: "striker",
+    styleProficiency: 0,
+    skills: [],
   };
+  // 性格・スタイル・特殊能力（P2b）。それまでの乱数の並びを変えないよう最後に決める
+  p.personality = randomPersonality(rng);
+  if (p.personality === "craftsman") p.favoritePractice = randomFavoritePractice(rng, main);
+  p.playStyle = assignPlayStyle(rng, p);
+  initialSkills(rng, p);
+  return p;
 }
 
 /** 1 学年分の部員を生成する。GK が最低 1 人は入るようにする */

@@ -1,7 +1,8 @@
 /**
  * 試合イベント → テキスト速報の文。表示はこの文を並べるだけ（結果には影響しない）。
  */
-import { TACTICS_LABELS } from "../config/names";
+import { DRIBBLE_MOVE_NAMES, SKILL_NAMES, TACTICS_LABELS } from "../config/names";
+import { DRIBBLE_MOVES, type DribbleMove } from "../types";
 import type { MatchEvent, MatchState } from "./types";
 
 export function playerName(state: MatchState, id: string | undefined): string {
@@ -22,7 +23,18 @@ const SHOT_KIND: Record<string, string> = {
   freeKick: "直接FKを狙う",
 };
 
+/** 発動した特殊能力を短く足す（ドリブルの技は「（ダブルタッチ）」、ほかは「〔PK職人〕」） */
+export function skillSuffix(e: MatchEvent): string {
+  if (!e.skill) return "";
+  if ((DRIBBLE_MOVES as readonly string[]).includes(e.skill)) return `（${DRIBBLE_MOVE_NAMES[e.skill as DribbleMove]}）`;
+  return `〔${SKILL_NAMES[e.skill]}〕`;
+}
+
 export function describeEvent(state: MatchState, e: MatchEvent): string {
+  return baseText(state, e) + skillSuffix(e);
+}
+
+function baseText(state: MatchState, e: MatchEvent): string {
   const team = state.teams[e.side].name;
   const p0 = playerName(state, e.players?.[0]);
   const p1 = playerName(state, e.players?.[1]);
@@ -98,8 +110,10 @@ export function describeEvent(state: MatchState, e: MatchEvent): string {
       return `GK${p0}がはじいた！ こぼれ球`;
     case "rebound":
       return `${team}：${p0}がこぼれ球に詰める`;
-    case "goal":
-      return `ゴール！！ ${team} ${p0}（${score}）`;
+    case "goal": {
+      const a = playerName(state, e.assist);
+      return `ゴール！！ ${team} ${p0}（${score}）${a ? `　アシスト：${a}` : ""}`;
+    }
     case "pkAwarded":
       return `${team}：${p0}が${p1}に倒されてPK獲得！`;
     case "pkGoal":
@@ -132,6 +146,12 @@ export function describeEvent(state: MatchState, e: MatchEvent): string {
       return `${team}：交代できず、人数が減ったまま戦う`;
     case "note":
       return `${team}：作戦ノート：${e.note}を実行`;
+    case "throughBall":
+      return `${team}：${p0}から${p1}へ、裏へのスルーパス！`;
+    case "switchPlay":
+      return `${team}：${p0}が逆サイドの${p1}へ大きくサイドチェンジ`;
+    case "longThrow":
+      return `${team}：${p0}のロングスローがゴール前へ`;
   }
 }
 

@@ -1,5 +1,6 @@
 import { CPU_GROWTH, GROWTH } from "../config/growth";
 import { HEIGHT, STAT_MAX } from "../config/player";
+import { DILIGENT_CONDITION_SWING } from "../config/personality";
 import type { Rng } from "../rng";
 import { ALL_STATS, FIELD_STATS, GK_STATS, type Player, type StatKey } from "../types";
 
@@ -35,7 +36,9 @@ export function addExp(p: Player, stat: StatKey, rawExp: number): number {
 /** 練習の効率（体力・調子） */
 export function practiceEfficiency(p: Player): number {
   const fit = GROWTH.lowFitnessMult + (1 - GROWTH.lowFitnessMult) * (p.fitness / 100);
-  return fit * (GROWTH.conditionMult[p.condition] ?? 1);
+  const cond = GROWTH.conditionMult[p.condition] ?? 1;
+  // 努力家は調子による振れが小さい
+  return fit * (p.personality === "diligent" ? 1 + (cond - 1) * DILIGENT_CONDITION_SWING : cond);
 }
 
 /** CPU 校の成長（簡略化モデル）。fraction = 1 で 1 年分 */

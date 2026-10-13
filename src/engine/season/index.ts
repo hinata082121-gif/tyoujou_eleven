@@ -47,6 +47,7 @@ export function graduate(state: GameState, rng: Rng): Alumnus[] {
       career: decideCareer(rng, p),
       graduatedYear: state.year,
       wasCaptain: school.captainId === p.id,
+      personality: p.personality,
     };
     return {
       id: p.id,
@@ -54,6 +55,8 @@ export function graduate(state: GameState, rng: Rng): Alumnus[] {
       ...basics,
       record: { ...p.record, winterResults },
       staffProfile: makeStaffProfile(rng, basics),
+      playStyle: p.playStyle,
+      skills: [...p.skills],
     };
   });
   school.players = school.players.filter((p) => p.grade !== 3);

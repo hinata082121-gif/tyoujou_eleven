@@ -13,6 +13,9 @@ const make = (pos: Player["mainPosition"], seed = "p") => {
   p.potential = 1;
   p.fitness = 100;
   p.condition = 0;
+  // 性格・スタイルの補正が掛からない選手にする
+  p.personality = "competitive";
+  p.styleProficiency = 0;
   return p;
 };
 

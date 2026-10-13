@@ -83,8 +83,8 @@ export const HEIGHT = {
 /** 伸びしろ（隠しパラメーター） */
 export const POTENTIAL = { mean: 1.0, sd: 0.2, min: 0.6, max: 1.6 };
 
-/** 利き足の確率 */
-export const FOOT_WEIGHTS = { R: 74, L: 22, B: 4 };
+/** 利き足の確率（P2b で「両足」をなくし、両利きは特殊能力にした） */
+export const FOOT_WEIGHTS = { R: 77, L: 23 };
 
 /** 調子の係数（試合の実効能力） */
 export const CONDITION_MULT: Record<number, number> = { [-2]: 0.93, [-1]: 0.97, 0: 1.0, 1: 1.03, 2: 1.06 };

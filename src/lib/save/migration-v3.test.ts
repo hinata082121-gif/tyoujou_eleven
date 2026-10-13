@@ -66,7 +66,8 @@ describe("部員の圧縮形式（v3 で増えた項目）", () => {
     plain.suspended = 0;
     plain.record = { apps: 0, goals: 0, officialApps: 0, officialGoals: 0 };
     const packed = packPlayer(plain);
-    expect(packed.length).toBeLessThanOrEqual(16);
+    // 記録が空なら末尾の 2 つ（出場停止・記録）を省く（17 番目は v4 の traits）
+    expect(packed.length).toBeLessThanOrEqual(17);
     expect(unpackPlayer(packed).record).toEqual(plain.record);
   });
 });

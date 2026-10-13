@@ -8,6 +8,7 @@
 import { create } from "zustand";
 import {
   changeRole,
+  confirmCaptain,
   confirmGraduation,
   confirmYearEnd,
   dismiss,
@@ -17,11 +18,12 @@ import {
   newGame,
   playCard,
   release,
+  setPlayStyle,
   startPlayerMatch,
   type CardResult,
   type MatchSummary,
 } from "@/engine/game";
-import type { Alumnus, GameState, Player, StaffRole, TeamSetup } from "@/engine/types";
+import type { Alumnus, GameState, Player, PlayStyle, SkillId, StaffRole, TeamSetup } from "@/engine/types";
 import { SaveManager, type SlotSummary } from "@/lib/save";
 
 export type Screen = "title" | "slots" | "new" | "play";
@@ -76,6 +78,14 @@ interface GameStore {
   matchDraft: { key: string; setup: TeamSetup; noteId: string | null } | null;
   setMatchDraft(d: GameStore["matchDraft"]): void;
   setNotesOpen(v: boolean): void;
+  /** 特殊能力図鑑・チーム（キャプテン）の画面を開いている（メニューから） */
+  skillBookOpen: boolean;
+  setSkillBookOpen(v: boolean): void;
+  teamOpen: boolean;
+  setTeamOpen(v: boolean): void;
+  /** 部員一覧をその特殊能力で絞り込む（図鑑から開く） */
+  squadSkillFilter: SkillId | null;
+  openSquadWithSkill(id: SkillId | null): void;
   /** すごろくの移動演出中（演出が終わるまで次の画面に進まない） */
   moving: boolean;
   setMoving(v: boolean): void;
@@ -109,6 +119,10 @@ interface GameStore {
   releaseStaff(memberId: string): string | null;
   changeStaffRole(memberId: string, role: StaffRole): string | null;
   finishStaff(): string | null;
+
+  /** キャプテン・プレースタイル（戻り値はエラーの理由。成功なら null） */
+  confirmCaptain(playerId: string): string | null;
+  setPlayStyle(playerId: string, style: PlayStyle): string | null;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -126,6 +140,18 @@ export const useGameStore = create<GameStore>((set, get) => ({
   saveError: null,
   moving: false,
   notesOpen: false,
+  skillBookOpen: false,
+  teamOpen: false,
+  squadSkillFilter: null,
+  setSkillBookOpen(v) {
+    set({ skillBookOpen: v });
+  },
+  setTeamOpen(v) {
+    set({ teamOpen: v });
+  },
+  openSquadWithSkill(id) {
+    set({ squadSkillFilter: id, skillBookOpen: false, view: "squad" });
+  },
   matchDraft: null,
   setMatchDraft(d) {
     set({ matchDraft: d });
@@ -167,7 +193,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     } catch {
       // 無視
     }
-    set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null, notesOpen: false, matchDraft: null });
+    set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null, notesOpen: false, skillBookOpen: false, teamOpen: false, squadSkillFilter: null, matchDraft: null });
   },
 
   async createGame(slot, schoolName, prefectureId) {
@@ -175,7 +201,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     crypto.getRandomValues(buf);
     const seed = `${Date.now().toString(36)}-${buf[0].toString(36)}${buf[1].toString(36)}`;
     const game = newGame(seed, schoolName, prefectureId);
-    set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null, notesOpen: false, matchDraft: null });
+    set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null, notesOpen: false, skillBookOpen: false, teamOpen: false, squadSkillFilter: null, matchDraft: null });
     try {
       window.localStorage.setItem(LAST_SLOT_KEY, String(slot));
     } catch {
@@ -267,6 +293,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
   finishStaff() {
     return withGame(get, (g) => finishStaff(g));
+  },
+  confirmCaptain(playerId) {
+    return withGame(get, (g) => confirmCaptain(g, playerId));
+  },
+  setPlayStyle(playerId, style) {
+    return withGame(get, (g) => setPlayStyle(g, playerId, style));
   },
 }));
 
