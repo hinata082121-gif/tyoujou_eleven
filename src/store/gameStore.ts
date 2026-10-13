@@ -20,6 +20,7 @@ import {
   release,
   setPlayStyle,
   startPlayerMatch,
+  switchToAuto,
   advanceToNextMatch,
   chooseBranch,
   confirmCamp,
@@ -45,9 +46,13 @@ export interface Settings {
   skipMove: boolean;
   /** 観戦の速さ（等速 = 試合時間 15 分が現実の 1 分） */
   matchSpeed: 1 | 2 | 4;
+  /** リーグ戦・練習試合の試合前に、初めに選ばれているモード（P3） */
+  leagueMode: "manage" | "auto";
+  /** 観戦の表示（P3。簡易2D かテキスト） */
+  matchView: "2d" | "text";
 }
 
-const defaultSettings: Settings = { skipMove: false, matchSpeed: 1 };
+const defaultSettings: Settings = { skipMove: false, matchSpeed: 1, leagueMode: "manage", matchView: "2d" };
 
 function readSettings(): Settings {
   try {
@@ -120,9 +125,11 @@ interface GameStore {
 
   playCard(cardId: string): CardResult | null;
   clearLastCard(): void;
-  /** mode = "auto"（結果のみ）は練習試合だけ。すぐに結果画面へ進む */
+  /** mode = "auto"（結果のみ）は練習試合とリーグ戦だけ。すぐに結果画面へ進む */
   startMatch(setup: TeamSetup, mode?: "watch" | "auto", noteId?: string | null): void;
   finishMatch(): void;
+  /** 采配ありの観戦中に「結果のみ」に切り替える（リーグ戦・練習試合。P3） */
+  switchToAuto(): void;
   clearLastMatch(): void;
   graduate(): void;
   clearAlumni(): void;
@@ -293,6 +300,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const summary = finishPlayerMatch(game);
     set({ lastMatch: summary });
     get().touch();
+  },
+  switchToAuto() {
+    const game = get().game;
+    if (!game || !switchToAuto(game)) return;
+    get().finishMatch();
   },
   clearLastMatch() {
     set({ lastMatch: null });

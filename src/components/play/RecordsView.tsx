@@ -26,7 +26,14 @@ export function RecordsView() {
               <li key={h.year} className="flex items-center gap-2 rounded-lg bg-gray-50 p-2 text-sm">
                 <span className="w-12 font-bold">{yearLabel(h.year)}</span>
                 <RankBadge rank={h.rank} size="sm" />
-                <span className="flex-1">{h.winterResult}</span>
+                <span className="flex-1">
+                  {h.winterResult}
+                  {h.league && (
+                    <span className="block text-[11px] text-gray-500">
+                      リーグ{h.league.level}部 {h.league.position}位{h.league.promoted ? "・昇格" : h.league.relegated ? "・降格" : ""}
+                    </span>
+                  )}
+                </span>
                 <span className="text-xs text-gray-500">{REPUTATION_NAMES[h.reputationLevel]}</span>
               </li>
             ))}

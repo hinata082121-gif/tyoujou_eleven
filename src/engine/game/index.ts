@@ -106,7 +106,7 @@ import {
 import { createNote, templateRule, type NoteTemplateId } from "../note";
 import { LEAGUE, LEAGUE_RULES } from "../config/league";
 import { leagueName } from "../config/names";
-import { createLeague, divisionOf, findFixture, fixtureOn, leagueFinished, playerLeagueResult, promotionResult, splitDivisions } from "../league";
+import { createLeague, divisionOf, findFixture, fixtureOn, leagueFinished, playerLeagueResult, promotionResult, splitDivisions, standings } from "../league";
 import {
   COMPETITION_KINDS,
   type Alumnus,
@@ -1056,6 +1056,8 @@ export function startPlayerMatch(state: GameState, setup: TeamSetup, mode: "watc
       aiQuality: headAiQuality(state.staff),
       injuryMult: injuryMult(state.staff) * facilityInjuryMult(state.facilities),
       note: note ? { noteName: note.name, rules: note.rules.map((r) => ({ ...r })), kind: p.kind } : undefined,
+      // リーグ戦・練習試合の采配ありは、采配が試合前とハーフタイムだけ（SPEC 10.4）
+      breaksOnly: canSkipWatching(state),
     };
     const away = schoolTeamInput(opp, rules, false, rng, { maxGrade: isRookieKind(p.kind) ? 2 : undefined, carryDay: carry ? day : undefined });
     const match: ActiveMatch = {
@@ -1079,6 +1081,19 @@ export function startPlayerMatch(state: GameState, setup: TeamSetup, mode: "watc
   });
 }
 
+/**
+ * 采配ありで観戦している途中から「結果のみ」に切り替える（リーグ戦・練習試合。P3 計画 Q4）。
+ * 残りは AI の監督（ヘッドコーチの戦術眼）と作戦ノートが采配し、最後まで計算する。逆はできない
+ */
+export function switchToAuto(state: GameState): boolean {
+  const am = state.activeMatch;
+  if (!am || am.mode === "auto" || !canSkipWatching(state)) return false;
+  am.mode = "auto";
+  am.state.teams[am.userSide].isUser = false;
+  simulateToEnd(am.state);
+  return true;
+}
+
 export interface MatchSummary {
   kind: MatchKind;
   label: string;
@@ -1097,6 +1112,18 @@ export interface MatchSummary {
   goals: { minute: number; mine: boolean; name: string; pk: boolean }[];
   /** 試合での成果で習得した・段階が上がった特殊能力 */
   learned: LearnEvent[];
+  /** シュート（枠内）と支配率（自校, 相手。P3：結果の画面用） */
+  stats: { shots: [number, number]; onTarget: [number, number]; possession: [number, number] };
+  /** リーグ戦の試合なら、試合の後の順位（P3） */
+  league?: { level: number; position: number; size: number; points: number; finished: boolean };
+}
+
+function leagueSummary(state: GameState): MatchSummary["league"] {
+  const d = state.league ? divisionOf(state.league, state.playerSchoolId) : undefined;
+  if (!d) return undefined;
+  const table = standings(d);
+  const i = table.findIndex((r) => r.schoolId === state.playerSchoolId);
+  return { level: d.level, position: i + 1, size: table.length, points: table[i].points, finished: !!state.league?.final };
 }
 
 /** 大会ごとの成績の文字列を入れる */
@@ -1301,6 +1328,16 @@ export function finishPlayerMatch(state: GameState): MatchSummary | null {
           pk: e.type === "pkGoal",
         })),
       learned,
+      stats: (() => {
+        const t = [me, ms.teams[1 - am.userSide]];
+        const pos = me.stats.segments > 0 ? Math.round((me.stats.possessionSum / me.stats.segments) * 100) : 50;
+        return {
+          shots: [t[0].stats.shots, t[1].stats.shots] as [number, number],
+          onTarget: [t[0].stats.onTarget, t[1].stats.onTarget] as [number, number],
+          possession: [pos, 100 - pos] as [number, number],
+        };
+      })(),
+      league: am.kind === "league" ? leagueSummary(state) : undefined,
     };
   });
 }

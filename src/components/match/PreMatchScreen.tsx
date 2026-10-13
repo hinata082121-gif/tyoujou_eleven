@@ -31,6 +31,8 @@ export function PreMatchScreen() {
   const opp = opponentOf(game)!;
   const rules = pendingMatchRules(game)!;
   const setMatchDraft = useGameStore((s) => s.setMatchDraft);
+  const leagueMode = useGameStore((s) => s.settings.leagueMode);
+  const updateSettings = useGameStore((s) => s.updateSettings);
   // 作戦ノートを開いて戻ったときは、組んでいた並びを使う（同じ試合のときだけ）
   const p = game.pending;
   const draftKey = p?.type === "match" ? `${game.year}-${game.calendar.position}-${p.opponentId}` : "";
@@ -106,6 +108,11 @@ export function PreMatchScreen() {
   const avgFit = actives.reduce((a, p) => a + p.fitness, 0) / Math.max(1, actives.length);
   const valid = setup.lineup.length === 11 && setup.lineup.every((id) => byId.get(id) && isAvailable(byId.get(id)!) && poolIds.has(id));
   const isSel = (s: NonNullable<Sel>) => JSON.stringify(sel) === JSON.stringify(s);
+  /** 選んだモードを次の試合の初期値として覚える */
+  const go = (mode: "manage" | "auto") => {
+    if (mode !== leagueMode) updateSettings({ leagueMode: mode });
+    startMatch(setup, mode === "auto" ? "auto" : "watch", noteId);
+  };
 
   return (
     <main className="flex flex-1 flex-col">
@@ -133,7 +140,11 @@ export function PreMatchScreen() {
               連戦中：前の試合の疲れが残っている（部の平均体力 {Math.round(avgFit)}）。体力の低い選手は控えと入れ替えよう。相手も同じく疲れている。
             </div>
           )}
-          {canSkipWatching(game) && <div className="mt-1 text-[11px] text-gray-500">練習試合は「結果のみ」も選べます（試合中の采配はAIの監督が行います）。</div>}
+          {canSkipWatching(game) && (
+            <div className="mt-1 text-[11px] text-gray-500">
+              「采配あり」は試合前とハーフタイムに采配します（ケガ人はノートかAIの監督が交代）。「結果のみ」はAIの監督が最後まで采配します。観戦の途中で結果のみに切り替えることもできます。
+            </div>
+          )}
           <div className="mt-1 text-[11px] text-gray-500">
             自校のランク <RankBadge rank={school.rank} size="sm" />
           </div>
@@ -250,14 +261,20 @@ export function PreMatchScreen() {
           おまかせ
         </Button>
         {canSkipWatching(game) ? (
-          <>
-            <Button variant="secondary" disabled={!valid} onClick={() => startMatch(setup, "auto", noteId)}>
-              結果のみ
-            </Button>
-            <Button disabled={!valid} onClick={() => startMatch(setup, "watch", noteId)}>
-              観戦する
-            </Button>
-          </>
+          (() => {
+            const manage = (
+              <Button key="manage" variant={leagueMode === "manage" ? "primary" : "secondary"} disabled={!valid} onClick={() => go("manage")}>
+                采配あり
+              </Button>
+            );
+            const auto = (
+              <Button key="auto" variant={leagueMode === "auto" ? "primary" : "secondary"} disabled={!valid} onClick={() => go("auto")}>
+                結果のみ
+              </Button>
+            );
+            // 設定で選んでいる方を右（いつも押す場所）に置く
+            return leagueMode === "auto" ? [manage, auto] : [auto, manage];
+          })()
         ) : (
           <Button className="col-span-2" disabled={!valid} onClick={() => startMatch(setup, "watch", noteId)}>
             試合開始（観戦）

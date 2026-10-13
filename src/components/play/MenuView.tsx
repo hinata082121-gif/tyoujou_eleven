@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { GAME_TITLE } from "@/engine/config/names";
 import { saveManager, useGameStore } from "@/store/gameStore";
-import { Button } from "../ui";
+import { Button, Segmented } from "../ui";
 
 export function MenuView() {
   const slot = useGameStore((s) => s.slot);
@@ -52,6 +52,15 @@ export function MenuView() {
         <span className="text-sm">すごろくの移動演出をスキップ</span>
         <input type="checkbox" className="h-5 w-5 accent-pitch" checked={settings.skipMove} onChange={(e) => updateSettings({ skipMove: e.target.checked })} />
       </label>
+      <div className="flex flex-col gap-1 rounded-xl border border-gray-200 p-3">
+        <span className="text-sm">リーグ戦・練習試合の試合（試合前に初めに選ばれる方）</span>
+        <Segmented options={["manage", "auto"] as const} value={settings.leagueMode} onChange={(v) => updateSettings({ leagueMode: v })} labels={{ manage: "采配あり", auto: "結果のみ" }} />
+      </div>
+      <div className="flex flex-col gap-1 rounded-xl border border-gray-200 p-3">
+        <span className="text-sm">観戦の表示（トーナメントを含むすべての試合）</span>
+        <Segmented options={["2d", "text"] as const} value={settings.matchView} onChange={(v) => updateSettings({ matchView: v })} labels={{ "2d": "2D＋速報", text: "テキストのみ" }} />
+        <span className="text-[11px] text-gray-500">動作が重いときは「テキストのみ」にしてください。</span>
+      </div>
       <Button
         variant="secondary"
         onClick={async () => {

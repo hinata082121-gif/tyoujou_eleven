@@ -80,6 +80,8 @@ export interface TeamInput {
   note?: Omit<NoteMatchState, "fired" | "stopped">;
   /** キャプテン（P2b） */
   captainId?: string;
+  /** 采配は試合前とハーフタイムだけ（P3。リーグ戦・練習試合の采配あり） */
+  breaksOnly?: boolean;
 }
 
 function toMatchPlayer(p: Player): MatchPlayer {
@@ -114,6 +116,7 @@ function makeTeam(input: TeamInput, benchSize: number, form: number): MatchTeamS
     name: input.name,
     rank: input.rank,
     isUser: input.isUser,
+    ...(input.breaksOnly ? { breaksOnly: true } : {}),
     players,
     onPitch: lineup,
     bench,
@@ -1519,7 +1522,11 @@ export function playSegment(state: MatchState): MatchEvent[] {
   // 作戦ノート → CPU（結果のみモードの自校を含む）の采配。どちらも次の区間から反映
   for (const side of [0, 1] as Side[]) if (state.teams[side].note) evaluateNote(state, side);
   for (const side of [0, 1] as Side[]) {
-    if (state.teams[side].isUser) continue;
+    if (state.teams[side].isUser) {
+      // 采配がハーフタイムだけのときは、ノートが交代させなかったケガ人を自動で交代する
+      if (state.teams[side].breaksOnly) autoReplaceInjured(state, side);
+      continue;
+    }
     autoReplaceInjured(state, side);
     decideAi(state, side);
   }

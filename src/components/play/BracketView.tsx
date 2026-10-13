@@ -8,8 +8,10 @@ import { totalRounds } from "@/engine/competition/bracket";
 import type { Bracket, BracketMatch, CompetitionKind } from "@/engine/types";
 import { useGameStore } from "@/store/gameStore";
 import { RankBadge, Segmented } from "../ui";
+import { LeagueView } from "./LeagueView";
 
 type Season = "winter" | "summer" | "rookie";
+type Tab = Season | "league";
 const SEASON_KINDS: Record<Season, [CompetitionKind, CompetitionKind]> = {
   winter: ["prefQualifier", "national"],
   summer: ["summerQualifier", "summerNational"],
@@ -21,7 +23,7 @@ export function BracketView() {
   useGameStore((s) => s.rev);
   const c = game.competitions;
   // 開いたときは、いま進んでいる大会
-  const initial = (): [Season, 0 | 1] => {
+  const initial = (): [Tab, 0 | 1] => {
     const pos = game.calendar.position;
     for (const [season, kinds] of Object.entries(SEASON_KINDS) as [Season, [CompetitionKind, CompetitionKind]][]) {
       for (const [i, k] of kinds.entries()) {
@@ -29,12 +31,24 @@ export function BracketView() {
         if (b && !b.championId && !b.qualifiedIds && b.roundDays[0] <= pos + 30) return [season, i as 0 | 1];
       }
     }
+    // 大会が近くなければ、県リーグ（P3）
+    if (game.league?.active && !game.league.final) return ["league", 0];
     return ["winter", c.national ? 1 : 0];
   };
   const [init] = useState(initial);
-  const [season, setSeason] = useState<Season>(init[0]);
+  const [tab, setTab] = useState<Tab>(init[0]);
+  const season: Season = tab === "league" ? "winter" : tab;
   const [stage, setStage] = useState<0 | 1>(init[1]);
   const kind = SEASON_KINDS[season][stage];
+  const tabs = game.league ? (["league", "summer", "winter", "rookie"] as const) : (["summer", "winter", "rookie"] as const);
+  const top = <Segmented options={tabs} value={tab} onChange={(v) => setTab(v)} labels={{ league: "リーグ", summer: "夏", winter: "冬", rookie: "新人戦" }} />;
+  if (tab === "league")
+    return (
+      <div className="flex flex-col gap-3 p-3">
+        {top}
+        <LeagueView />
+      </div>
+    );
   const b = c[kind];
   const pref = game.prefectures.find((p) => p.isPlayerPref)!;
   const region = game.regions.find((r) => r.id === pref.regionId)?.name ?? "";
@@ -50,7 +64,7 @@ export function BracketView() {
 
   return (
     <div className="flex flex-col gap-3 p-3">
-      <Segmented options={["summer", "winter", "rookie"] as const} value={season} onChange={(v) => setSeason(v)} labels={{ summer: "夏", winter: "冬", rookie: "新人戦" }} />
+      {top}
       <Segmented options={["0", "1"] as const} value={String(stage) as "0" | "1"} onChange={(v) => setStage(Number(v) as 0 | 1)} labels={{ "0": stageLabels[season][0], "1": stageLabels[season][1] }} />
       <h2 className="text-sm font-black">
         {competitionName(game, kind)}（{size}校）

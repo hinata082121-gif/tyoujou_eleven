@@ -105,6 +105,8 @@ export interface MatchTeamState {
   rank: SchoolRank;
   /** プレイヤーが采配するチームか（false なら CPU の采配） */
   isUser: boolean;
+  /** 采配できるのは試合前とハーフタイムだけ（リーグ戦・練習試合の采配あり。P3）。ケガ人は自動で交代する */
+  breaksOnly?: boolean;
   players: Record<string, MatchPlayer>;
   /** フォーメーションのスロット順の 11 人 */
   onPitch: string[];
