@@ -263,3 +263,14 @@ export function venueStage(kind: CompetitionKind, round: number, totalRounds: nu
   for (const r of VENUE_RULES[kind]) if (fromEnd <= r.fromEnd) return r.stage;
   return 1;
 }
+
+/** ユニフォームの値を範囲に収める（設定画面・学校作成から） */
+export function normalizeKit(k: Kit): Kit {
+  const c = (v: number) => (Number.isInteger(v) && v >= 0 && v < KIT_PALETTE.length ? v : 0);
+  return { template: Number.isInteger(k.template) && k.template >= 0 && k.template < KIT_TEMPLATES.length ? k.template : 0, main: c(k.main), sub: c(k.sub), shorts: c(k.shorts), socks: c(k.socks) };
+}
+
+/** 自校のユニフォームを変える（設定画面・学校作成） */
+export function setPlayerKits(state: GameState, kits: SchoolKits) {
+  state.schools[state.playerSchoolId].kits = { first: normalizeKit(kits.first), second: normalizeKit(kits.second) };
+}

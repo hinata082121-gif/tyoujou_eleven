@@ -2,6 +2,8 @@
 
 import { useMemo } from "react";
 import { buildTimeline, frameAt } from "@/engine/replay";
+import { KIT_PALETTE } from "@/engine/config/look";
+import { gkKit, numberColor } from "@/engine/look";
 import type { MatchState, Side } from "@/engine/match/types";
 
 /** ピッチの大きさ（SVG の座標。縦長） */
@@ -10,7 +12,7 @@ const H = 105;
 
 /**
  * 簡易2D（P3）：演出タイムラインを上から見たピッチで再生する。自校は下から上へ攻める。
- * 選手は丸と番号だけ（独自デザインのキャラクターは P4）
+ * 選手は丸と背番号。丸はその試合のユニフォームのメインの色で塗る（P4。GK は GK の色）
  */
 export function Pitch2D({ ms, display, userSide }: { ms: MatchState; display: number; userSide: Side }) {
   // イベントが増えたとき（区間を計算したとき）だけ作り直す
@@ -43,11 +45,23 @@ export function Pitch2D({ ms, display, userSide }: { ms: MatchState; display: nu
       {f.flight && <line x1={px(f.flight.from.x)} y1={py(f.flight.from.y)} x2={px(f.flight.to.x)} y2={py(f.flight.to.y)} stroke="rgba(255,255,255,0.6)" strokeWidth={0.4} strokeDasharray="1.2 1.2" />}
       {f.dots.map((d) => {
         const mine = d.side === userSide;
+        const view = ms.view;
+        const num = ms.teams[d.side].players[d.id]?.num ?? d.num;
+        if (!view)
+          return (
+            <g key={d.id} style={{ ...move, transform: `translate(${px(d.x)}px, ${py(d.y)}px)` }}>
+              <circle r={2.1} className={mine ? (d.gk ? "fill-amber-600" : "fill-amber-300") : d.gk ? "fill-sky-700" : "fill-sky-300"} stroke="rgba(0,0,0,0.45)" strokeWidth={0.3} />
+              <text y={0.95} textAnchor="middle" fontSize={2.6} fontWeight={700} className="fill-gray-900">
+                {num}
+              </text>
+            </g>
+          );
+        const kit = d.gk ? gkKit(view.gk[d.side]) : view.kits[d.side];
         return (
           <g key={d.id} style={{ ...move, transform: `translate(${px(d.x)}px, ${py(d.y)}px)` }}>
-            <circle r={2.1} className={mine ? (d.gk ? "fill-amber-600" : "fill-amber-300") : d.gk ? "fill-sky-700" : "fill-sky-300"} stroke="rgba(0,0,0,0.45)" strokeWidth={0.3} />
-            <text y={0.95} textAnchor="middle" fontSize={2.6} fontWeight={700} className="fill-gray-900">
-              {d.num}
+            <circle r={2.1} fill={KIT_PALETTE[kit.main]} stroke={KIT_PALETTE[kit.sub]} strokeWidth={0.45} />
+            <text y={0.95} textAnchor="middle" fontSize={2.6} fontWeight={700} fill={numberColor(kit) === 1 ? "#1c1c1e" : "#ffffff"}>
+              {num}
             </text>
           </g>
         );

@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { DEFAULT_PREFECTURE_ID, PLAYER_SCHOOL_DEFAULT_NAME, PREF_TIER_NAMES, PREFECTURES, REGIONS } from "@/engine/config/names";
 import { prefReps, prefTier, TIER_SETTINGS } from "@/engine/config/school";
+import { generateKits } from "@/engine/look";
 import { useGameStore } from "@/store/gameStore";
+import { UniformEditor } from "../look/UniformEditor";
 import { Button, Header } from "../ui";
 
 export function NewGameScreen() {
@@ -13,6 +15,14 @@ export function NewGameScreen() {
   const [name, setName] = useState(PLAYER_SCHOOL_DEFAULT_NAME);
   const [pref, setPref] = useState(DEFAULT_PREFECTURE_ID);
   const [busy, setBusy] = useState(false);
+  // P4：学校名・県の次に、ユニフォームを選ぶ
+  const [step, setStep] = useState<"school" | "uniform">("school");
+  const [kitSeed] = useState(() => {
+    const buf = new Uint32Array(1);
+    crypto.getRandomValues(buf);
+    return buf[0].toString(36);
+  });
+  const [kits, setKits] = useState(() => generateKits(kitSeed, "player"));
   const trimmed = name.trim();
   const tier = prefTier(pref);
   const schools = TIER_SETTINGS[tier].playerPrefSchools;
@@ -22,8 +32,22 @@ export function NewGameScreen() {
     setBusy(true);
     // 描画を先に済ませてから生成する（生成に少し時間がかかるため）
     await new Promise((r) => setTimeout(r, 30));
-    await createGame(slot, trimmed, pref);
+    await createGame(slot, trimmed, pref, kits);
   };
+
+  if (step === "uniform")
+    return (
+      <main className="flex flex-1 flex-col">
+        <Header title="ユニフォームを選ぶ" onBack={() => setStep("school")} />
+        <div className="flex flex-col gap-3 p-4">
+          <p className="text-xs text-gray-600">あとからメニューの「ユニフォーム」でも変えられます。</p>
+          <UniformEditor value={kits} onChange={setKits} seed={kitSeed} />
+          <Button onClick={create} disabled={!trimmed || busy}>
+            {busy ? "学校を作っています…" : "この学校で始める"}
+          </Button>
+        </div>
+      </main>
+    );
 
   return (
     <main className="flex flex-1 flex-col">
@@ -69,8 +93,8 @@ export function NewGameScreen() {
           </ul>
         </div>
         <div className="flex-1" />
-        <Button onClick={create} disabled={!trimmed || busy}>
-          {busy ? "学校を作っています…" : "この学校で始める"}
+        <Button onClick={() => setStep("uniform")} disabled={!trimmed}>
+          次へ（ユニフォームを選ぶ）
         </Button>
       </div>
     </main>

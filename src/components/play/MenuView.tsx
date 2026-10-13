@@ -16,6 +16,7 @@ export function MenuView() {
   const setTeamOpen = useGameStore((s) => s.setTeamOpen);
   const setScoutOpen = useGameStore((s) => s.setScoutOpen);
   const setFacilitiesOpen = useGameStore((s) => s.setFacilitiesOpen);
+  const setUniformOpen = useGameStore((s) => s.setUniformOpen);
   const [msg, setMsg] = useState<string | null>(null);
 
   const exportJson = async () => {
@@ -44,6 +45,9 @@ export function MenuView() {
       </Button>
       <Button variant="secondary" onClick={() => setFacilitiesOpen(true)}>
         🏟️ 設備
+      </Button>
+      <Button variant="secondary" onClick={() => setUniformOpen(true)}>
+        👕 ユニフォーム
       </Button>
       <Button variant="secondary" onClick={() => setScoutOpen(true)}>
         🎓 特待生スカウト
