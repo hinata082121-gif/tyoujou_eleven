@@ -14,9 +14,9 @@ import { catchUpSkills, initialSkills } from "@/engine/skills/learn";
 import { emptyStaffState, generateCpuStaff, generateFictionalAlumni, makeStaffProfile, makeTemporaryCoach } from "@/engine/staff";
 import { PERSONALITIES, type Alumnus, type Career, type LogEntry, type Personality, type Player, type Position, type School, type SeasonRecord, type Stats } from "@/engine/types";
 import { packGame, packTraits, unpackGame, unpackPlayer, type PackedPlayer, type PackedTraits } from "./codec";
-import { upgradeToPhase2c } from "@/engine/game";
+import { upgradeToPhase2c, upgradeToPhase3 } from "@/engine/game";
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type RawSave = { schemaVersion: number; [key: string]: any };
@@ -156,11 +156,22 @@ export function migrateV4toV5(data: RawSave): RawSave {
   return { ...data, schemaVersion: 5, game: packGame(state) };
 }
 
+/**
+ * v5（Phase 2c）→ v6（Phase 3）：県リーグ。学校を今のチーム力で部に分け、自校は評判に応じた部に入れる。
+ * その年のリーグ戦は行わず、次の 4/1 から始める
+ */
+export function migrateV5toV6(data: RawSave): RawSave {
+  const state = unpackGame(structuredClone(data.game));
+  upgradeToPhase3(state);
+  return { ...data, schemaVersion: 6, game: packGame(state) };
+}
+
 /** MIGRATIONS[n] は バージョン n → n+1 の変換 */
 export const MIGRATIONS: Record<number, Migration> = {
   2: migrateV2toV3,
   3: migrateV3toV4,
   4: migrateV4toV5,
+  5: migrateV5toV6,
 };
 
 export const OLD_FORMAT_MESSAGE = "このセーブは古い形式のため読み込めません";

@@ -36,6 +36,8 @@ export const RESULT_FACILITIES = {
   nationalTop4: { chance: 0.6, maxLevel: 3 },
   nationalChampion: { chance: 1, maxLevel: 3 },
   rookieRegionChampion: { chance: 0.2, maxLevel: 2 },
+  /** P3：県リーグの 1 部で優勝 */
+  leagueTopChampion: { chance: 0.3, maxLevel: 2 },
 };
 
 /** OB からの寄付（青マスに止まったときに判定。年 1 回まで） */

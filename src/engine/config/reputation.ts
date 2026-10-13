@@ -20,9 +20,9 @@ export const REPUTATION_GAUGE = {
   /** 降格した直後のゲージ */
   afterDemotion: 70,
   /** 勝利の基本値（試合の種類別） */
-  winBase: { practice: 7, prefQualifier: 9, national: 14, summerQualifier: 8, summerNational: 12, rookiePref: 5, rookieRegion: 7 } as Record<MatchKind, number>,
+  winBase: { practice: 7, prefQualifier: 9, national: 14, summerQualifier: 8, summerNational: 12, rookiePref: 5, rookieRegion: 7, league: 6 } as Record<MatchKind, number>,
   /** 敗戦の基本値（試合の種類別） */
-  lossBase: { practice: 3, prefQualifier: 5, national: 3, summerQualifier: 4, summerNational: 3, rookiePref: 2, rookieRegion: 2 } as Record<MatchKind, number>,
+  lossBase: { practice: 3, prefQualifier: 5, national: 3, summerQualifier: 4, summerNational: 3, rookiePref: 2, rookieRegion: 2, league: 3 } as Record<MatchKind, number>,
   /** 引き分け（練習試合）で格上相手なら少し上がる */
   drawVsStronger: 2,
   /** PK 戦での敗戦は下がり幅を小さくする */

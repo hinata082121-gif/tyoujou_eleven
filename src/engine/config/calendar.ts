@@ -43,10 +43,10 @@ export const FIXED_DATES = {
   scoutReply: [2, 28] as const,
 };
 
-/** 練習試合：年に 6〜8 回（同じ月に 2 回は入れない） */
+/** 練習試合：年に 4〜6 回（同じ月に 2 回は入れない）。P3 で 6〜8 回から減らした（週末が県リーグで埋まるため） */
 export const PRACTICE_MATCH = {
-  perYearMin: 6,
-  perYearMax: 8,
+  perYearMin: 4,
+  perYearMax: 6,
   /** 練習試合を入れない月（大会期間など）。月の番号 */
   excludeMonths: [12, 1, 2, 3] as number[],
   /** 他の大マスとの最低間隔（日） */

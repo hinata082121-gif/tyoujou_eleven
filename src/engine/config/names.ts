@@ -120,7 +120,11 @@ export const COMPETITION_NAMES = {
   rookiePref: "新人戦 県大会",
   rookieRegion: "新人戦 地域大会",
   practice: "練習試合",
+  league: "県リーグ",
 } as const;
+
+/** 県リーグの表示名（例：東京都リーグ 2部） */
+export const leagueName = (prefName: string, level: number) => `${prefName}リーグ ${level}部`;
 
 /** 都道府県予選の表示名（例：冬の全国大会 東京都予選） */
 export const prefQualifierName = (prefName: string) => `${COMPETITION_NAMES.winter} ${prefName}予選`;
@@ -224,6 +228,7 @@ export const MAJOR_NAMES: Record<MajorKind, string> = {
   summerNational: "夏の全国",
   rookiePref: "新人戦",
   rookieRegion: "新人戦（地域）",
+  league: "県リーグ",
   camp: "合宿",
   scoutReply: "スカウトの返事",
   graduation: "卒業式",
@@ -299,6 +304,7 @@ export const MATCH_KIND_NAMES = {
   summerNational: "夏の全国大会",
   rookiePref: "新人戦（県）",
   rookieRegion: "新人戦（地域）",
+  league: "県リーグ",
 } as const;
 
 // ---- 設備（P2c） ----

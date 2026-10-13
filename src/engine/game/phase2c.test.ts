@@ -99,7 +99,8 @@ describe("分岐マス（P2c）", () => {
   it("年に数か所あり、選んだ道のマスに変わる。最初の数マスだけ正確に見える", () => {
     const s = newGame("p2c-branch", "テスト高校");
     const branches = s.calendar.branches!;
-    expect(branches.length).toBeGreaterThanOrEqual(BRANCH.perYear - 2);
+    // P3 でリーグ戦の大マスが入り、分岐を置ける場所が減った（年 3〜8 か所）
+    expect(branches.length).toBeGreaterThanOrEqual(3);
     for (const b of branches) {
       expect(b.paths.length).toBeGreaterThanOrEqual(2);
       expect(b.paths.length).toBeLessThanOrEqual(3);

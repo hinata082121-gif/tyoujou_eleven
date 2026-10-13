@@ -99,11 +99,13 @@ export interface YearResults {
   nationalTop4: boolean;
   nationalChampion: boolean;
   rookieRegionChampion: boolean;
+  /** P3：県リーグの 1 部で優勝 */
+  leagueTopChampion?: boolean;
 }
 
 /** 年度末の、大会の成績による整備（一番良い成績で 1 回だけ判定） */
 export function resultFacilities(h: FacilityHolder, rng: Rng, r: YearResults): FacilityLogEntry | null {
-  const key = r.nationalChampion ? "nationalChampion" : r.nationalTop4 ? "nationalTop4" : r.nationalAppearance ? "nationalAppearance" : r.rookieRegionChampion ? "rookieRegionChampion" : null;
+  const key = r.nationalChampion ? "nationalChampion" : r.nationalTop4 ? "nationalTop4" : r.nationalAppearance ? "nationalAppearance" : r.leagueTopChampion ? "leagueTopChampion" : r.rookieRegionChampion ? "rookieRegionChampion" : null;
   if (!key) return null;
   const rule = RESULT_FACILITIES[key];
   if (!rng.chance(rule.chance)) return null;
