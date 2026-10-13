@@ -109,6 +109,8 @@ export interface School {
   rank: SchoolRank;
   /** CPU 校の格（新入生の質と人数に使う。プレイヤー校は評判を使う） */
   prestige: number;
+  /** もとの格（P3。格の変動はここへ戻りやすい。ないセーブは最初の変動のときに今の格を入れる） */
+  basePrestige?: number;
   formation: FormationId;
   tactics: Tactics;
   /** キャプテン（SPEC 7.8。自校は年度初めに指名、CPU 校は自動） */
@@ -161,7 +163,7 @@ export type SquareType = BaseSquareType | "major";
 export const COMPETITION_KINDS = ["prefQualifier", "national", "summerQualifier", "summerNational", "rookiePref", "rookieRegion"] as const;
 export type CompetitionKind = (typeof COMPETITION_KINDS)[number];
 /** camp：合宿の出発（round 0 = 夏、1 = 冬）。scoutReply：特待生スカウトの返事 */
-export type MajorKind = "entrance" | "practiceMatch" | CompetitionKind | "camp" | "scoutReply" | "graduation" | "yearEnd";
+export type MajorKind = "entrance" | "practiceMatch" | CompetitionKind | "league" | "camp" | "scoutReply" | "graduation" | "yearEnd";
 
 export interface Square {
   day: number;
@@ -236,7 +238,50 @@ export interface MatchRules {
   benchSize: number;
 }
 
-export type MatchKind = "practice" | CompetitionKind;
+/** league：県リーグ（P3。公式戦） */
+export type MatchKind = "practice" | CompetitionKind | "league";
+
+// ================= 県リーグ（SPEC 11章。P3） =================
+
+export interface LeagueFixture {
+  id: string;
+  home: string;
+  away: string;
+  /** 結果（home, away の順） */
+  score?: [number, number];
+}
+
+export interface LeagueDivision {
+  /** 1 = 1 部 */
+  level: number;
+  schoolIds: string[];
+  /** 2 回総当たりか（最下部が 9 校以上なら 1 回総当たり） */
+  doubleRound: boolean;
+  /** fixtures[節] */
+  fixtures: LeagueFixture[][];
+  /** 節ごとの日（day インデックス） */
+  days: number[];
+}
+
+export interface LeagueStanding {
+  schoolId: string;
+  played: number;
+  won: number;
+  drawn: number;
+  lost: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  points: number;
+}
+
+export interface LeagueState {
+  /** その年の部（年度初めに、前の年の昇格・降格を反映して作る） */
+  divisions: LeagueDivision[];
+  /** その年のリーグ戦を行うか（P2c までのセーブを途中から読んだ年は行わない） */
+  active: boolean;
+  /** 全節が終わった後の結果（自校の成績と、翌年度の部） */
+  final?: { playerLevel: number; position: number; size: number; promoted: boolean; relegated: boolean; nextDivisions: string[][] };
+}
 
 // ================= 大会 =================
 
@@ -302,6 +347,8 @@ export interface SeasonRecord {
   /** P2c */
   summerResult?: string;
   rookieResult?: string;
+  /** P3：県リーグの成績 */
+  league?: { level: number; position: number; size: number; promoted: boolean; relegated: boolean; retiredBeforeEnd: boolean };
 }
 
 // ================= 特待生スカウト（SPEC 8章。P2c） =================
@@ -401,7 +448,11 @@ export interface GameState {
     rookieResult?: string;
     /** 新人戦の県大会の成績から決めた、次の夏の県予選のシード順（自県の学校 ID。強い順） */
     rookieSeeds?: string[];
+    /** P3：3 年生が引退した日（冬の大会で負けた日。県リーグの成績の記録用） */
+    retiredDay?: number;
   };
+  /** 県リーグ（P3） */
+  league?: LeagueState;
   /** 設備（SPEC 15章。P2c） */
   facilities: Facilities;
   facilityLog: FacilityLogEntry[];

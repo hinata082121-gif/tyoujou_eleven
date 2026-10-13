@@ -12,6 +12,7 @@ import type { MatchState, MatchTeamState, Side } from "@/engine/match/types";
 import { FORMATION_IDS } from "@/engine/types";
 import { useGameStore } from "@/store/gameStore";
 import { Bar, Button, fitnessColor, Segmented, Sheet } from "../ui";
+import { Pitch2D } from "./Pitch2D";
 import { PkScreen } from "./PkScreen";
 import { TacticsEditor } from "./TacticsEditor";
 
@@ -45,7 +46,9 @@ export function MatchScreen() {
   useGameStore((s) => s.rev);
   const touch = useGameStore((s) => s.touch);
   const finishMatch = useGameStore((s) => s.finishMatch);
+  const switchToAuto = useGameStore((s) => s.switchToAuto);
   const speed = useGameStore((s) => s.settings.matchSpeed);
+  const view2d = useGameStore((s) => s.settings.matchView) === "2d";
   const updateSettings = useGameStore((s) => s.updateSettings);
   const am = game.activeMatch!;
   const ms = am.state;
@@ -61,6 +64,11 @@ export function MatchScreen() {
   const [presetOut, setPresetOut] = useState<string | null>(null);
   const prompted = useRef(new Set<string>());
   const label = pendingMatchLabel(game);
+  /** リーグ戦・練習試合の采配あり：采配は試合前とハーフタイムだけ（P3） */
+  const breaksOnly = !!ms.teams[side].breaksOnly;
+  const toAuto = () => {
+    if (window.confirm("残りをAIの監督に任せて、結果だけを出しますか？（采配ありには戻せません）")) switchToAuto();
+  };
 
   const caughtUp = display >= ms.minute;
   const inBreak = isBreakPhase(ms) && caughtUp;
@@ -88,7 +96,7 @@ export function MatchScreen() {
 
   // 自校にケガ人が出たら一時停止して、交代を選べるようにする（選ばずに閉じれば自動で交代）
   useEffect(() => {
-    if (panel) return;
+    if (panel || breaksOnly) return;
     const team = ms.teams[side];
     if (subsRemaining(team, ms.rules) <= 0 || team.bench.length === 0) return;
     const hurt = ms.events.find(
@@ -98,7 +106,7 @@ export function MatchScreen() {
     prompted.current.add(hurt.players![0]);
     setPresetOut(hurt.players![0]);
     setPanel(true);
-  }, [display, panel, ms, side]);
+  }, [display, panel, ms, side, breaksOnly]);
 
   const score = visibleScore(ms, display);
   const events = ms.events.filter((e) => e.minute <= display && !isMinorEvent(e)).slice(-80).reverse();
@@ -142,6 +150,16 @@ export function MatchScreen() {
         </div>
       </div>
 
+      {view2d && (
+        <div className="relative h-[42dvh] shrink-0 bg-pitch">
+          <Pitch2D ms={ms} display={Math.min(display, ms.minute)} userSide={side} />
+        </div>
+      )}
+      <div className="flex justify-end border-b border-gray-100 px-2">
+        <button type="button" className="min-h-8 px-2 text-[11px] font-bold text-pitch-dark" onClick={() => updateSettings({ matchView: view2d ? "text" : "2d" })}>
+          {view2d ? "テキストだけにする" : "2D を表示する"}
+        </button>
+      </div>
       <ul className="flex-1 overflow-y-auto px-3 py-2 text-sm">
         {events.map((e, i) => (
           <li
@@ -160,9 +178,16 @@ export function MatchScreen() {
             結果へ
           </Button>
         ) : inBreak ? (
-          <Button className="w-full" onClick={() => setPanel(true)}>
-            {ms.phase === "HT" ? "ハーフタイム（采配・後半開始）" : ms.phase === "ET_BREAK" ? "延長戦の前（采配・延長開始）" : "延長ハーフタイム（采配・再開）"}
-          </Button>
+          <div className="flex gap-2">
+            {breaksOnly && (
+              <Button variant="secondary" onClick={toAuto}>
+                結果のみ
+              </Button>
+            )}
+            <Button className="flex-1" onClick={() => setPanel(true)}>
+              {ms.phase === "HT" ? "ハーフタイム（采配・後半開始）" : ms.phase === "ET_BREAK" ? "延長戦の前（采配・延長開始）" : "延長ハーフタイム（采配・再開）"}
+            </Button>
+          </div>
         ) : (
           <div className="flex items-center gap-2">
             <div className="w-36">
@@ -171,9 +196,15 @@ export function MatchScreen() {
             <Button variant="secondary" className="flex-1" onClick={() => setPaused((p) => !p)}>
               {paused ? "▶ 再開" : "⏸ 一時停止"}
             </Button>
-            <Button className="flex-1" onClick={() => setPanel(true)}>
-              采配
-            </Button>
+            {breaksOnly ? (
+              <Button className="flex-1 !px-2 !text-xs" onClick={toAuto}>
+                結果のみに切り替え
+              </Button>
+            ) : (
+              <Button className="flex-1" onClick={() => setPanel(true)}>
+                采配
+              </Button>
+            )}
           </div>
         )}
       </div>

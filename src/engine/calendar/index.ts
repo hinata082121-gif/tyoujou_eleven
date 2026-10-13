@@ -83,6 +83,8 @@ export interface CalendarPlan {
   camps: boolean;
   scoutReply: boolean;
   branches: boolean;
+  /** P3：自校の県リーグの節の日（大マス。round = 節） */
+  leagueDays?: number[];
 }
 
 /** 1 年分（365 マス）のカレンダーを作る。plan を省くと Phase 2b までの日程 */
@@ -114,6 +116,9 @@ export function buildCalendarParts(rng: Rng, prefRounds: number, nationalRounds:
       });
     }
     if (plan.scoutReply) setMajor(dateToDay(...FIXED_DATES.scoutReply), "scoutReply");
+    plan.leagueDays?.forEach((day, r) => {
+      if (!squares[day].major) setMajor(day, "league", r);
+    });
   }
 
   // 練習試合：年に 6〜8 回。月をランダムに選び、1 か月に 1 回まで

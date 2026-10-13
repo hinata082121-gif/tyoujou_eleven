@@ -195,7 +195,8 @@ export const SKILL_LEARN = {
   /** 金色の判定：成果の条件をそろえた後の、関係する特訓・金色の OB の直伝・条件を満たした試合の直後 */
   goldTraining: 0.08,
   goldObTeach: 0.2,
-  goldAfterFeat: 0.4,
+  /** P3 で 0.4 → 0.28（リーグ戦で公式戦が増え、金色を持つ卒業生が多くなったため） */
+  goldAfterFeat: 0.28,
   /** 両利き：熟練度の下限と、シュートかドリブルの特訓での確率 */
   footGoldMinProficiency: 80,
   footGoldTraining: 0.01,

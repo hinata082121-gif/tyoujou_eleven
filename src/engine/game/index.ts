@@ -104,6 +104,9 @@ import {
   startStaffYear,
 } from "../staff";
 import { createNote, templateRule, type NoteTemplateId } from "../note";
+import { LEAGUE, LEAGUE_RULES } from "../config/league";
+import { leagueName } from "../config/names";
+import { createLeague, divisionOf, findFixture, fixtureOn, leagueFinished, playerLeagueResult, promotionResult, splitDivisions, standings } from "../league";
 import {
   COMPETITION_KINDS,
   type Alumnus,
@@ -199,7 +202,8 @@ function yearPlan(state: GameState) {
     rookiePref: roundsFor(n),
     rookieRegion: roundsFor(rookieRegionSize(state)),
   };
-  const plan: CalendarPlan = { rounds, camps: true, scoutReply: true, branches: true };
+  const myDiv = state.league?.active ? divisionOf(state.league, state.playerSchoolId) : undefined;
+  const plan: CalendarPlan = { rounds, camps: true, scoutReply: true, branches: true, leagueDays: myDiv?.days };
   return { prefRounds, nationalRounds, summerQualifierRounds, plan };
 }
 
@@ -207,6 +211,7 @@ function yearPlan(state: GameState) {
 function startYear(state: GameState, rng: Rng) {
   const pref = ownPrefecture(state);
   const host = pickSummerHost(state, rng);
+  state.league = createLeague(leagueDivisionsForYear(state));
   const { prefRounds, nationalRounds, summerQualifierRounds, plan } = yearPlan(state);
   state.calendar = newCalendar(rng, prefRounds, nationalRounds, handSize(state.reputation), plan);
   const byStrength = (ids: string[]) =>
@@ -233,6 +238,94 @@ function startYear(state: GameState, rng: Rng) {
   addLog(state, `${MAJOR_NAMES.entrance}。新入生が入部した。`, "info");
   addLog(state, `今年の${COMPETITION_NAMES.summer}は${host.name}で開催される。`, "info");
   grantFacilitiesForReputation(state);
+}
+
+// ================= 県リーグ（P3） =================
+
+/** 自県の学校を強い順に並べる（自校は除く） */
+function cpuPrefByStrength(state: GameState): string[] {
+  const pref = ownPrefecture(state);
+  return pref.schoolIds
+    .filter((id) => id !== state.playerSchoolId)
+    .sort((a, b) => teamStrength(state.schools[b].players, state.schools[b].formation) - teamStrength(state.schools[a].players, state.schools[a].formation));
+}
+
+/**
+ * その年の部。前の年の結果があれば昇格・降格を反映し、なければチーム力の順に分ける（自校は最下部）
+ */
+function leagueDivisionsForYear(state: GameState): string[][] {
+  const lg = state.league;
+  if (lg?.final) return lg.final.nextDivisions;
+  if (lg) return lg.divisions.map((d) => d.schoolIds);
+  return splitDivisions([...cpuPrefByStrength(state), state.playerSchoolId]);
+}
+
+/**
+ * P2c までのゲームに県リーグを足す（セーブの v5 → v6）。学校は今のチーム力の順に部に分け、
+ * 自校は評判に応じた部に入れる（弱小・そこそこは最下部、名門は 1 部）。その年のリーグ戦は行わず、次の 4/1 から始める
+ */
+export function upgradeToPhase3(state: GameState) {
+  const divs = splitDivisions(cpuPrefByStrength(state));
+  const k = divs.length;
+  const level = state.reputation.level;
+  const idx = level <= 1 ? k - 1 : Math.min(k - 1, Math.max(0, Math.round(((4 - level) / 3) * (k - 1))));
+  divs[idx].push(state.playerSchoolId);
+  state.league = createLeague(divs, false);
+  addLog(state, `県リーグが加わった。来年度の4月から${leagueName(ownPrefecture(state).name, idx + 1)}で戦う。`, "info");
+}
+
+/** その日の県リーグの試合のうち、自校の試合以外を計算する。全部終わったら年間の結果を出す */
+function processLeagueDay(state: GameState, rng: Rng, day: number) {
+  const lg = state.league;
+  if (!lg?.active) return;
+  let any = false;
+  for (const d of lg.divisions) {
+    const round = d.days.indexOf(day);
+    if (round < 0) continue;
+    any = true;
+    for (const f of d.fixtures[round]) {
+      if (f.score || f.home === state.playerSchoolId || f.away === state.playerSchoolId) continue;
+      const o = simulateCpuMatch(rng.fork(f.id), state.schools[f.home], state.schools[f.away], LEAGUE_RULES);
+      f.score = [o.score[0], o.score[1]];
+    }
+  }
+  if (any) checkLeagueEnd(state);
+}
+
+/** 全節が終わったら、自校の順位・昇格・降格と評判のボーナスを決める（1 回だけ） */
+function checkLeagueEnd(state: GameState) {
+  const lg = state.league;
+  if (!lg || lg.final || !leagueFinished(lg)) return;
+  const r = playerLeagueResult(lg, state.playerSchoolId);
+  const nextDivisions = promotionResult(lg);
+  if (!r) {
+    lg.final = { playerLevel: 0, position: 0, size: 0, promoted: false, relegated: false, nextDivisions };
+    return;
+  }
+  lg.final = { playerLevel: r.level, position: r.position, size: r.size, promoted: r.promoted, relegated: r.relegated, nextDivisions };
+  const B = LEAGUE.bonus;
+  const delta = (r.champion ? (r.level === 1 ? B.topDivisionChampion : B.divisionChampion) : 0) + (r.promoted ? B.promoted : 0) + (r.relegated ? B.relegated : 0);
+  const name = leagueName(ownPrefecture(state).name, r.level);
+  const extra = r.promoted ? `。来年度は${r.level - 1}部に昇格する` : r.relegated ? `。来年度は${r.level + 1}部に降格する` : "";
+  addLog(state, `${name}は${r.position}位で終わった${extra}。`, r.promoted || r.champion ? "good" : r.relegated ? "bad" : "info");
+  if (delta !== 0) changeReputation(state, delta);
+}
+
+/** 評判を動かす（段階が変わったらログと手札） */
+function changeReputation(state: GameState, delta: number) {
+  const before = state.reputation.level;
+  const change = addGauge(state.reputation, delta);
+  if (change.levelChange !== 0) {
+    addLog(state, `評判が「${REPUTATION_NAMES[before]}」から「${REPUTATION_NAMES[state.reputation.level]}」に${change.levelChange > 0 ? "上がった" : "下がった"}。`, change.levelChange > 0 ? "good" : "bad");
+    withRng(state, (rng) => refillHand(rng, state.calendar, handSize(state.reputation)));
+  }
+  return change;
+}
+
+/** 県リーグの表示名（自校の部） */
+export function playerLeagueName(state: GameState): string {
+  const d = state.league ? divisionOf(state.league, state.playerSchoolId) : undefined;
+  return leagueName(ownPrefecture(state).name, d?.level ?? 1);
 }
 
 /** 冬の全国大会の出場校数（各都道府県の代表数の合計。東京のみ 2 校で 48 校） */
@@ -375,6 +468,10 @@ export function isStopSquare(state: GameState, sq: Square): boolean {
   switch (kind) {
     case "entrance":
       return false;
+    case "league": {
+      const f = state.league?.active ? fixtureOn(state.league, state.playerSchoolId, sq.day) : undefined;
+      return !!f && !f.fixture.score;
+    }
     case "scoutReply":
       return !!state.scout && !state.scout.replied;
     default:
@@ -523,6 +620,11 @@ function setPendingForMajor(state: GameState, rng: Rng, sq: Square) {
     const oppId = m.a === state.playerSchoolId ? m.b! : m.a!;
     state.pending = { type: "match", kind, opponentId: oppId, bracketMatchId: m.id, round };
     addLog(state, `${competitionName(state, kind)} ${roundLabel(totalRounds(b), round, b.qualifiers)}：${state.schools[oppId].name}と対戦する。`, "info");
+  } else if (kind === "league") {
+    const f = fixtureOn(state.league!, state.playerSchoolId, sq.day)!;
+    const oppId = f.fixture.home === state.playerSchoolId ? f.fixture.away : f.fixture.home;
+    state.pending = { type: "match", kind: "league", opponentId: oppId, bracketMatchId: f.fixture.id, round: f.round };
+    addLog(state, `${playerLeagueName(state)} 第${f.round + 1}節：${state.schools[oppId].name}と対戦する。`, "info");
   } else if (kind === "camp") {
     const season: CampSeason = sq.major!.round === 1 ? "winter" : "summer";
     state.pending = { type: "camp", season };
@@ -628,6 +730,7 @@ function processWorldDay(state: GameState, rng: Rng, day: number) {
     addLog(state, `スカウトカードが届いた（残り${sc.cards}枚）。候補の中学生を訪ねよう。`, "info");
   }
   if (day === dateToDay(...ROOKIE_PREF_SETUP_DATE)) setupRookiePref(state, rng);
+  processLeagueDay(state, rng, day);
   const c = state.competitions;
   for (const kind of COMPETITION_KINDS) {
     const b = c[kind];
@@ -869,7 +972,7 @@ export function confirmScoutReply(state: GameState) {
 
 function pendingBracket(state: GameState): Bracket | undefined {
   const p = state.pending;
-  if (p?.type !== "match" || p.kind === "practice") return undefined;
+  if (p?.type !== "match" || p.kind === "practice" || p.kind === "league") return undefined;
   return bracketOf(state, p.kind);
 }
 
@@ -877,6 +980,7 @@ export function pendingMatchRules(state: GameState): MatchRules | null {
   const p = state.pending;
   if (!p || p.type !== "match") return null;
   if (p.kind === "practice") return PRACTICE_RULES;
+  if (p.kind === "league") return LEAGUE_RULES;
   return rulesFor(pendingBracket(state)!, p.round ?? 0);
 }
 
@@ -884,6 +988,7 @@ export function pendingMatchLabel(state: GameState): string {
   const p = state.pending;
   if (!p || p.type !== "match") return "";
   if (p.kind === "practice") return COMPETITION_NAMES.practice;
+  if (p.kind === "league") return `${playerLeagueName(state)} 第${(p.round ?? 0) + 1}節`;
   const b = pendingBracket(state)!;
   return `${competitionName(state, p.kind)} ${roundLabel(totalRounds(b), p.round ?? 0, b.qualifiers)}`;
 }
@@ -915,14 +1020,14 @@ export function eligiblePlayers(state: GameState): Player[] {
   return pendingIsOfficial(state) ? players.filter((x) => x.suspended <= 0) : players;
 }
 
-/** その試合で「結果のみ」を選べるか（練習試合だけ。トーナメントは観戦のみ） */
+/** その試合で「結果のみ」を選べるか（練習試合と県リーグ。トーナメントは観戦のみ） */
 export function canSkipWatching(state: GameState): boolean {
-  return state.pending?.type === "match" && state.pending.kind === "practice";
+  return state.pending?.type === "match" && (state.pending.kind === "practice" || state.pending.kind === "league");
 }
 
 /**
  * 試合を始める（試合前の画面で決めた采配を使う）。
- * mode = "auto"（結果のみ）は練習試合だけ。AI の監督が采配し、最後まで計算してから返す。
+ * mode = "auto"（結果のみ）は練習試合と県リーグだけ。AI の監督が采配し、最後まで計算してから返す。
  */
 export function startPlayerMatch(state: GameState, setup: TeamSetup, mode: "watch" | "auto" = "watch", noteId?: string | null): ActiveMatch | null {
   const p = state.pending;
@@ -951,6 +1056,8 @@ export function startPlayerMatch(state: GameState, setup: TeamSetup, mode: "watc
       aiQuality: headAiQuality(state.staff),
       injuryMult: injuryMult(state.staff) * facilityInjuryMult(state.facilities),
       note: note ? { noteName: note.name, rules: note.rules.map((r) => ({ ...r })), kind: p.kind } : undefined,
+      // リーグ戦・練習試合の采配ありは、采配が試合前とハーフタイムだけ（SPEC 10.4）
+      breaksOnly: canSkipWatching(state),
     };
     const away = schoolTeamInput(opp, rules, false, rng, { maxGrade: isRookieKind(p.kind) ? 2 : undefined, carryDay: carry ? day : undefined });
     const match: ActiveMatch = {
@@ -974,6 +1081,19 @@ export function startPlayerMatch(state: GameState, setup: TeamSetup, mode: "watc
   });
 }
 
+/**
+ * 采配ありで観戦している途中から「結果のみ」に切り替える（リーグ戦・練習試合。P3 計画 Q4）。
+ * 残りは AI の監督（ヘッドコーチの戦術眼）と作戦ノートが采配し、最後まで計算する。逆はできない
+ */
+export function switchToAuto(state: GameState): boolean {
+  const am = state.activeMatch;
+  if (!am || am.mode === "auto" || !canSkipWatching(state)) return false;
+  am.mode = "auto";
+  am.state.teams[am.userSide].isUser = false;
+  simulateToEnd(am.state);
+  return true;
+}
+
 export interface MatchSummary {
   kind: MatchKind;
   label: string;
@@ -992,6 +1112,18 @@ export interface MatchSummary {
   goals: { minute: number; mine: boolean; name: string; pk: boolean }[];
   /** 試合での成果で習得した・段階が上がった特殊能力 */
   learned: LearnEvent[];
+  /** シュート（枠内）と支配率（自校, 相手。P3：結果の画面用） */
+  stats: { shots: [number, number]; onTarget: [number, number]; possession: [number, number] };
+  /** リーグ戦の試合なら、試合の後の順位（P3） */
+  league?: { level: number; position: number; size: number; points: number; finished: boolean };
+}
+
+function leagueSummary(state: GameState): MatchSummary["league"] {
+  const d = state.league ? divisionOf(state.league, state.playerSchoolId) : undefined;
+  if (!d) return undefined;
+  const table = standings(d);
+  const i = table.findIndex((r) => r.schoolId === state.playerSchoolId);
+  return { level: d.level, position: i + 1, size: table.length, points: table[i].points, finished: !!state.league?.final };
 }
 
 /** 大会ごとの成績の文字列を入れる */
@@ -1032,7 +1164,7 @@ export function finishPlayerMatch(state: GameState): MatchSummary | null {
     const opp = state.schools[am.opponentId];
     const me = ms.teams[am.userSide];
     const official = am.kind !== "practice";
-    const bracket = am.kind !== "practice" ? bracketOf(state, am.kind) : undefined;
+    const bracket = am.kind !== "practice" && am.kind !== "league" ? bracketOf(state, am.kind) : undefined;
     // 出場停止は公式戦 1 試合で消化する（この試合の退場は次の公式戦から）
     if (official) for (const pl of school.players) if (pl.suspended > 0) pl.suspended--;
     const myScore = ms.score[am.userSide];
@@ -1107,7 +1239,11 @@ export function finishPlayerMatch(state: GameState): MatchSummary | null {
     let champion = false;
     let qualifiedNational = false;
 
-    if (am.kind !== "practice" && bracket) {
+    if (am.kind === "league" && state.league) {
+      const f = findFixture(state.league, am.bracketMatchId!);
+      if (f) f.score = f.home === state.playerSchoolId ? [myScore, oppScore] : [oppScore, myScore];
+    }
+    if (bracket) {
       const b = bracket;
       const found = findMatchById(b, am.bracketMatchId!)!;
       const m = found.match;
@@ -1120,33 +1256,37 @@ export function finishPlayerMatch(state: GameState): MatchSummary | null {
       // 同じラウンドの残りの試合を計算する
       if (b.roundDays[b.roundsDone] <= state.calendar.position) simulateRemainingRound(state, rng, b);
       const isChampion = won && !!b.qualifiedIds?.includes(state.playerSchoolId);
-      delta += competitionBonus(am.kind, won, isChampion);
-      const name = competitionName(state, am.kind);
+      delta += competitionBonus(b.kind, won, isChampion);
+      const name = competitionName(state, b.kind);
       if (!won) {
         eliminated = true;
-        setResult(state, am.kind, `${label}敗退`);
+        setResult(state, b.kind, `${label}敗退`);
         // 3 年生は冬の大会で負けたら引退する（夏・新人戦では引退しない）
-        if (WINTER_KINDS.includes(am.kind)) retireThirdYears(state);
+        if (WINTER_KINDS.includes(b.kind)) {
+          retireThirdYears(state);
+          state.competitions.retiredDay = state.calendar.position;
+        }
       } else if (isChampion) {
         champion = true;
-        if (am.kind === "prefQualifier" || am.kind === "summerQualifier") {
+        if (b.kind === "prefQualifier" || b.kind === "summerQualifier") {
           qualifiedNational = true;
-          setResult(state, am.kind, `${ownPrefecture(state).name}代表`);
-        } else if (am.kind === "rookiePref") {
-          setResult(state, am.kind, `${name} 優勝`);
+          setResult(state, b.kind, `${ownPrefecture(state).name}代表`);
+        } else if (b.kind === "rookiePref") {
+          setResult(state, b.kind, `${name} 優勝`);
         } else {
-          setResult(state, am.kind, `${name} 優勝`);
-          if (am.kind === "national") retireThirdYears(state);
+          setResult(state, b.kind, `${name} 優勝`);
+          if (b.kind === "national") retireThirdYears(state);
         }
       } else if ((b.qualifiers ?? 1) > 1 && b.qualifiedIds?.includes(state.playerSchoolId)) {
         // 代表 2 校の県（決勝なし）
         qualifiedNational = true;
-        setResult(state, am.kind, `${ownPrefecture(state).name}代表`);
+        setResult(state, b.kind, `${ownPrefecture(state).name}代表`);
       }
       // 新人戦の県大会で決勝まで進めば、地域大会に出られる
-      if (am.kind === "rookiePref" && !won && found.round === totalRounds(b) - 1) setResult(state, am.kind, `${name} 準優勝`);
+      if (b.kind === "rookiePref" && !won && found.round === totalRounds(b) - 1) setResult(state, b.kind, `${name} 準優勝`);
     }
     const change = addGauge(state.reputation, delta);
+    if (am.kind === "league") checkLeagueEnd(state);
     const resultText = result === "win" ? "勝利" : result === "draw" ? "引き分け" : "敗戦";
     const pkText = ms.pk ? `（PK ${ms.pk.score[am.userSide]}-${ms.pk.score[1 - am.userSide]}）` : "";
     addLog(state, `${label} vs ${opp.name}：${myScore}-${oppScore}${pkText} ${resultText}`, result === "win" ? "good" : result === "loss" ? "bad" : "info");
@@ -1188,6 +1328,16 @@ export function finishPlayerMatch(state: GameState): MatchSummary | null {
           pk: e.type === "pkGoal",
         })),
       learned,
+      stats: (() => {
+        const t = [me, ms.teams[1 - am.userSide]];
+        const pos = me.stats.segments > 0 ? Math.round((me.stats.possessionSum / me.stats.segments) * 100) : 50;
+        return {
+          shots: [t[0].stats.shots, t[1].stats.shots] as [number, number],
+          onTarget: [t[0].stats.onTarget, t[1].stats.onTarget] as [number, number],
+          possession: [pos, 100 - pos] as [number, number],
+        };
+      })(),
+      league: am.kind === "league" ? leagueSummary(state) : undefined,
     };
   });
 }
@@ -1250,6 +1400,7 @@ export function yearResults(state: GameState): YearResults {
     nationalTop4: nats.some((b) => b.championId === me || reachedRound(b, me) >= totalRounds(b) - 2),
     nationalChampion: nats.some((b) => b.championId === me),
     rookieRegionChampion: c.rookieRegion?.championId === me,
+    leagueTopChampion: state.league?.final?.playerLevel === 1 && state.league.final.position === 1,
   };
 }
 
@@ -1263,6 +1414,12 @@ export function confirmYearEnd(state: GameState): Player[] {
     const fe = resultFacilities(holder, rng, yearResults(state));
     if (fe) addLog(state, `大会の成績が認められた：${facilityLogText(fe)}`, "good");
     const c = state.competitions;
+    // 県リーグ：終わっていなければ（自校の試合が残ったなど）ここで締める
+    if (state.league?.active && !state.league.final) {
+      for (const d of state.league.divisions) for (const r of d.fixtures) for (const f of r) f.score ??= [0, 0];
+      checkLeagueEnd(state);
+    }
+    const lgFinal = state.league?.final;
     state.history.push({
       year: state.year,
       reputationLevel: state.reputation.level,
@@ -1270,6 +1427,18 @@ export function confirmYearEnd(state: GameState): Player[] {
       winterResult: c.winterResult ?? "—",
       summerResult: c.summerResult ?? "—",
       rookieResult: c.rookieResult ?? "—",
+      ...(lgFinal && lgFinal.playerLevel > 0
+        ? {
+            league: {
+              level: lgFinal.playerLevel,
+              position: lgFinal.position,
+              size: lgFinal.size,
+              promoted: lgFinal.promoted,
+              relegated: lgFinal.relegated,
+              retiredBeforeEnd: c.retiredDay !== undefined && c.retiredDay < Math.max(...(divisionOf(state.league!, state.playerSchoolId)?.days ?? [0])),
+            },
+          }
+        : {}),
     });
     // スカウトの返事がまだなら、ここで決める
     if (state.scout && !state.scout.replied) resolveScoutReply(state, rng);
@@ -1371,6 +1540,7 @@ const MAJOR_LABELS: Record<MajorKind, string> = {
   summerNational: "夏全国",
   rookiePref: "新人戦",
   rookieRegion: "新人戦",
+  league: "リーグ",
   camp: "合宿",
   scoutReply: "スカウト",
   graduation: "卒業式",
@@ -1403,5 +1573,6 @@ export function squareDisplay(state: GameState, sq: Square): { type: Square["bas
     return { type: "major", label: MAJOR_LABELS[kind] };
   }
   if (kind === "scoutReply" && !state.scout) return { type: sq.baseType };
+  if (kind === "league" && !(state.league?.active && fixtureOn(state.league, me, sq.day))) return { type: sq.baseType };
   return { type: "major", label: MAJOR_LABELS[kind] };
 }

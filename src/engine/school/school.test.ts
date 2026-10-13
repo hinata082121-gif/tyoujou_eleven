@@ -59,3 +59,22 @@ describe("学校の生成", () => {
     expect(s.players.every((p) => p.grade >= 1 && p.grade <= 3)).toBe(true);
   });
 });
+
+describe("CPU 校の格の変動（P3）", () => {
+  it("もとの格の近くにとどまり、20 年で上に散らばらない", () => {
+    const rng = Rng.fromSeed("drift");
+    let atTop = 0;
+    let far = 0;
+    const n = 200;
+    for (let i = 0; i < n; i++) {
+      const s = makeCpuSchool(rng, `x${i}`, "x", "p", 4, 1);
+      for (let y = 2; y <= 21; y++) advanceCpuSchool(rng, s, y);
+      expect(s.basePrestige).toBe(4);
+      if (s.prestige === 5) atTop++;
+      if (Math.abs(s.prestige - 4) >= 2) far++;
+    }
+    // 戻りやすさがあるので、格 5 にいるのは 1〜2 割（ずっと上がり続ける学校はない）
+    expect(atTop / n).toBeLessThan(0.25);
+    expect(far / n).toBeLessThan(0.05);
+  });
+});

@@ -25,7 +25,7 @@ import { captainTable, goldTable, graduateSkillTable, styleContributionTable, st
 const MODE = process.argv[2] === "full" ? "full" : "quick";
 const PRESETS = {
   quick: { n: 2000, tactics: 200, combos: false, underdog: 300, seasonGames: 8, seasonYears: 8, cards: 1000, pk: 2000, notes: 500, scenes: 800, growthGames: 3, growthYears: 6, p2bMatches: 600, p2bStyle: 200, p2bTeam: 400, p2cScout: 20, p2cFatigue: 200 },
-  full: { n: 10000, tactics: 600, combos: true, underdog: 1500, seasonGames: 48, seasonYears: 12, cards: 5000, pk: 10000, notes: 3000, scenes: 4000, growthGames: 12, growthYears: 10, p2bMatches: 3000, p2bStyle: 1000, p2bTeam: 2000, p2cScout: 100, p2cFatigue: 1000 },
+  full: { n: 10000, tactics: 600, combos: true, underdog: 1500, seasonGames: 72, seasonYears: 20, cards: 5000, pk: 10000, notes: 3000, scenes: 4000, growthGames: 12, growthYears: 10, p2bMatches: 3000, p2bStyle: 1000, p2bTeam: 2000, p2cScout: 100, p2cFatigue: 1000 },
 }[MODE];
 const env = (key: string, fallback: number) => Number(process.env[key] ?? fallback);
 const SEASON_MARK = "@@SEASON@@";

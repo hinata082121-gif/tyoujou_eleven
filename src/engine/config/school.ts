@@ -56,20 +56,23 @@ export const TIER_SETTINGS: Record<
     playerPrefSchools: { min: 28, max: 32 },
     playerPrefPrestige: [26, 26, 22, 15, 9, 2],
     otherPrefSchools: 4,
-    otherPrefPrestige: [0, 4, 18, 32, 32, 14],
+    /** P3 で格 5 を減らした（全国の上位に S が多すぎて、自校が全国で優勝できなかったため。計画 Q7） */
+    otherPrefPrestige: [0, 8, 26, 38, 24, 4],
   },
   normal: {
     playerPrefSchools: { min: 20, max: 26 },
-    playerPrefPrestige: [30, 28, 22, 13, 6, 1],
+    /** P3 で自県の格 4・5 を減らした（全国優勝の経験を区分ごとの目標に合わせる。報告書 4章 Q1） */
+    playerPrefPrestige: [33, 31, 23, 10, 2.5, 0.5],
     otherPrefSchools: 3,
-    otherPrefPrestige: [3, 12, 28, 32, 19, 6],
+    otherPrefPrestige: [4, 16, 32, 32, 14, 2],
   },
   small: {
     playerPrefSchools: { min: 16, max: 19 },
-    playerPrefPrestige: [36, 30, 20, 10, 4, 0],
+    /** P3 で自県の格 4・5 を減らした（同上） */
+    playerPrefPrestige: [40, 32, 19, 8, 1, 0],
     /** P2c で 2 → 3（開催県になったときに夏の予選の意味がなくならないように） */
     otherPrefSchools: 3,
-    otherPrefPrestige: [8, 22, 34, 24, 10, 2],
+    otherPrefPrestige: [10, 26, 36, 20, 8, 0],
   },
 };
 
@@ -90,8 +93,9 @@ export const RANK_STRENGTH_MIN: Record<SchoolRank, number> = {
  * CPU 校の「格」（prestige 0〜5。ほぼランクに対応）ごとの新入生の能力の基準値。
  * 2・3 年生は、新入生として生成してから在学年数分の成長をかけて作る。
  * 格の高い学校ほど良い新入生が集まる（特待生に相当）。
+ * P3 で格 5 を 52 → 49 に下げた（全国の上位に S が多すぎたため。計画 Q7）
  */
-export const PRESTIGE_LEVEL_BASE = [28, 33, 37.3, 42, 47.2, 52];
+export const PRESTIGE_LEVEL_BASE = [28, 33, 37.3, 42, 47.2, 49];
 /** 格ごとの 1 学年の人数 */
 export const PRESTIGE_GRADE_SIZE = [9, 10, 11, 12, 13, 14];
 
@@ -106,6 +110,13 @@ export const PLAYER_START = {
 export const PRESTIGE_DRIFT = {
   /** 上下に 1 動く確率 */
   chance: 0.15,
+  /**
+   * もとの格から離れているとき、もとの格の方へ動く確率（P3）。
+   * 上下が半々だと 20 年で格が均等に散らばり、格 5 が 5 校 → 30 校近くまで増えていたため
+   */
+  returnChance: 0.8,
+  /** もとの格にいるとき、実際に動く割合（動かなければそのまま） */
+  leaveBaseChance: 0.5,
   /** 全国大会で好成績なら上がりやすい */
 };
 

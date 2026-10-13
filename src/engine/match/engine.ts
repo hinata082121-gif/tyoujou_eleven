@@ -5,6 +5,7 @@
  * 表示側はここで生成したイベントを再生するだけ。
  */
 import { FORMATIONS, type Lane, type Slot } from "../config/formations";
+import { EVENT_ZONES } from "./zones";
 import { MATCH } from "../config/match";
 import { CONDITION_MULT } from "../config/player";
 import { weightedStats } from "../player/rating";
@@ -80,6 +81,8 @@ export interface TeamInput {
   note?: Omit<NoteMatchState, "fired" | "stopped">;
   /** キャプテン（P2b） */
   captainId?: string;
+  /** 采配は試合前とハーフタイムだけ（P3。リーグ戦・練習試合の采配あり） */
+  breaksOnly?: boolean;
 }
 
 function toMatchPlayer(p: Player): MatchPlayer {
@@ -114,8 +117,10 @@ function makeTeam(input: TeamInput, benchSize: number, form: number): MatchTeamS
     name: input.name,
     rank: input.rank,
     isUser: input.isUser,
+    ...(input.breaksOnly ? { breaksOnly: true } : {}),
     players,
     onPitch: lineup,
+    shapes: [{ minute: 0, formation: input.setup.formation, onPitch: [...lineup] }],
     bench,
     subbedOff: [],
     formation: input.setup.formation,
@@ -280,6 +285,14 @@ function applyPending(state: MatchState, side: Side) {
     if (changed) state.events.push({ minute, side, type: "tactics" });
   }
   team.pending = null;
+  recordShape(team, minute);
+}
+
+/** 並びが変わっていれば記録する（2D の再生用。計算には使わない） */
+export function recordShape(team: MatchTeamState, minute: number) {
+  const last = team.shapes?.at(-1);
+  if (last && last.formation === team.formation && last.onPitch.every((id, i) => id === team.onPitch[i])) return;
+  (team.shapes ??= []).push({ minute, formation: team.formation, onPitch: [...team.onPitch] });
 }
 
 /**
@@ -514,6 +527,8 @@ class SegmentSim {
   private momentumDelta = 0;
   /** 今の攻撃のレーン（ゾーン別の集計用） */
   private currentLane: Lane = "C";
+  /** 今攻めている側（イベントのレーンを、イベントの側から見た向きにするため。演出用） */
+  private attackSide: Side = 0;
   private assist: AssistCand | undefined;
   /** 今の攻撃がサイドから生まれた（カーブシュート用） */
   private fromSide = false;
@@ -711,7 +726,16 @@ class SegmentSim {
     if (extra?.skill) ev.skill = extra.skill;
     if (extra?.move) ev.move = extra.move;
     if (extra?.assist) ev.assist = extra.assist;
+    this.place(ev);
     this.events.push(ev);
+  }
+
+  /** 演出用の位置（乱数は使わない。P3）。レーンは攻めている側から見たものなので、守る側のイベントは左右を入れ替える */
+  private place(ev: MatchEvent) {
+    const lane = this.currentLane;
+    ev.lane = ev.side === this.attackSide || lane === "C" ? lane : lane === "L" ? "R" : "L";
+    const zone = EVENT_ZONES[ev.type];
+    if (zone) ev.zone = zone;
   }
 
   private bumpMomentum(side: Side, amount: number) {
@@ -808,6 +832,7 @@ class SegmentSim {
   /** 攻撃 1 回 */
   attack(side: Side, minute: number, counter = false) {
     this.currentLane = "C";
+    this.attackSide = side;
     this.assist = undefined;
     this.fromSide = false;
     this.setPieceKick = false;
@@ -1111,6 +1136,19 @@ class SegmentSim {
     }
   }
 
+  /**
+   * パワープレイの場面（P3）：ビハインドで、試合の終わり（延長があれば延長の終わり）まで残り powerPlayMinutes 分以内。
+   * ロングボール主体＋ライン高の「届きやすさ」は、この場面でだけ効く
+   */
+  private powerPlayScene(side: Side, minute: number): boolean {
+    if (this.state.score[side] >= this.state.score[other(side)]) return false;
+    const h = this.state.rules.halfMinutes;
+    const et = this.state.rules.extraTimeHalfMinutes ?? 0;
+    const inExtra = this.state.phase === "ET1" || this.state.phase === "ET2";
+    const end = inExtra ? 2 * h + 2 * et : 2 * h;
+    return end - minute <= MATCH.powerPlayMinutes;
+  }
+
   /** ロングボール：パス（精度）× キック力（届く距離）（7.3） */
   private longBall(side: Side, minute: number) {
     const atk = this.ctx[side];
@@ -1127,7 +1165,7 @@ class SegmentSim {
     const feed = fromGk ? this.line(kicker, "feed") : 0;
     const lp = styleBonus(kicker.t, "longPass") + feed;
     const ks = st(kicker, fromGk ? "gk" : "pass");
-    const reach = atk.team.tactics.line === "high" && atk.team.tactics.buildUp === "long" ? MATCH.longHighLineReach : 0;
+    const reach = atk.team.tactics.line === "high" && atk.team.tactics.buildUp === "long" && this.powerPlayScene(side, minute) ? MATCH.longHighLineReach : 0;
     const lb = longBallOutcome(this.rng, ks.kickPower + lp + reach, ks.pass + lp);
     if (lb !== "ok") {
       this.emit(minute, side, lb === "short" ? "longBallShort" : "longBallLost", [kicker.id]);
@@ -1288,6 +1326,7 @@ class SegmentSim {
     const ev: MatchEvent = { minute, side, type: note === "pk" ? "pkGoal" : "goal", players: [scorer.id], score: [s.score[0], s.score[1]] };
     if (note) ev.note = note;
     if (skill) ev.skill = skill;
+    this.place(ev);
     // 試合での成果（P2b）
     const ms = this.ms(scorer);
     if (ms && note === "oneOnOne") ms.oneOnOneGoals++;
@@ -1501,12 +1540,19 @@ export function playSegment(state: MatchState): MatchEvent[] {
   state.momentumHistory.push(Math.round(state.momentum));
   state.segmentInPhase++;
   state.minute = segStart + segMinutes;
+  // 区間の中の退場・ケガで並びが変わっていれば記録する（2D の再生用）
+  recordShape(state.teams[0], state.minute);
+  recordShape(state.teams[1], state.minute);
   state.rng = rng.state();
   if (state.minute >= phaseStartMinute(state) + len) endOfPhase(state);
   // 作戦ノート → CPU（結果のみモードの自校を含む）の采配。どちらも次の区間から反映
   for (const side of [0, 1] as Side[]) if (state.teams[side].note) evaluateNote(state, side);
   for (const side of [0, 1] as Side[]) {
-    if (state.teams[side].isUser) continue;
+    if (state.teams[side].isUser) {
+      // 采配がハーフタイムだけのときは、ノートが交代させなかったケガ人を自動で交代する
+      if (state.teams[side].breaksOnly) autoReplaceInjured(state, side);
+      continue;
+    }
     autoReplaceInjured(state, side);
     decideAi(state, side);
   }

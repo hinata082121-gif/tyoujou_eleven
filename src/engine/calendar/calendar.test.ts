@@ -21,9 +21,9 @@ describe("カレンダー", () => {
     expect(kinds("national")).toHaveLength(6);
     expect(kinds("graduation").map((s) => dayToDate(s.day))).toEqual([[3, 1]]);
     expect(kinds("yearEnd").map((s) => s.day)).toEqual([364]);
-    // 練習試合は年に 6〜8 回
-    expect(kinds("practiceMatch").length).toBeGreaterThanOrEqual(6);
-    expect(kinds("practiceMatch").length).toBeLessThanOrEqual(8);
+    // 練習試合は年に 4〜6 回（P3 でリーグ戦が入ったため減らした）
+    expect(kinds("practiceMatch").length).toBeGreaterThanOrEqual(4);
+    expect(kinds("practiceMatch").length).toBeLessThanOrEqual(6);
     // 通常マスの種類は 5 種類
     const types = new Set(squares.map((s) => s.baseType));
     expect([...types].sort()).toEqual(["blue", "green", "red", "training", "white", "yellow"]);

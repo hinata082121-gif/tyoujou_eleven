@@ -14,7 +14,7 @@
 
 ## 現在のフェーズ
 
-- **Phase 2c**（SPEC.md 13章を参照）：特待生スカウト・夏の全国大会・新人戦・合宿（夏・冬）・分岐マス・連戦の疲労・設備（SPEC 15章）。これで Phase 2 は完了。リーグ戦と「采配あり／結果のみ」の切り替え（Phase 3）、2D・3D 表示（Phase 3・4）、アクセス解析・広告・課金は作らない
+- **Phase 3**（SPEC.md 13章を参照）：県リーグ（県内の部と昇格・降格）・「采配あり／結果のみ」の切り替え・簡易2D表示（演出タイムライン）・全国優勝の到達率と戦術のバランスの調整。計画は `docs/PHASE3_PLAN.md`。3D観戦（Phase 4）、上位リーグ（地域・全国）との昇格・降格・OBイベント・留学生・アクセス解析・広告・課金（Phase 5）は作らない
 - 計画は `docs/PHASE2C_PLAN.md`（2026-10-11 承認）
 
 ## アーキテクチャの原則
@@ -47,7 +47,8 @@
   - 大量の試合（`BALANCE_N`。quick 2000／full 10000）
   - 戦術の相性表（`BALANCE_TACTICS_N`。quick 200／full 600。full は戦術の全36通りの確認つき）
   - 格上と戦うときの型ごとの成績（`BALANCE_UNDERDOG_N`。quick 300／full 1500）
-  - うまい采配の自動プレイで何年分も進めた評判の推移・同じランクへの勝率・成長・スタッフの入れ替わり（`BALANCE_SEASON_GAMES` 校 × `BALANCE_SEASON_YEARS` 年。quick 6×8／full 20×12）
+  - うまい采配の自動プレイで何年分も進めた評判の推移・同じランクへの勝率・成長・スタッフの入れ替わり（`BALANCE_SEASON_GAMES` 校 × `BALANCE_SEASON_YEARS` 年。quick 8×8／full 72×20。県の区分ごとに同数）
   - Phase 2a：カード・ケガ（`BALANCE_CARDS_N`）、PK 戦とスカウティング（`BALANCE_PK_N`）、作戦ノートあり・なし（`BALANCE_NOTES_N`）、場面の比較：逃げ切り・パワープレイ・疲れた選手の交代（`BALANCE_SCENES_N`）、スタッフなし／最高のスタッフでの成長（`BALANCE_GROWTH_GAMES` × `BALANCE_GROWTH_YEARS`）
+  - Phase 3：全国ベスト4・優勝に初めて届いた年と届いた学校の割合、全国大会の優勝校のランク、名門の年の自校のランク、県リーグ（何年目に何部か・昇格／降格・冬の県予選の引退後の降格）
   - Phase 2b：卒業生の特殊能力（プラスの数・金色・両利き）と総合値の分布（評判の推移の卒業生）、スタイル別の貢献と動きの範囲ごとの関与（`BALANCE_P2B_MATCHES`）、1 人のスタイルだけを変えた勝率（`BALANCE_P2B_STYLE_N`）、キャプテンの効果量と金色 1 人の効果（`BALANCE_P2B_TEAM_N`）
 - `npm run build`：静的書き出し（`out/` に出力。Vercel はこれを配信する）

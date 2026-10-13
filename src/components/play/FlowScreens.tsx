@@ -29,6 +29,30 @@ export function MatchResultScreen() {
           </p>
         )}
         <p className={`text-3xl font-black ${color}`}>{resultText}</p>
+        {r.stats && (
+          <table className="w-full max-w-xs text-sm">
+            <tbody>
+              {(
+                [
+                  ["シュート", r.stats.shots],
+                  ["枠内", r.stats.onTarget],
+                  ["支配率", r.stats.possession.map((v) => `${v}%`)],
+                ] as [string, (number | string)[]][]
+              ).map(([k, v]) => (
+                <tr key={k}>
+                  <td className="w-1/3 text-right font-mono font-bold">{v[0]}</td>
+                  <td className="w-1/3 text-center text-xs text-gray-500">{k}</td>
+                  <td className="w-1/3 text-left font-mono">{v[1]}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {r.league && (
+          <p className="rounded-xl bg-gray-50 px-4 py-2 text-sm">
+            リーグ {r.league.level}部：<b>{r.league.position}位</b>（{r.league.size}校・勝ち点{r.league.points}）{r.league.finished && " 全節終了"}
+          </p>
+        )}
         {r.goals.length > 0 && (
           <ul className="w-full rounded-xl border border-gray-200 p-3 text-left text-sm">
             {r.goals.map((g, i) => (

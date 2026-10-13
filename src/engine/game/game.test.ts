@@ -70,7 +70,7 @@ describe("ゲームの進行", () => {
     expect(teams.filter((id) => tokyo.schoolIds.includes(id!))).toHaveLength(2);
   });
 
-  it("「結果のみ」は練習試合だけ選べる", () => {
+  it("「結果のみ」は練習試合とリーグ戦だけ選べる", () => {
     const s = newGame("auto", "E高校");
     const st = newAutoplayStats();
     let sawPractice = false;
@@ -78,12 +78,12 @@ describe("ゲームの進行", () => {
     for (let i = 0; i < 3000 && !(sawPractice && sawTournament); i++) {
       const p = s.pending;
       if (p?.type === "match" && !s.activeMatch) {
-        if (p.kind === "practice" && !sawPractice) {
+        if ((p.kind === "practice" || p.kind === "league") && !sawPractice) {
           expect(canSkipWatching(s)).toBe(true);
           const m = startPlayerMatch(s, defaultSetup(s), "auto")!;
           expect(m.state.phase).toBe("END");
           sawPractice = true;
-        } else if (p.kind !== "practice" && !sawTournament) {
+        } else if (p.kind !== "practice" && p.kind !== "league" && !sawTournament) {
           expect(canSkipWatching(s)).toBe(false);
           expect(startPlayerMatch(s, defaultSetup(s), "auto")).toBeNull();
           sawTournament = true;
@@ -94,11 +94,11 @@ describe("ゲームの進行", () => {
     expect(sawPractice && sawTournament).toBe(true);
   });
 
-  it("練習試合は年に 6〜8 回", () => {
+  it("練習試合は年に 4〜6 回", () => {
     const s = newGame("pm", "F高校");
     const n = s.calendar.squares.filter((sq) => sq.major?.kind === "practiceMatch").length;
-    expect(n).toBeGreaterThanOrEqual(6);
-    expect(n).toBeLessThanOrEqual(8);
+    expect(n).toBeGreaterThanOrEqual(4);
+    expect(n).toBeLessThanOrEqual(6);
   });
 
   it("不戦勝の次のラウンドは、同じカードで通り過ぎずにその日に止まる", () => {
