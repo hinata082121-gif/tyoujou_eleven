@@ -18,11 +18,14 @@ import {
   type School,
   type StatKey,
 } from "@/engine/types";
+import { packLook, unpackLook } from "@/engine/look";
 
 /**
  * [id, name, grade, enrolledYear, retired, mainPos, height, heightLeft, foot, aptitude, stats, exp, potential, fitness, condition, injuryDays,
- *  traits, suspended, [apps, goals, officialApps, officialGoals], scholarship]
+ *  traits, look, suspended, [apps, goals, officialApps, officialGoals], scholarship]
  * traits はスキーマ v4 で追加（v3 以前は無いので、マイグレーションで差し込む）。
+ * look（[背番号（無ければ -1）, 見た目の要素…]）はスキーマ v7 で追加（v6 以前はマイグレーションで差し込む）。
+ * 見た目の要素は config/look.ts の LOOK_PARTS の順で、要素が増えたら後ろに足す（足りない分は 0 として読む）。
  * suspended と記録はスキーマ v3 で追加（記録が空なら省く）。
  * 最後の scholarship（特待生なら 1）はスキーマ v5 で追加（一般入部なら省く）
  */
@@ -44,6 +47,7 @@ export type PackedPlayer = [
   number,
   number,
   PackedTraits,
+  number[],
   number?,
   number[]?,
   (0 | 1)?,
@@ -109,6 +113,7 @@ export function packPlayer(p: Player): PackedPlayer {
     p.condition,
     p.injuryDays,
     packTraits(p),
+    p.look ? [p.shirtNumber ?? -1, ...packLook(p.look)] : [],
   ];
   // CPU 校の部員（数千人）は記録が空なので、容量のために省く
   const scholar = p.admission === "scholarship";
@@ -117,8 +122,14 @@ export function packPlayer(p: Player): PackedPlayer {
   return packed;
 }
 
-export function unpackPlayer(a: PackedPlayer): Player {
-  const [id, name, grade, enrolledYear, retired, pos, height, heightLeft, foot, apt, stats, exp, potential, fitness, condition, injuryDays, traits, suspended, rec, scholarship] = a;
+/** v6 以前の形式（添字 17 に見た目の欄が無い）なら、空の欄を差し込む（マイグレーションの途中でも読めるように） */
+export function withLookSlot(a: PackedPlayer | unknown[]): PackedPlayer {
+  return (Array.isArray(a[17]) ? a : [...a.slice(0, 17), [], ...a.slice(17)]) as PackedPlayer;
+}
+
+export function unpackPlayer(packed: PackedPlayer): Player {
+  const a = withLookSlot(packed);
+  const [id, name, grade, enrolledYear, retired, pos, height, heightLeft, foot, apt, stats, exp, potential, fitness, condition, injuryDays, traits, look, suspended, rec, scholarship] = a;
   const aptitude = {} as Record<(typeof POSITIONS)[number], Aptitude>;
   POSITIONS.forEach((p, i) => (aptitude[p] = Number(apt[i]) as Aptitude));
   const s = {} as Record<StatKey, number>;
@@ -148,7 +159,15 @@ export function unpackPlayer(a: PackedPlayer): Player {
     suspended: suspended ?? 0,
     record: { apps: rec?.[0] ?? 0, goals: rec?.[1] ?? 0, officialApps: rec?.[2] ?? 0, officialGoals: rec?.[3] ?? 0 },
     ...unpackTraits(traits),
+    ...unpackLookPack(look),
   };
+}
+
+function unpackLookPack(a: number[] | undefined): Pick<Player, "look" | "shirtNumber"> {
+  if (!a || a.length === 0) return {};
+  const out: Pick<Player, "look" | "shirtNumber"> = { look: unpackLook(a.slice(1)) };
+  if (a[0] >= 0) out.shirtNumber = a[0];
+  return out;
 }
 
 type PackedSchool = Omit<School, "players"> & { players: PackedPlayer[] };
