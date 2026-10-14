@@ -3,6 +3,7 @@
 import { useId } from "react";
 import { BROWS, EYES, HAIR_COLORS, HAIR_STYLES, KIT_PALETTE, KIT_TEMPLATES, MOUTHS, SKIN_TONES } from "@/engine/config/look";
 import { gkKit, numberColor } from "@/engine/look";
+import type { StaffAppearance, StaffOutfit } from "@/engine/look/staff";
 import type { Kit, Look } from "@/engine/types";
 
 /**
@@ -10,11 +11,24 @@ import type { Kit, Look } from "@/engine/types";
  * 3D のコード（three）は使わない（選手の詳細・ユニフォームの設定・学校作成で使うため）
  */
 
-export type Expression = "normal" | "focus" | "joy" | "sad";
+/** 表情（R1 で驚き・悔しいを足した） */
+export type Expression = "normal" | "focus" | "joy" | "sad" | "surprise" | "frustrated";
 
 const col = (c: number) => KIT_PALETTE[c] ?? KIT_PALETTE[0];
 const pick = <T extends { id: string }>(list: readonly T[], i: number) => (list[i] ?? list[0]).id;
 const hex = (list: readonly { hex: string }[], i: number) => (list[i] ?? list[0]).hex;
+
+/** px（基準の大きさのとき）を rem にする。画面の拡大（DESIGN.md 3.1）に合わせて絵も大きくなる */
+const rem = (px: number) => `${px / 16}rem`;
+
+/** 2 つの色を混ぜる（髪の白さ） */
+function mix(a: string, b: string, t: number) {
+  if (t <= 0) return a;
+  const p = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const [x, y] = [p(a), p(b)];
+  return `#${x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, "0")).join("")}`;
+}
+const GRAY_HAIR = "#bdbbb5";
 
 const DEFAULT_LOOK: Look = { hair: 0, hairColor: 0, skin: 2, eyes: 1, brows: 0, mouth: 1 };
 
@@ -23,11 +37,12 @@ function Face({ look, expr, cx, cy, r }: { look: Look; expr: Expression; cx: num
   const s = r / 28;
   const ink = "#2a1d18";
   const eyeY = cy + 4 * s;
-  const eye = expr === "joy" ? "smile" : expr === "sad" ? "sad" : pick(EYES, look.eyes);
+  const eye = expr === "joy" ? "smile" : expr === "sad" ? "sad" : expr === "surprise" ? "wide" : expr === "frustrated" ? "shut" : pick(EYES, look.eyes);
   const brow = pick(BROWS, look.brows);
-  const tilt = expr === "sad" ? -4 : expr === "focus" ? 4 : brow === "up" ? 3 : brow === "worried" ? -3 : 0;
+  const tilt = expr === "sad" ? -4 : expr === "focus" ? 4 : expr === "frustrated" ? 6 : expr === "surprise" ? -1.5 : brow === "up" ? 3 : brow === "worried" ? -3 : 0;
+  const browLift = expr === "surprise" ? 3.5 : 0;
   const bw = brow === "thick" ? 3 : brow === "thin" ? 1.2 : 2;
-  const mouth = expr === "joy" ? "open" : expr === "sad" ? "frown" : expr === "focus" ? "flat" : pick(MOUTHS, look.mouth);
+  const mouth = expr === "joy" ? "open" : expr === "sad" ? "frown" : expr === "focus" ? "flat" : expr === "surprise" ? "bigO" : expr === "frustrated" ? "teeth" : pick(MOUTHS, look.mouth);
   const my = cy + 17 * s;
   return (
     <g stroke={ink} fill={ink} strokeLinecap="round">
@@ -58,6 +73,15 @@ function Face({ look, expr, cx, cy, r }: { look: Look; expr: Expression; cx: num
             return <ellipse key={d} cx={ex} cy={eyeY + 0.6 * s} rx={2.2 * s} ry={2.8 * s} transform={`rotate(${d * 20} ${ex} ${eyeY})`} stroke="none" />;
           case "sharp":
             return <ellipse key={d} cx={ex} cy={eyeY} rx={2.6 * s} ry={2 * s} transform={`rotate(${-d * 18} ${ex} ${eyeY})`} stroke="none" />;
+          case "wide":
+            return (
+              <g key={d} stroke="none">
+                <circle cx={ex} cy={eyeY} r={3.6 * s} fill="#fff" stroke={ink} strokeWidth={0.9 * s} />
+                <circle cx={ex} cy={eyeY} r={1.7 * s} />
+              </g>
+            );
+          case "shut":
+            return <path key={d} d={`M${ex - 3.2 * s},${eyeY - 1.6 * s} L${ex + 3.2 * s},${eyeY + 0.4 * s} M${ex - 3.2 * s},${eyeY + 1.4 * s} L${ex + 3.2 * s},${eyeY + 0.4 * s}`} fill="none" strokeWidth={1.5 * s} transform={d > 0 ? `scale(-1 1) translate(${-2 * ex} 0)` : undefined} />;
           case "smile":
             return <path key={d} d={`M${ex - 3 * s},${eyeY + 1 * s} Q${ex},${eyeY - 3 * s} ${ex + 3 * s},${eyeY + 1 * s}`} fill="none" strokeWidth={1.6 * s} />;
           default:
@@ -66,7 +90,7 @@ function Face({ look, expr, cx, cy, r }: { look: Look; expr: Expression; cx: num
       })}
       {[-1, 1].map((d) => {
         const bx = cx + d * 9 * s;
-        const by = cy - 4 * s;
+        const by = cy - 4 * s - browLift * s;
         return <line key={`b${d}`} x1={bx - d * 4 * s} y1={by + tilt * 0.2 * s} x2={bx + d * 4 * s} y2={by - tilt * s} strokeWidth={bw * s} />;
       })}
       {mouth === "flat" && <line x1={cx - 3 * s} y1={my} x2={cx + 3 * s} y2={my} strokeWidth={1.4 * s} />}
@@ -74,14 +98,21 @@ function Face({ look, expr, cx, cy, r }: { look: Look; expr: Expression; cx: num
       {mouth === "wide" && <path d={`M${cx - 5 * s},${my - 1.5 * s} Q${cx},${my + 3 * s} ${cx + 5 * s},${my - 1.5 * s}`} fill="none" strokeWidth={1.4 * s} />}
       {mouth === "o" && <ellipse cx={cx} cy={my} rx={1.6 * s} ry={2 * s} fill="none" strokeWidth={1.3 * s} />}
       {mouth === "open" && <path d={`M${cx - 4.5 * s},${my - 1.5 * s} Q${cx},${my + 6 * s} ${cx + 4.5 * s},${my - 1.5 * s} Z`} fill="#7a2a2a" stroke="none" />}
+      {mouth === "bigO" && <ellipse cx={cx} cy={my + 1 * s} rx={2.8 * s} ry={3.6 * s} fill="#7a2a2a" stroke="none" />}
+      {mouth === "teeth" && (
+        <g>
+          <rect x={cx - 5 * s} y={my - 2 * s} width={10 * s} height={4.4 * s} fill="#fff" stroke={ink} strokeWidth={1 * s} />
+          <line x1={cx - 5 * s} y1={my + 0.2 * s} x2={cx + 5 * s} y2={my + 0.2 * s} strokeWidth={0.7 * s} />
+        </g>
+      )}
       {mouth === "frown" && <path d={`M${cx - 3.5 * s},${my + 1.5 * s} Q${cx},${my - 2 * s} ${cx + 3.5 * s},${my + 1.5 * s}`} fill="none" strokeWidth={1.4 * s} />}
     </g>
   );
 }
 
 /** 髪（前から。頭の中心 cx, cy、半径 r） */
-function Hair({ look, cx, cy, r, back = false }: { look: Look; cx: number; cy: number; r: number; back?: boolean }) {
-  const c = hex(HAIR_COLORS, look.hairColor);
+function Hair({ look, cx, cy, r, back = false, gray = 0 }: { look: Look; cx: number; cy: number; r: number; back?: boolean; gray?: number }) {
+  const c = mix(hex(HAIR_COLORS, look.hairColor), GRAY_HAIR, gray);
   const style = pick(HAIR_STYLES, look.hair);
   const s = r / 28;
   const top = cy - r - 2 * s;
@@ -149,17 +180,22 @@ function Hair({ look, cx, cy, r, back = false }: { look: Look; cx: number; cy: n
   }
 }
 
-/** 顔だけ（選手の一覧・詳細など） */
-export function PlayerFace({ look = DEFAULT_LOOK, expr = "normal", size = 48, kit }: { look?: Look; expr?: Expression; size?: number; kit?: Kit }) {
+/**
+ * 顔だけ（選手・スタッフの一覧など）。肩まで描く：kit = ユニフォーム、outfit = スタッフの服、shirt = 私服の色（OB・スカウトの候補）
+ */
+export function PlayerFace({ look = DEFAULT_LOOK, expr = "normal", size = 48, kit, outfit, shirt, gray = 0 }: { look?: Look; expr?: Expression; size?: number; kit?: Kit; outfit?: StaffOutfit; shirt?: string; gray?: number }) {
   const skin = hex(SKIN_TONES, look.skin);
+  const body = outfit ? col(outfit.top) : kit ? col(kit.main) : shirt;
   return (
-    <svg viewBox="0 0 64 64" width={size} height={size} role="img" aria-label="選手の顔">
-      {kit && <path d="M10,64 Q12,50 32,50 Q52,50 54,64 Z" fill={col(kit.main)} />}
+    <svg viewBox="0 0 64 64" width={rem(size)} height={rem(size)} role="img" aria-label="顔" className="shrink-0">
+      {body && <path d="M10,64 Q12,50 32,50 Q52,50 54,64 Z" fill={body} />}
+      {outfit?.kind === "polo" && <path d="M24,51 L32,58 L31,51 Z M40,51 L32,58 L33,51 Z" fill={col(outfit.trim)} />}
+      {outfit?.kind === "jersey" && <path d="M26,50.5 L38,50.5 M32,51 L32,64" stroke={col(outfit.trim)} strokeWidth={2} />}
       <circle cx={10} cy={33} r={4.5} fill={skin} />
       <circle cx={54} cy={33} r={4.5} fill={skin} />
       <ellipse cx={32} cy={30} rx={22} ry={21} fill={skin} />
       <Face look={look} expr={expr} cx={32} cy={30} r={22} />
-      <Hair look={look} cx={32} cy={30} r={22} />
+      <Hair look={look} cx={32} cy={30} r={22} gray={gray} />
     </svg>
   );
 }
@@ -201,7 +237,8 @@ function sleeveColor(kit: Kit, side: -1 | 1, back: boolean) {
 }
 
 /**
- * 全身（前か後ろ）。height・build は体型の倍率（bodyScale）。number は背番号
+ * 全身（前か後ろ）。height・build は体型の倍率（bodyScale）。number は背番号。
+ * outfit を渡すとスタッフの服（ポロシャツかジャージ、長ズボン）で描く
  */
 export function KitFigure({
   kit,
@@ -212,6 +249,8 @@ export function KitFigure({
   height = 1,
   build = 1,
   size = 120,
+  outfit,
+  gray = 0,
 }: {
   kit: Kit;
   number?: number;
@@ -221,6 +260,8 @@ export function KitFigure({
   height?: number;
   build?: number;
   size?: number;
+  outfit?: StaffOutfit;
+  gray?: number;
 }) {
   const clip = useId();
   const skin = hex(SKIN_TONES, look.skin);
@@ -237,13 +278,24 @@ export function KitFigure({
   const tx = cx - w / 2;
   const numC = numberColor(kit) === 1 ? "#1c1c1e" : "#ffffff";
   const armW = 10 * build;
+  const top = outfit ? col(outfit.top) : col(kit.main);
+  const trim = outfit ? col(outfit.trim) : col(kit.sub === kit.main ? (kit.main === 0 ? 1 : 0) : kit.sub);
+  const pants = outfit ? col(outfit.pants) : col(kit.shorts);
+  // 袖の長さ（腕の長さに対する割合）：ユニフォーム・ポロシャツは半袖、ジャージは長袖
+  const sleeve = outfit?.kind === "jersey" ? 0.78 : 0.4;
   return (
-    <svg viewBox={`0 0 100 ${total}`} width={(size * 100) / total} height={size} role="img" aria-label={back ? "ユニフォーム（後ろ）" : "ユニフォーム（前）"}>
+    <svg viewBox={`0 0 100 ${total}`} width={rem((size * 100) / total)} height={rem(size)} role="img" aria-label={outfit ? "スタッフ" : back ? "ユニフォーム（後ろ）" : "ユニフォーム（前）"} className="shrink-0">
       <ellipse cx={cx} cy={total - 5} rx={w * 0.55} ry={3.5} fill="rgba(0,0,0,0.18)" />
-      {/* 脚（パンツの下 → 膝の肌 → ソックス）と靴 */}
+      {/* 脚（パンツの下 → 膝の肌 → ソックス。スタッフは長ズボン）と靴 */}
       {[-1, 1].map((d) => {
         const lx = cx + d * w * 0.2 - 5.5 * build;
-        return (
+        return outfit ? (
+          <g key={d}>
+            <rect x={lx - 0.5} y={legY - 4} width={12 * build} height={legH + 3} fill={pants} />
+            {outfit.kind === "jersey" && <rect x={d < 0 ? lx - 0.5 : lx + 12 * build - 2.5} y={legY - 4} width={2} height={legH + 3} fill={trim} />}
+            <ellipse cx={lx + 5.5 * build} cy={legY + legH + 2} rx={7 * build} ry={4} fill="#222" />
+          </g>
+        ) : (
           <g key={d}>
             <rect x={lx} y={legY - 4} width={11 * build} height={legH + 4} rx={5 * build} fill={skin} />
             <rect x={lx} y={legY + legH * 0.38} width={11 * build} height={legH * 0.62} rx={4 * build} fill={col(kit.socks)} />
@@ -251,8 +303,8 @@ export function KitFigure({
           </g>
         );
       })}
-      {/* パンツ */}
-      <path d={`M${tx + 2},${hipY - 4} L${tx + w - 2},${hipY - 4} L${tx + w + 1},${legY + 2} L${cx + 1},${legY + 2} L${cx},${legY - 3} L${cx - 1},${legY + 2} L${tx - 1},${legY + 2} Z`} fill={col(kit.shorts)} />
+      {/* パンツ（スタッフは腰の部分） */}
+      <path d={`M${tx + 2},${hipY - 4} L${tx + w - 2},${hipY - 4} L${tx + w + 1},${legY + 2} L${cx + 1},${legY + 2} L${cx},${legY - 3} L${cx - 1},${legY + 2} L${tx - 1},${legY + 2} Z`} fill={pants} />
       {/* 腕（肩で胴につながる。袖 → 肌） */}
       {([-1, 1] as const).map((d) => {
         const ax = d < 0 ? tx - armW * 0.55 : tx + w - armW * 0.45;
@@ -260,7 +312,8 @@ export function KitFigure({
         return (
           <g key={d} transform={`rotate(${rot} ${ax + armW / 2} ${torsoY + 6})`}>
             <rect x={ax} y={torsoY + 2} width={armW} height={torsoH * 0.85} rx={armW / 2} fill={skin} />
-            <rect x={ax} y={torsoY + 2} width={armW} height={torsoH * 0.4} rx={armW / 2} fill={sleeveColor(kit, d, back)} />
+            <rect x={ax} y={torsoY + 2} width={armW} height={torsoH * 0.85 * sleeve} rx={armW / 2} fill={outfit ? top : sleeveColor(kit, d, back)} />
+            {outfit?.kind === "jersey" && <rect x={d < 0 ? ax + 1 : ax + armW - 3} y={torsoY + 6} width={2} height={torsoH * 0.85 * sleeve - 6} fill={trim} />}
           </g>
         );
       })}
@@ -268,15 +321,30 @@ export function KitFigure({
       <clipPath id={clip}>
         <rect x={tx} y={torsoY} width={w} height={torsoH} rx={13 * build} />
       </clipPath>
-      <rect x={tx} y={torsoY} width={w} height={torsoH} rx={13 * build} fill={col(kit.main)} />
+      <rect x={tx} y={torsoY} width={w} height={torsoH} rx={13 * build} fill={top} />
       <g clipPath={`url(#${clip})`}>
-        <Pattern kit={kit} back={back} x={tx} y={torsoY} w={w} h={torsoH} />
-        {/* 襟 */}
-        <path d={`M${cx - 8},${torsoY} Q${cx},${torsoY + (back ? 3 : 8)} ${cx + 8},${torsoY}`} fill="none" stroke={col(kit.sub === kit.main ? (kit.main === 0 ? 1 : 0) : kit.sub)} strokeWidth={2.5} />
+        {!outfit && <Pattern kit={kit} back={back} x={tx} y={torsoY} w={w} h={torsoH} />}
+        {/* 襟（ユニフォーム：丸首、ポロシャツ：折り返しの襟と前立て、ジャージ：立ち襟とファスナー） */}
+        {!outfit && <path d={`M${cx - 8},${torsoY} Q${cx},${torsoY + (back ? 3 : 8)} ${cx + 8},${torsoY}`} fill="none" stroke={trim} strokeWidth={2.5} />}
+        {outfit?.kind === "polo" && !back && (
+          <g>
+            <path d={`M${cx - 10},${torsoY} L${cx - 1},${torsoY + 9} L${cx - 2},${torsoY} Z M${cx + 10},${torsoY} L${cx + 1},${torsoY + 9} L${cx + 2},${torsoY} Z`} fill={trim} />
+            <rect x={cx - 1} y={torsoY + 7} width={2} height={10} fill="rgba(0,0,0,0.25)" />
+            <rect x={cx + w * 0.18} y={torsoY + 12} width={7} height={5} fill={trim} opacity={0.9} />
+          </g>
+        )}
+        {outfit?.kind === "jersey" && !back && (
+          <g>
+            <rect x={cx - 9} y={torsoY - 1} width={18} height={4} fill={trim} />
+            <rect x={cx - 0.8} y={torsoY + 2} width={1.6} height={torsoH} fill={trim} />
+          </g>
+        )}
+        {outfit && back && <rect x={tx} y={torsoY} width={w} height={3} fill={trim} />}
       </g>
-      {number !== undefined &&
+      {!outfit &&
+        number !== undefined &&
         (back ? (
-          <text x={cx} y={torsoY + torsoH * 0.62} textAnchor="middle" fontSize={torsoH * 0.48} fontWeight={900} fill={numC} stroke={numC === "#ffffff" ? "rgba(0,0,0,0.45)" : "rgba(255,255,255,0.6)"} strokeWidth={1} style={{ fontFamily: "Arial Black, Arial, sans-serif" }}>
+          <text x={cx} y={torsoY + torsoH * 0.62} textAnchor="middle" fontSize={torsoH * 0.48} fontWeight={900} fill={numC} stroke={numC === "#ffffff" ? "rgba(0,0,0,0.45)" : "rgba(255,255,255,0.6)"} strokeWidth={1} style={{ fontFamily: "var(--font-num), Arial, sans-serif" }}>
             {number}
           </text>
         ) : (
@@ -284,15 +352,36 @@ export function KitFigure({
             {number}
           </text>
         ))}
+      {/* 分析担当のバインダー（体の前、右手で持つ） */}
+      {outfit?.binder && !back && (
+        <g transform={`rotate(-8 ${cx + w * 0.3} ${torsoY + torsoH * 0.6})`}>
+          <rect x={cx + w * 0.08} y={torsoY + torsoH * 0.38} width={w * 0.42} height={torsoH * 0.5} fill="#2b3134" />
+          <rect x={cx + w * 0.12} y={torsoY + torsoH * 0.42} width={w * 0.34} height={torsoH * 0.42} fill="#f1efe8" />
+          <rect x={cx + w * 0.2} y={torsoY + torsoH * 0.36} width={w * 0.18} height={3} fill="#9aa0a3" />
+        </g>
+      )}
       {/* 頭（首はなく胴にのせる） */}
       <circle cx={cx - headR + 1} cy={42} r={4.5} fill={skin} />
       <circle cx={cx + headR - 1} cy={42} r={4.5} fill={skin} />
       <ellipse cx={cx} cy={39} rx={headR} ry={headR * 0.95} fill={skin} />
       {!back && <Face look={look} expr={expr} cx={cx} cy={39} r={headR} />}
-      <Hair look={look} cx={cx} cy={39} r={headR} back={back} />
+      <Hair look={look} cx={cx} cy={39} r={headR} back={back} gray={gray} />
     </svg>
   );
 }
 
 /** GK のユニフォームの絵（試合で使う色を指定） */
 export const GkFigure = (props: Omit<Parameters<typeof KitFigure>[0], "kit"> & { color: number }) => <KitFigure {...props} kit={gkKit(props.color)} />;
+
+/** スタッフの全身（見た目・年齢・服は engine/look/staff の staffAppearance で作る） */
+export function StaffFigure({ appearance, expr = "normal", size = 120, height = 1, back = false }: { appearance: StaffAppearance; expr?: Expression; size?: number; height?: number; back?: boolean }) {
+  const a = appearance;
+  return <KitFigure kit={STAFF_DUMMY_KIT} look={a.look} expr={expr} size={size} height={height} build={a.build} outfit={a.outfit} gray={a.gray} back={back} />;
+}
+
+/** スタッフの顔 */
+export function StaffFace({ appearance, expr = "normal", size = 48 }: { appearance: StaffAppearance; expr?: Expression; size?: number }) {
+  return <PlayerFace look={appearance.look} expr={expr} size={size} outfit={appearance.outfit} gray={appearance.gray} />;
+}
+
+const STAFF_DUMMY_KIT: Kit = { template: 0, main: 0, sub: 1, shorts: 0, socks: 0 };

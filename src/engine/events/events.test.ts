@@ -36,6 +36,22 @@ describe("イベント", () => {
     }
   });
 
+  it("表示用の項目（R1）：出来事の種類と、関わった人の ID（乱数は使わない。ゲームの結果が変わらないことは balance:quick で確かめる）", () => {
+    const injury = EVENTS.find((e) => e.id === "injury")!;
+    const c = ctx("cast");
+    for (const p of c.players) p.fitness = 50;
+    const out = applyEvent(c, injury);
+    expect(out.kind).toBe("injury");
+    const hurt = c.players.find((p) => p.injuryDays > 0)!;
+    expect(out.cast).toEqual([{ kind: "player", id: hurt.id }]);
+    // OB の直伝：先頭が教えに来た OB
+    const ob = EVENTS.find((e) => e.id === "obTeach")!;
+    const c2 = ctx("cast-ob");
+    const mentor = { ...c2.players[0], id: "ob1", graduatedYear: 0, position: "CF", overall: 60, career: "pro", wasCaptain: false, record: { apps: 0, goals: 0, officialApps: 0, officialGoals: 0, winterResults: [] }, skills: ["oneOnOne1"] } as never;
+    const out2 = applyEvent({ ...c2, alumni: [mentor] }, ob);
+    expect(out2.cast?.[0]).toEqual({ kind: "alumnus", id: "ob1" });
+  });
+
   it("差し入れで体力回復・ケガで離脱・雨で次の練習の効率が下がる", () => {
     const c = ctx("x");
     for (const p of c.players) p.fitness = 50;

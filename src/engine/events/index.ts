@@ -31,7 +31,19 @@ export interface EventOutcome {
   targets?: string[];
   /** 習得した・消えた特殊能力 */
   learned?: LearnEvent[];
+  /** 表示用（R1）：出来事の種類（イベントの ID か、マスの種類）。乱数は使わない */
+  kind?: string;
+  /** 表示用（R1）：関わった人（指導した OB・スタッフ・先輩を先に、そのあと対象の選手）。乱数は使わない */
+  cast?: CastRef[];
 }
+
+/** 出来事に出てくる人（表示用） */
+export interface CastRef {
+  kind: "player" | "alumnus" | "staff";
+  id: string;
+}
+
+const playerCast = (ps: Player[]): CastRef[] => ps.map((p) => ({ kind: "player", id: p.id }));
 
 /** スタッフの役割ごとの、個別指導の候補 */
 const STAFF_TEACH_POOLS: Record<StaffRole, SkillId[]> = {
@@ -47,7 +59,7 @@ export function learnText(events: LearnEvent[]): string {
 }
 
 /** 特殊能力のイベント（OB・スタッフ・先輩・自主練・悪い癖） */
-function skillEvent(ctx: EventContext, e: Extract<EventDef["effect"], { type: "obTeach" | "staffTeach" | "seniorTeach" | "selfAwake" | "badHabit" }>, players: Player[]): { targets: Player[]; learned: LearnEvent[]; note?: string } {
+function skillEvent(ctx: EventContext, e: Extract<EventDef["effect"], { type: "obTeach" | "staffTeach" | "seniorTeach" | "selfAwake" | "badHabit" }>, players: Player[]): { targets: Player[]; learned: LearnEvent[]; note?: string; mentor?: CastRef } {
   const { rng } = ctx;
   const healthy = players.filter((p) => p.injuryDays <= 0);
   const learned: LearnEvent[] = [];
@@ -63,7 +75,7 @@ function skillEvent(ctx: EventContext, e: Extract<EventDef["effect"], { type: "o
       const sameGroup = healthy.filter((p) => styleFitsPosition(ob.playStyle, p.mainPosition));
       const targets = rng.shuffle([...(sameGroup.length > 0 ? sameGroup : healthy)]).slice(0, rng.int(1, 2));
       for (const p of targets) push(p, learnFromMentor(rng, p, ob.skills, e.base, SKILL_LEARN.goldObTeach));
-      return { targets, learned, note: `OBの${ob.name}が練習に来て、得意のプレーを教えてくれた。` };
+      return { targets, learned, note: `OBの${ob.name}が練習に来て、得意のプレーを教えてくれた。`, mentor: { kind: "alumnus", id: ob.id } };
     }
     case "staffTeach": {
       const staff = (ctx.staff?.members ?? []).filter((m) => !m.temporary);
@@ -74,15 +86,15 @@ function skillEvent(ctx: EventContext, e: Extract<EventDef["effect"], { type: "o
         const p = rng.pick(withMinus);
         const minus = rng.pick(p.skills.filter(isMinus));
         if (rng.chance(e.removeChance) && removeSkill(p, minus)) push(p, minus, "remove");
-        return { targets: [p], learned, note: `${m.name}が${p.name}の癖を直そうと付きっきりで指導した。` };
+        return { targets: [p], learned, note: `${m.name}が${p.name}の癖を直そうと付きっきりで指導した。`, mentor: { kind: "staff", id: m.id } };
       }
       const pool = STAFF_TEACH_POOLS[m.role];
       const cands = healthy.filter((p) => pool.some((id) => canLearn(p, id)));
-      if (cands.length === 0) return { targets: [], learned, note: `${m.name}が部員を熱心に指導した。` };
+      if (cands.length === 0) return { targets: [], learned, note: `${m.name}が部員を熱心に指導した。`, mentor: { kind: "staff", id: m.id } };
       const p = rng.pick(cands);
       const ability = m.role === "gk" ? m.abilities.gkCoaching : m.role === "physical" ? m.abilities.conditioning : m.role === "analyst" ? m.abilities.scouting : m.abilities.coaching;
       push(p, tryLearn(rng, p, pool, e.base * (0.5 + ability / 100)));
-      return { targets: [p], learned, note: `${m.name}が${p.name}を付きっきりで指導した。` };
+      return { targets: [p], learned, note: `${m.name}が${p.name}を付きっきりで指導した。`, mentor: { kind: "staff", id: m.id } };
     }
     case "seniorTeach": {
       const seniors = healthy.filter((p) => p.grade === 3 && p.skills.some(isPlus));
@@ -93,7 +105,7 @@ function skillEvent(ctx: EventContext, e: Extract<EventDef["effect"], { type: "o
       if (pool.length === 0) return { targets: [], learned, note: "上級生が後輩の練習に付き合った。" };
       const j = rng.pick(pool);
       push(j, learnFromMentor(rng, j, s.skills, e.base, 0));
-      return { targets: [j], learned, note: `${s.name}が${j.name}に自分の技を伝えた。` };
+      return { targets: [j], learned, note: `${s.name}が${j.name}に自分の技を伝えた。`, mentor: { kind: "player", id: s.id } };
     }
     case "selfAwake": {
       const cands = healthy.filter((p) => p.styleProficiency >= e.minProficiency);
@@ -197,13 +209,14 @@ export function applyEvent(ctx: EventContext, def: EventDef): EventOutcome {
       if (r.learned.length > 0) text += ` ${learnText(r.learned)}。`;
       else if (e.type === "badHabit") text = "部員の1人に悪い癖がつきかけたが、なんとか直った。";
       else if (targets.length > 0) text += " 今回は身につかなかった。";
-      return { title: def.title, text, tone: def.tone, targets: names.length ? names : undefined, learned: r.learned.length ? r.learned : undefined };
+      const cast = [...(r.mentor ? [r.mentor] : []), ...playerCast(targets)];
+      return { title: def.title, text, tone: def.tone, targets: names.length ? names : undefined, learned: r.learned.length ? r.learned : undefined, kind: def.id, cast };
     }
   }
   const names = targets.map((p) => p.name);
   let text = def.text;
   if (e.type === "injury" && targets[0]) text = `${targets[0].name}がケガをしてしまった（全治${targets[0].injuryDays}日）。`;
-  return { title: def.title, text, tone: def.tone, targets: names.length ? names : undefined };
+  return { title: def.title, text, tone: def.tone, targets: names.length ? names : undefined, kind: def.id, cast: playerCast(targets) };
 }
 
 /** マスの種類からイベントを選ぶ */
@@ -222,24 +235,25 @@ export function pickEvent(rng: Rng, type: "blue" | "red" | "white"): EventDef {
 
 /** 止まった通常マスの効果 */
 export function landOnSquare(ctx: EventContext, type: Exclude<SquareType, "major">): EventOutcome {
-  if (type === "branch") return { title: "分かれ道", text: "道が分かれている。", tone: "info" };
+  if (type === "branch") return { title: "分かれ道", text: "道が分かれている。", tone: "info", kind: "branch" };
   if (type === "green") {
     for (const p of activePlayers(ctx.players)) p.fitness = clampFit(p.fitness + GREEN_RECOVERY);
-    return { title: "体力回復", text: "しっかり体を休めた。部員の体力が回復した。", tone: "good" };
+    return { title: "体力回復", text: "しっかり体を休めた。部員の体力が回復した。", tone: "good", kind: "green" };
   }
   if (type === "yellow") {
     const last = ctx.calendar.lastGain;
     if (last && Object.keys(last.perPlayer).length > 0) {
       applyBonusGains(ctx.players, last.perPlayer, YELLOW_BONUS);
-      return { title: "練習に手応え", text: "直前の練習の手応えが大きく、経験点が上乗せされた。", tone: "good" };
+      return { title: "練習に手応え", text: "直前の練習の手応えが大きく、経験点が上乗せされた。", tone: "good", kind: "yellow" };
     }
-    return { title: "練習に手応え", text: "気持ちの良い一日だった。", tone: "info" };
+    return { title: "練習に手応え", text: "気持ちの良い一日だった。", tone: "info", kind: "yellow" };
   }
   if (type === "training") {
     const practice = ctx.practice ?? "rest";
     const learned = trainingSquare(ctx.rng, ctx.players, practice);
     const text = learned.length > 0 ? `${learnText(learned)}。` : practice === "rest" ? "体を休めながら、癖を見直した。今回は変化がなかった。" : "厳しい特訓に取り組んだ。今回は身につかなかった。";
-    return { title: "特訓", text, tone: learned.some((l) => l.kind === "learn" && !isMinus(l.skill)) || learned.some((l) => l.kind === "remove") ? "good" : "info", learned: learned.length ? learned : undefined };
+    const cast = [...new Set(learned.map((l) => l.playerId))].map((id): CastRef => ({ kind: "player", id }));
+    return { title: "特訓", text, tone: learned.some((l) => l.kind === "learn" && !isMinus(l.skill)) || learned.some((l) => l.kind === "remove") ? "good" : "info", learned: learned.length ? learned : undefined, kind: "training", cast };
   }
   return applyEvent(ctx, pickEvent(ctx.rng, type));
 }

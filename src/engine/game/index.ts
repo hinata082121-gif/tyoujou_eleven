@@ -508,6 +508,8 @@ export interface CardResult {
   outcomes: EventOutcome[];
   stoppedAt?: MajorKind;
   injured: string[];
+  /** 表示用（R1）：練習中にケガをした選手の ID（injured と同じ順） */
+  injuredIds?: string[];
 }
 
 /** 自校の回復の倍率（フィジカルコーチ＋ケアルーム＋寮。上限あり） */
@@ -593,7 +595,7 @@ function moveDays(state: GameState, rng: Rng, value: number, practice: PracticeK
     setPendingForMajor(state, rng, sq);
   } else if (sq.baseType === "branch" && cal.branches?.some((b) => b.day === to && b.chosen === undefined)) {
     state.pending = { type: "branch", day: to };
-    outcomes.push({ title: "分かれ道", text: "道が分かれている。どの道を進むか選ぼう。", tone: "info" });
+    outcomes.push({ title: "分かれ道", text: "道が分かれている。どの道を進むか選ぼう。", tone: "info", kind: "branch" });
   } else if (days > 0) {
     const donation = sq.baseType === "blue" ? tryDonation(state, rng) : null;
     if (donation) outcomes.push(donation);
@@ -606,7 +608,7 @@ function moveDays(state: GameState, rng: Rng, value: number, practice: PracticeK
   }
   updatePlayerRank(state);
   grantFacilitiesForReputation(state);
-  return { from, to, days, practice: practice ? PRACTICE_NAMES[practice] : "練習なし", outcomes, stoppedAt, injured: injured.map((p) => p.name) };
+  return { from, to, days, practice: practice ? PRACTICE_NAMES[practice] : "練習なし", outcomes, stoppedAt, injured: injured.map((p) => p.name), injuredIds: injured.map((p) => p.id) };
 }
 
 /** OB からの寄付（青マス。年 1 回まで） */
@@ -620,7 +622,7 @@ function tryDonation(state: GameState, rng: Rng): EventOutcome | null {
   state.lastDonationYear = state.year;
   const text = facilityLogText(e);
   addLog(state, `OBからの寄付：${text}`, "good");
-  return { title: "OBからの寄付", text, tone: "good" };
+  return { title: "OBからの寄付", text, tone: "good", kind: "donation" };
 }
 
 function setPendingForMajor(state: GameState, rng: Rng, sq: Square) {

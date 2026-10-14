@@ -186,3 +186,21 @@ export const VENUE_RULES: Record<CompetitionKind, { fromEnd: number; stage: Venu
     { fromEnd: 99, stage: 3 },
   ],
 };
+
+// ================= スタッフの見た目（R1。表示だけ） =================
+
+export const STAFF_LOOK = {
+  /** この年齢から髪の色を灰色に寄せ始める */
+  grayFromAge: 35,
+  /** この年齢で灰色の割合が grayMax になる */
+  grayFullAge: 60,
+  grayMax: 0.85,
+  /** この年齢から体の厚みを足す（1 年ごとに buildPerYear、最大 buildMax 倍） */
+  buildFromAge: 45,
+  buildPerYear: 0.004,
+  buildMax: 1.08,
+  /** ポロシャツの人の長ズボンの色（パレットの番号）。上着と近いときは次の候補 */
+  pantsColors: [3, 1, 21] as readonly number[],
+  /** どれも近いときは、この中から上着の色から遠いもの（灰・ベージュ） */
+  pantsFallback: [2, 17] as readonly number[],
+};

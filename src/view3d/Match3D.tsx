@@ -11,7 +11,7 @@ import type { MatchState, Side } from "@/engine/match/types";
 import { Animator } from "./animator";
 import { FollowCamera } from "./camera";
 import { QUALITY, type Quality } from "./quality";
-import { buildStage } from "./stage";
+import { buildStage, FOG, LIGHTING } from "./stage";
 
 /** 等速：試合時間 15 分 = 現実の 1 分 */
 const GAME_MINUTES_PER_SECOND = 15 / 60;
@@ -36,6 +36,8 @@ export interface Match3DProps {
   load: LoadTimes;
   onReady: () => void;
   onError: () => void;
+  /** ナイター（R1 は空の色と光を変えるだけ。3D 観戦のデモで選ぶ） */
+  night?: boolean;
 }
 
 const FALLBACK_KITS = [
@@ -84,11 +86,13 @@ export default function Match3D(props: Match3DProps) {
     const home = view?.home ?? 0;
     const scene = new THREE.Scene();
     const stage = buildStage(view?.venue ?? 3, KIT_PALETTE[kits[home].main], KIT_PALETTE[kits[home].sub], q);
-    scene.background = stage.sky;
-    scene.fog = new THREE.Fog(stage.sky, 140, 320);
+    const light = p.night ? LIGHTING.night : LIGHTING.day;
+    const sky = p.night ? new THREE.Color(LIGHTING.night.sky) : stage.sky;
+    scene.background = sky;
+    scene.fog = new THREE.Fog(sky, FOG.near, FOG.far);
     scene.add(stage.group);
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x5a7a50, 1.3));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+    scene.add(new THREE.HemisphereLight(light.hemiSky, light.hemiGround, light.hemi));
+    const sun = new THREE.DirectionalLight(light.sun, light.sunIntensity);
     sun.position.set(30, 60, 40);
     scene.add(sun);
     const anim = new Animator({ ms, kits: [kits[0], kits[1]], gk: view?.gk ?? [9, 11], shadows: q.shadows });
@@ -171,7 +175,7 @@ export default function Match3D(props: Match3DProps) {
             `1フレーム ${(1000 / Math.max(1, fps1)).toFixed(1)}ms（動きの計算 ${mean(jsMs).toFixed(1)}ms・描画の命令 ${mean(drawMs).toFixed(1)}ms）`,
             `描画 ${info.render.calls}回  三角形 ${(info.render.triangles / 1000).toFixed(1)}k`,
             `テクスチャ ${info.memory.textures}  形 ${info.memory.geometries}  画素密度 ${renderer.getPixelRatio()}`,
-            `読み込み：コード ${lt.code ? (lt.code - lt.start).toFixed(0) : "?"}ms → 組み立て ${(built - built0).toFixed(0)}ms → 最初の1枚 ${(firstFrame - lt.start).toFixed(0)}ms`,
+            `読み込み：コード ${lt.code ? (lt.code - lt.start).toFixed(0) : "?"}ms・組み立て ${(built - built0).toFixed(0)}ms・最初の1枚 ${(firstFrame - lt.start).toFixed(0)}ms`,
           ].join("\n");
         }
       }
@@ -194,12 +198,12 @@ export default function Match3D(props: Match3DProps) {
       renderer.forceContextLoss();
       renderer.domElement.remove();
     };
-    // 画質を変えたときだけ作り直す
-  }, [props.quality]);
+    // 画質・ナイターを変えたときだけ作り直す
+  }, [props.quality, props.night]);
 
   return (
     <div ref={host} className="absolute inset-0 overflow-hidden">
-      {props.perf && <pre ref={perfBox} className="pointer-events-none absolute left-1 top-1 z-10 whitespace-pre rounded bg-black/60 px-1.5 py-1 font-mono text-[9px] leading-tight text-white" />}
+      {props.perf && <pre ref={perfBox} className="pointer-events-none absolute left-1 top-1 z-10 whitespace-pre bg-panel/80 px-1.5 py-1 font-mono text-[0.5625rem] leading-tight text-text" />}
     </div>
   );
 }

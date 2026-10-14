@@ -13,12 +13,3 @@ export const overallValue = (p: Player) => Math.round(overall(p));
 export const overallRank = (p: Player) => statRank(overall(p));
 
 export const POSITION_GROUP: Record<string, string> = { GK: "GK", CB: "DF", SB: "DF", DMF: "MF", CMF: "MF", OMF: "MF", WG: "FW", CF: "FW" };
-
-export const CONDITION_ICON: Record<number, string> = { [-2]: "⤋", [-1]: "↘", 0: "→", 1: "↗", 2: "⤊" };
-export const CONDITION_COLOR: Record<number, string> = {
-  [-2]: "text-blue-700",
-  [-1]: "text-sky-500",
-  0: "text-gray-500",
-  1: "text-orange-500",
-  2: "text-red-600",
-};

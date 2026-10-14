@@ -1,39 +1,335 @@
 @import "tailwindcss";
 
+/*
+ * デザインの基本値（docs/DESIGN.md）。B 案「スポーツ中継風」。
+ * Tailwind の標準の色と角丸は消し、ここで決めた値だけを使う。
+ */
+
+@theme {
+  /* 標準の色・角丸・影は使わない */
+  --color-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+
+  /* 背景 */
+  --color-night: #0b120f;
+  --color-turf: #1d3b2b;
+  --color-turf-2: #22442f;
+  --color-panel: #0d1512;
+  --color-panel-2: #15201b;
+  --color-panel-3: #1e2c25;
+  --color-line: #2f4239;
+  --color-line-2: #48605a;
+
+  /* 文字（暗い背景の上。補足の文字も背景とのコントラスト 7:1 以上） */
+  --color-text: #f6f3ea;
+  --color-text-2: #e2e8e3;
+  --color-text-3: #c8d4cd;
+
+  /* 帯（明るい地）と、その上の文字 */
+  --color-telop: #f3f0e6;
+  --color-ink: #0f1512;
+  --color-ink-2: #3a4540;
+
+  /* 強調 */
+  --color-yellow: #f2c21b;
+  --color-yellow-2: #c99d05;
+  --color-red: #d6372b;
+  --color-red-2: #a8241b;
+
+  /* 良い・悪い・お知らせ（暗い背景の上の文字の色） */
+  --color-good: #6ee08a;
+  --color-bad: #ff8a78;
+  --color-info: #7cc8ff;
+  --color-warn: #ffc94a;
+  /* 明るい帯（telop）の上の良い・悪い（6:1 以上） */
+  --color-good-ink: #1d7a3a;
+
+  /* すごろくのマス */
+  --color-sq-blue: #3b8fd0;
+  --color-sq-red: #e0503c;
+  --color-sq-white: #a9b2ad;
+  --color-sq-green: #55b865;
+  --color-sq-yellow: #f2c21b;
+  --color-sq-training: #b65bd6;
+  --color-sq-major: #ffffff;
+  --color-sq-branch: #ef8a1d;
+
+  /* ランク（G〜SS） */
+  --color-rank-ss: #ff7ab0;
+  --color-rank-s: #ff5a45;
+  --color-rank-a: #ff9a2e;
+  --color-rank-b: #f2c21b;
+  --color-rank-c: #8fd14f;
+  --color-rank-d: #4fc3a1;
+  --color-rank-e: #58a6e0;
+  --color-rank-f: #9aa29d;
+  --color-rank-g: #6d7571;
+
+  /* 特殊能力の札（○・◎・金色・×）。文字は ink（× だけ明るい文字） */
+  --color-skill-plus: #6ee08a;
+  --color-skill-double: #7cc8ff;
+  --color-gold: #e0a92a;
+  --color-gold-2: #fff0b0;
+  /* 熟練度・特訓（紫は使わず、明るい青緑） */
+  --color-teal: #4fd1c5;
+
+  /* 体力のバー */
+  --color-fit-high: #58c26a;
+  --color-fit-mid: #f2c21b;
+  --color-fit-low: #e0503c;
+
+  --color-white: #ffffff;
+  --color-black: #000000;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  /* 角（使っても 2px まで） */
+  --radius-none: 0;
+  --radius-sm: 2px;
+
+  /* 影（ぼかさない、ずらした影） */
+  --shadow-hard: 3px 3px 0 0 rgb(0 0 0 / 0.55);
+  --shadow-hard-lg: 5px 5px 0 0 rgb(0 0 0 / 0.55);
+
+  /* フォント（next/font で読み込んだものを layout.tsx が変数で渡す） */
+  --font-head: var(--font-dela), "Hiragino Sans", "Noto Sans JP", sans-serif;
+  --font-body: var(--font-mplus), "Hiragino Sans", "Noto Sans JP", sans-serif;
+  --font-num: var(--font-oswald), var(--font-mplus), sans-serif;
+
+  /* 動き */
+  --ease-snap: cubic-bezier(0.2, 0.9, 0.25, 1.15);
+}
+
 :root {
-  --background: #e8efe9;
-  --foreground: #14251b;
-  --pitch: #1f7a45;
-  --pitch-dark: #145a32;
+  /* セーフエリア（?safe=notch で iPhone の値を入れて確かめる） */
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  /* 演出の長さ */
+  --dur-press: 120ms;
+  --dur-move: 200ms;
+  --dur-show: 450ms;
+}
+html[data-safe="notch"] {
+  --safe-r: 47px;
+  --safe-b: 21px;
+  --safe-l: 47px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-pitch: var(--pitch);
-  --color-pitch-dark: var(--pitch-dark);
+/* 大きさの段：高さ 540px 以上で 1.25 倍、800px 以上で 1.5 倍（横幅も足りるとき） */
+html {
+  font-size: 16px;
+}
+@media (min-height: 540px) and (min-width: 834px) {
+  html {
+    font-size: 20px;
+  }
+}
+@media (min-height: 800px) and (min-width: 1000px) {
+  html {
+    font-size: 24px;
+  }
 }
 
-html,
+@layer base {
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+    background: var(--color-night);
+    color: var(--color-text);
+    font-family: var(--font-body);
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior: none;
+  }
+
+  button {
+    cursor: pointer;
+    touch-action: manipulation;
+    font: inherit;
+    color: inherit;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+}
+
+@layer components {
+  /* 芝の刈り目の背景 */
+  .bg-pitch-stripes {
+    background-color: var(--color-turf);
+    background-image:
+      linear-gradient(90deg, rgb(0 0 0 / 0.45), transparent 30%, transparent 70%, rgb(0 0 0 / 0.45)),
+      repeating-linear-gradient(90deg, var(--color-turf) 0 4rem, var(--color-turf-2) 4rem 8rem);
+  }
+
+  /* 斜めに切った帯（右下を切る・左上を切る・両方） */
+  .cut-r {
+    clip-path: polygon(0 0, 100% 0, calc(100% - 0.75em) 100%, 0 100%);
+  }
+  .cut-l {
+    clip-path: polygon(0.75em 0, 100% 0, 100% 100%, 0 100%);
+  }
+  .cut-lr {
+    clip-path: polygon(0.75em 0, 100% 0, calc(100% - 0.75em) 100%, 0 100%);
+  }
+
+  .font-head {
+    font-family: var(--font-head);
+    font-weight: 400;
+    letter-spacing: 0.02em;
+  }
+  .font-num {
+    font-family: var(--font-num);
+    font-feature-settings: "tnum";
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .scroll-y {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .scroll-x {
+    overflow-x: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+/* 押したときの反応は、帯や影のクラスより強くする（レイヤーの外に置く） */
+
+.pressable {
+  transition:
+    transform var(--dur-press) ease-out,
+    box-shadow var(--dur-press) ease-out,
+    filter var(--dur-press) ease-out;
+}
+.pressable:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 0 rgb(0 0 0 / 0.55);
+  filter: brightness(0.88);
+}
+
+/* 演出 */
+@keyframes band-in {
+  0% {
+    transform: translateX(-110%);
+  }
+  60% {
+    transform: translateX(4%);
+  }
+  100% {
+    transform: none;
+  }
+}
+@keyframes pop-in {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes fade-up {
+  0% {
+    transform: translateY(0.5rem);
+    opacity: 0;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+@keyframes slide-in-r {
+  0% {
+    transform: translateX(2rem);
+    opacity: 0;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+@keyframes blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+.anim-band-in {
+  animation: band-in var(--dur-show) var(--ease-snap) both;
+}
+.anim-pop {
+  animation: pop-in var(--dur-show) var(--ease-snap) both;
+}
+.anim-fade-up {
+  animation: fade-up 260ms ease-out both;
+}
+.anim-slide-r {
+  animation: slide-in-r 260ms ease-out both;
+}
+.anim-blink {
+  animation: blink 1.2s steps(2) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .anim-band-in,
+  .anim-pop,
+  .anim-fade-up,
+  .anim-slide-r {
+    animation-duration: 1ms;
+  }
+  .anim-blink {
+    animation: none;
+  }
+}
+
+/*
+ * ゲームの画面の枠。大きな画面（PC など）では、横長になりすぎないように 64rem × 36rem までにして中央に置く。
+ * contain で、中の position: fixed もこの枠に収める
+ */
+.app-root {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: 100%;
+  height: 100%;
+  max-width: 64rem;
+  max-height: 36rem;
+  contain: layout paint;
+}
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
-  -webkit-tap-highlight-color: transparent;
+  background-color: var(--color-night);
+  background-image:
+    linear-gradient(90deg, rgb(0 0 0 / 0.55), transparent 25%, transparent 75%, rgb(0 0 0 / 0.55)),
+    repeating-linear-gradient(90deg, var(--color-turf) 0 4rem, var(--color-turf-2) 4rem 8rem);
 }
 
-button {
-  cursor: pointer;
-  touch-action: manipulation;
-}
-
-button:disabled {
-  cursor: not-allowed;
-}
-
-.no-scrollbar::-webkit-scrollbar {
+/* 縦に持ったとき：ゲームの画面を隠し、横向きにしてもらう */
+.portrait-notice {
   display: none;
 }
-.no-scrollbar {
-  scrollbar-width: none;
+@media (orientation: portrait) {
+  .portrait-notice {
+    display: flex;
+  }
+  .app-root {
+    visibility: hidden;
+  }
 }

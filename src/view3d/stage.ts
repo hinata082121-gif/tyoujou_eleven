@@ -18,6 +18,17 @@ export const GOAL = { w: 7.32 * 1.45, h: 2.44 * 1.45, depth: 2.9 };
 export const toWorldX = (x: number) => (x - 0.5) * PITCH_W;
 export const toWorldZ = (y: number) => (y - 0.5) * PITCH_L;
 
+/**
+ * 空と光（R1）。昼はこれまでと同じ値。ナイターは空・霧の色を夜の色にし、光の明るさと色を変えるだけの簡単なもの
+ * （照明塔の光や影の作り込みは 4b）
+ */
+export const LIGHTING = {
+  day: { hemiSky: 0xffffff, hemiGround: 0x5a7a50, hemi: 1.3, sun: 0xffffff, sunIntensity: 1.5 },
+  night: { sky: "#0c1626", hemiSky: 0xb8c8e8, hemiGround: 0x22301f, hemi: 0.85, sun: 0xf2f5ff, sunIntensity: 1.25 },
+} as const;
+/** 霧のかかり始めと終わり（m） */
+export const FOG = { near: 140, far: 320 } as const;
+
 export interface Stage {
   group: THREE.Group;
   crowd?: THREE.InstancedMesh;

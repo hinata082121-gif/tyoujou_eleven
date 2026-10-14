@@ -5,9 +5,12 @@ import { DEFAULT_PREFECTURE_ID, PLAYER_SCHOOL_DEFAULT_NAME, PREF_TIER_NAMES, PRE
 import { prefReps, prefTier, TIER_SETTINGS } from "@/engine/config/school";
 import { generateKits } from "@/engine/look";
 import { useGameStore } from "@/store/gameStore";
+import { Icon } from "../icons";
+import { KitFigure } from "../look/Figure";
 import { UniformEditor } from "../look/UniformEditor";
-import { Button, Header } from "../ui";
+import { Button, Label, Screen } from "../ui";
 
+/** 学校作成：左に学校名・県の入力、右に説明とユニフォームの絵。次の段でユニフォームを選ぶ */
 export function NewGameScreen() {
   const goto = useGameStore((s) => s.goto);
   const slot = useGameStore((s) => s.slot) ?? 0;
@@ -37,66 +40,96 @@ export function NewGameScreen() {
 
   if (step === "uniform")
     return (
-      <main className="flex flex-1 flex-col">
-        <Header title="ユニフォームを選ぶ" onBack={() => setStep("school")} />
-        <div className="flex flex-col gap-3 p-4">
-          <p className="text-xs text-gray-600">あとからメニューの「ユニフォーム」でも変えられます。</p>
-          <UniformEditor value={kits} onChange={setKits} seed={kitSeed} />
-          <Button onClick={create} disabled={!trimmed || busy}>
+      <Screen
+        title="ユニフォームを選ぶ"
+        sub={trimmed}
+        onBack={() => setStep("school")}
+        right={
+          <Button icon="check" cut onClick={create} disabled={!trimmed || busy}>
             {busy ? "学校を作っています…" : "この学校で始める"}
           </Button>
-        </div>
-      </main>
+        }
+        bodyClassName="gap-1.5"
+      >
+        <p className="flex shrink-0 items-center gap-1.5 self-start bg-panel px-2 py-1 text-[0.75rem] text-text-2">
+          <Icon name="info" size={14} className="text-info" />
+          あとからメニューの「ユニフォーム」でも変えられます。
+        </p>
+        <UniformEditor value={kits} onChange={setKits} seed={kitSeed} />
+      </Screen>
     );
 
   return (
-    <main className="flex flex-1 flex-col">
-      <Header title={`学校を作る（セーブ枠${slot + 1}）`} onBack={() => goto("slots")} />
-      <div className="flex flex-1 flex-col gap-5 p-5">
-        <label className="flex flex-col gap-2">
-          <span className="text-sm font-bold">学校名</span>
-          <input
-            value={name}
-            maxLength={16}
-            onChange={(e) => setName(e.target.value)}
-            className="min-h-12 rounded-xl border border-gray-300 px-3 text-lg focus:border-pitch focus:outline-none"
-          />
-        </label>
-        <label className="flex flex-col gap-2">
-          <span className="text-sm font-bold">都道府県</span>
-          <select
-            value={pref}
-            onChange={(e) => setPref(e.target.value)}
-            className="min-h-12 rounded-xl border border-gray-300 bg-white px-3 text-lg focus:border-pitch focus:outline-none"
-          >
-            {REGIONS.map((r) => (
-              <optgroup key={r.id} label={r.name}>
-                {PREFECTURES.filter((p) => p.region === r.id).map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-          <span className="text-xs text-gray-600">
-            区分：{PREF_TIER_NAMES[tier]}（予選の参加 {schools.min}〜{schools.max}校）
-            {prefReps(pref) > 1 && `・全国大会の代表は${prefReps(pref)}校`}
-          </span>
-        </label>
-        <div className="rounded-xl bg-green-50 p-4 text-sm leading-relaxed text-green-950">
-          <p className="font-bold">あなたは、この高校サッカー部の新しい監督です。</p>
-          <ul className="mt-2 list-disc pl-5 text-[13px]">
-            <li>評判は「弱小」からのスタート。1〜3年生がそろっています。</li>
-            <li>すごろくで練習とイベントを進め、冬の全国大会で頂点を目指しましょう。</li>
-            <li>自校以外の学校名と、県ごとの強さの傾向は架空のものです。</li>
-          </ul>
-        </div>
-        <div className="flex-1" />
-        <Button onClick={() => setStep("uniform")} disabled={!trimmed}>
+    <Screen
+      title="学校を作る"
+      sub={`セーブ枠${slot + 1}`}
+      onBack={() => goto("slots")}
+      right={
+        <Button icon="next" cut onClick={() => setStep("uniform")} disabled={!trimmed}>
           次へ（ユニフォームを選ぶ）
         </Button>
+      }
+    >
+      <div className="flex min-h-0 flex-1 gap-2">
+        {/* 左：学校名・県 */}
+        <div className="scroll-y flex min-h-0 min-w-0 flex-1 flex-col gap-3 bg-panel p-3">
+          <label className="flex flex-col gap-1">
+            <Label className="!mb-0">学校名</Label>
+            <input
+              value={name}
+              maxLength={16}
+              onChange={(e) => setName(e.target.value)}
+              className="min-h-11 border-2 border-line-2 bg-panel-2 px-3 text-[1.125rem] font-bold text-text focus:border-yellow focus:outline-none"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <Label className="!mb-0">都道府県</Label>
+            <span className="relative flex items-center">
+              <select
+                value={pref}
+                onChange={(e) => setPref(e.target.value)}
+                className="min-h-11 w-full appearance-none border-2 border-line-2 bg-panel-2 pl-3 pr-8 text-[1.125rem] font-bold text-text focus:border-yellow focus:outline-none"
+              >
+                {REGIONS.map((r) => (
+                  <optgroup key={r.id} label={r.name}>
+                    {PREFECTURES.filter((p) => p.region === r.id).map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              <Icon name="down" size={14} className="pointer-events-none absolute right-2.5 text-text-3" />
+            </span>
+            <span className="bg-panel-2 px-2 py-1 text-[0.75rem] text-text-2">
+              区分：<b className="text-text">{PREF_TIER_NAMES[tier]}</b>（予選の参加 <span className="font-num">{schools.min}〜{schools.max}</span>校）
+              {prefReps(pref) > 1 && `・全国大会の代表は${prefReps(pref)}校`}
+            </span>
+          </label>
+        </div>
+
+        {/* 右：説明とユニフォーム */}
+        <div className="flex min-h-0 w-[min(26rem,52%)] shrink-0 flex-col gap-1">
+          <div className="flex min-h-0 flex-1 gap-2 bg-panel p-3">
+            <div className="scroll-y min-h-0 min-w-0 flex-1">
+              <p className="cut-r mb-2 inline-block bg-yellow py-0.5 pl-2 pr-6 text-[0.875rem] font-black text-ink">あなたは、この高校サッカー部の新しい監督です。</p>
+              <ul className="flex flex-col gap-1.5 text-[0.8125rem] leading-snug text-text-2">
+                {["評判は「弱小」からのスタート。1〜3年生がそろっています。", "すごろくで練習とイベントを進め、冬の全国大会で頂点を目指しましょう。", "自校以外の学校名と、県ごとの強さの傾向は架空のものです。"].map((t) => (
+                  <li key={t} className="flex gap-1.5">
+                    <span className="mt-[0.4rem] h-1.5 w-1.5 shrink-0 -skew-x-12 bg-yellow" aria-hidden />
+                    <span>{t}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="bg-pitch-stripes flex w-[6.5rem] shrink-0 flex-col items-center justify-end overflow-hidden border border-line-2">
+              <KitFigure kit={kits.first} number={10} size={150} />
+              <span className="w-full truncate bg-panel px-1 py-0.5 text-center text-[0.75rem] font-bold">{trimmed || "　"}</span>
+            </div>
+          </div>
+        </div>
       </div>
-    </main>
+    </Screen>
   );
 }

@@ -1,12 +1,12 @@
 "use client";
 
 import { UniformScreen } from "../look/UniformScreen";
-import { REPUTATION_NAMES, yearLabel } from "@/engine/config/names";
-import { dateLabel } from "@/engine/game";
-import { playerSchool } from "@/engine/season";
-import { useGameStore, type PlayView } from "@/store/gameStore";
-import { MatchScreen } from "../match/MatchScreen";
-import { PreMatchScreen } from "../match/PreMatchScreen";
+import { useGameStore } from "@/store/gameStore";
+import { CardScenes } from "../event/EventScene";
+import { Icon } from "../icons";
+import { SideNav } from "../shell/SideNav";
+import { TopBar } from "../shell/TopBar";
+import dynamic from "next/dynamic";
 import { BracketView } from "../play/BracketView";
 import { CaptainScreen } from "../play/CaptainScreen";
 import { SkillBook } from "../play/SkillBook";
@@ -19,15 +19,14 @@ import { RecordsView } from "../play/RecordsView";
 import { SquadView } from "../play/SquadView";
 import { NotesScreen } from "../notes/NotesScreen";
 import { StaffReviewScreen } from "../staff/StaffView";
-import { RankBadge } from "../ui";
 
-const TABS: { view: PlayView; label: string; icon: string }[] = [
-  { view: "home", label: "すごろく", icon: "🎲" },
-  { view: "squad", label: "部員", icon: "👥" },
-  { view: "bracket", label: "大会", icon: "🏆" },
-  { view: "records", label: "記録", icon: "📖" },
-  { view: "menu", label: "メニュー", icon: "⚙️" },
-];
+/** 試合まわりの画面は、試合のときだけ読み込む（R1。ホームなどの最初の読み込みを軽くする） */
+const MatchScreen = dynamic(() => import("../match/MatchScreen").then((m) => m.MatchScreen), { ssr: false, loading: () => <Loading /> });
+const PreMatchScreen = dynamic(() => import("../match/PreMatchScreen").then((m) => m.PreMatchScreen), { ssr: false, loading: () => <Loading /> });
+
+function Loading() {
+  return <div className="bg-pitch-stripes fixed inset-0" />;
+}
 
 export function PlayScreen() {
   const game = useGameStore((s) => s.game);
@@ -47,6 +46,9 @@ export function PlayScreen() {
   const facilitiesOpen = useGameStore((s) => s.facilitiesOpen);
   const uniformOpen = useGameStore((s) => s.uniformOpen);
   const lastCamp = useGameStore((s) => s.lastCamp);
+  const lastCard = useGameStore((s) => s.lastCard);
+  const scenesSeen = useGameStore((s) => s.scenesSeen);
+  const eventView = useGameStore((s) => s.settings.eventView);
 
   if (!game) return null;
 
@@ -57,6 +59,8 @@ export function PlayScreen() {
   if (lastCamp) return <CampResultScreen />;
   if (game.activeMatch) return <MatchScreen />;
   if (notesOpen) return <NotesScreen />;
+  // カードの出来事の場面（移動の演出が終わってから。試合前などの画面より先に見せる）
+  if (!moving && lastCard && !scenesSeen && eventView === "scene") return <CardScenes key={`${lastCard.from}-${lastCard.to}`} />;
   if (!moving && game.pending?.type === "staff") return <StaffReviewScreen />;
   if (!moving && game.pending?.type === "captain")
     return (
@@ -83,52 +87,26 @@ export function PlayScreen() {
   if (!moving && game.pending?.type === "graduation") return <GraduationScreen />;
   if (!moving && game.pending?.type === "yearEnd") return <YearEndScreen />;
 
-  const school = playerSchool(game);
-  const rep = game.reputation;
-
   return (
-    <main className="flex flex-1 flex-col">
-      <div className="sticky top-0 z-20 bg-pitch-dark px-3 pb-2 pt-2 text-white">
-        <div className="flex items-center gap-2">
-          <h1 className="flex-1 truncate text-base font-black">{school.name}</h1>
-          <span className="text-xs text-white/80">ランク</span>
-          <RankBadge rank={school.rank} size="sm" />
+    <main className="bg-pitch-stripes fixed inset-0 flex flex-col">
+      <TopBar game={game} />
+      {saveError && (
+        <div className="mx-[max(0.5rem,var(--safe-l))] mt-1 flex items-center gap-2 bg-red px-3 py-1 text-[0.75rem] font-bold text-white">
+          <Icon name="warning" size={14} />
+          保存に失敗しました：{saveError}
         </div>
-        <div className="mt-1 flex items-center gap-2 text-xs">
-          <span className="font-bold">
-            {yearLabel(game.year)} {dateLabel(game)}
-          </span>
-          <span className="ml-auto">評判「{REPUTATION_NAMES[rep.level]}」</span>
-          <div className="h-1.5 w-16 overflow-hidden rounded-full bg-white/25">
-            <div className="h-full bg-amber-300" style={{ width: `${rep.gauge}%` }} />
-          </div>
+      )}
+      <div className="flex min-h-0 flex-1 gap-2 pb-[max(0.5rem,var(--safe-b))] pl-[max(0.5rem,var(--safe-l))] pr-[max(0.5rem,var(--safe-r))] pt-2">
+        <SideNav view={view} onChange={setView} />
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {view === "home" && <HomeView />}
+          {view === "squad" && <SquadView />}
+          {view === "bracket" && <BracketView />}
+          {view === "records" && <RecordsView />}
+          {view === "menu" && <MenuView />}
         </div>
       </div>
-      {saveError && <div className="bg-red-100 px-3 py-1 text-xs text-red-800">保存に失敗しました：{saveError}</div>}
-
-      <div className="flex-1 pb-20">
-        {view === "home" && <HomeView />}
-        {view === "squad" && <SquadView />}
-        {view === "bracket" && <BracketView />}
-        {view === "records" && <RecordsView />}
-        {view === "menu" && <MenuView />}
-      </div>
-
       {selected && <PlayerDetail />}
-
-      <nav className="fixed bottom-0 left-1/2 z-30 grid w-full max-w-[430px] -translate-x-1/2 grid-cols-5 border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)]">
-        {TABS.map((t) => (
-          <button
-            key={t.view}
-            type="button"
-            onClick={() => setView(t.view)}
-            className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-bold ${view === t.view ? "text-pitch" : "text-gray-400"}`}
-          >
-            <span className="text-lg leading-none">{t.icon}</span>
-            {t.label}
-          </button>
-        ))}
-      </nav>
     </main>
   );
 }

@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SLOT_COUNT, type SlotSummary } from "@/lib/save";
 import { loadSummaries, saveManager, useGameStore } from "@/store/gameStore";
-import { Button, Header } from "../ui";
+import { Icon } from "../icons";
+import { Button, Screen } from "../ui";
 
 function downloadText(filename: string, text: string) {
   const blob = new Blob([text], { type: "application/json" });
@@ -15,6 +16,7 @@ function downloadText(filename: string, text: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** セーブ枠：3 枠を横に並べる */
 export function SlotsScreen() {
   const goto = useGameStore((s) => s.goto);
   const loadSlot = useGameStore((s) => s.loadSlot);
@@ -61,62 +63,78 @@ export function SlotsScreen() {
   };
 
   return (
-    <main className="flex flex-1 flex-col">
-      <Header title="セーブデータ" onBack={() => goto("title")} />
-      <div className="flex flex-col gap-3 p-4">
+    <Screen title="セーブデータ" onBack={() => goto("title")}>
+      <div className="grid min-h-0 flex-1 grid-cols-3 gap-2">
         {summaries.map((s, i) => (
-          <div key={i} className="rounded-2xl border border-gray-200 p-4 shadow-sm">
-            <div className="mb-2 flex items-baseline justify-between">
-              <span className="text-xs font-bold text-gray-500">セーブ枠{i + 1}</span>
-              {s && <span className="text-[11px] text-gray-400">{new Date(s.savedAt).toLocaleString("ja-JP")}</span>}
+          <section key={i} className={`flex min-h-0 min-w-0 flex-col border-t-4 bg-panel ${s ? "border-yellow" : "border-line-2"}`}>
+            <div className="flex shrink-0 items-center gap-2 bg-panel-2 py-1 pr-2">
+              <span className={`cut-r py-0.5 pl-2 pr-5 text-[0.8125rem] font-black ${s ? "bg-yellow text-ink" : "bg-panel-3 text-text-2"}`}>
+                セーブ枠<span className="font-num ml-0.5 text-[0.9375rem]">{i + 1}</span>
+              </span>
             </div>
-            {s ? (
-              <div className="mb-3">
-                <div className="text-lg font-black">{s.schoolName}</div>
-                <div className="text-sm text-gray-600">
-                  {s.dateLabel}・評判「{s.reputation}」
+            <div className="scroll-y flex min-h-0 flex-1 flex-col justify-center gap-1 px-3 py-2">
+              {s ? (
+                <>
+                  <div className="font-head truncate text-[1.25rem] leading-tight">{s.schoolName}</div>
+                  <div className="font-num text-[0.875rem] text-text-2">{s.dateLabel}</div>
+                  <div className="flex items-center gap-1.5 text-[0.8125rem]">
+                    <Icon name="reputation" size={14} className="text-yellow" />
+                    <span className="text-text-3">評判</span>
+                    <span className="font-black">{s.reputation}</span>
+                  </div>
+                  <div className="font-num mt-1 text-[0.75rem] text-text-3">{new Date(s.savedAt).toLocaleString("ja-JP")}</div>
+                </>
+              ) : (
+                <div className="flex flex-col items-center gap-1 text-text-3">
+                  <Icon name="save" size={28} />
+                  <span className="text-[0.8125rem] font-bold">データなし</span>
                 </div>
-              </div>
-            ) : (
-              <div className="mb-3 text-sm text-gray-400">データなし</div>
-            )}
-            <div className="grid grid-cols-2 gap-2">
+              )}
+            </div>
+            <div className="flex shrink-0 flex-col gap-1.5 p-2">
               {s && (
-                <Button onClick={() => loadSlot(i).catch((e: Error) => setMessage(e.message))} className="col-span-2">
+                <Button icon="play" cut onClick={() => loadSlot(i).catch((e: Error) => setMessage(e.message))}>
                   続きから
                 </Button>
               )}
-              <Button variant="secondary" onClick={() => startNew(i)}>
-                新しく始める
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setImportSlot(i);
-                  fileRef.current?.click();
-                }}
-              >
-                JSON読み込み
-              </Button>
-              {s && (
-                <>
-                  <Button variant="secondary" onClick={() => exportSlot(i)}>
-                    JSON書き出し
-                  </Button>
-                  <Button variant="danger" onClick={() => remove(i)}>
+              <div className="grid grid-cols-2 gap-1.5">
+                <Button variant={s ? "secondary" : "primary"} icon="plus" small={!!s} onClick={() => startNew(i)} className={s ? "" : "col-span-2"}>
+                  {s ? "最初から" : "新しく始める"}
+                </Button>
+                {s && (
+                  <Button variant="danger" small icon="trash" onClick={() => remove(i)}>
                     削除
                   </Button>
-                </>
-              )}
+                )}
+                <Button
+                  variant="ghost"
+                  small
+                  icon="importFile"
+                  onClick={() => {
+                    setImportSlot(i);
+                    fileRef.current?.click();
+                  }}
+                  className={s ? "" : "col-span-2"}
+                >
+                  {s ? "読み込み" : "JSON読み込み"}
+                </Button>
+                {s && (
+                  <Button variant="ghost" small icon="exportFile" onClick={() => exportSlot(i)}>
+                    書き出し
+                  </Button>
+                )}
+              </div>
             </div>
-          </div>
+          </section>
         ))}
-        {message && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{message}</p>}
-        <p className="text-xs leading-relaxed text-gray-500">
-          日付が進むたび・試合の途中（5分ごと）・試合が終わるたびに自動で保存されます。ブラウザのデータを消すとセーブも消えるので、ときどき「JSON書き出し」で保存しておくと安心です。
-        </p>
-        <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => onImportFile(e.target.files?.[0])} />
       </div>
-    </main>
+      <div className="mt-2 flex shrink-0 flex-col gap-1">
+        {message && <p className="border-l-4 border-yellow bg-panel px-2 py-1 text-[0.8125rem] font-bold text-warn">{message}</p>}
+        <p className="bg-panel/90 px-2 py-1 text-[0.75rem] leading-snug text-text-3">
+          日付が進むたび・試合の途中（5分ごと）・試合が終わるたびに自動で保存されます。ブラウザのデータを消すとセーブも消えるので、ときどき「書き出し」で JSON のファイルに保存しておくと安心です。
+        </p>
+      </div>
+      <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => onImportFile(e.target.files?.[0])} />
+    </Screen>
   );
 }

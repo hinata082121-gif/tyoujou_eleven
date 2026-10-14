@@ -1,15 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatDay } from "@/engine/calendar";
 import { LEAGUE } from "@/engine/config/league";
 import { leagueName } from "@/engine/config/names";
 import { divisionOf, standings } from "@/engine/league";
 import type { LeagueDivision } from "@/engine/types";
 import { useGameStore } from "@/store/gameStore";
-import { RankBadge, Segmented } from "../ui";
+import { Icon } from "../icons";
+import { Band, RankBadge, Segmented } from "../ui";
 
-/** 県リーグ（P3）：順位表と日程・結果 */
+const TABLE_COLS = "grid-cols-[1.75rem_minmax(0,1fr)_1.75rem_4.25rem_2.25rem_2rem]";
+
+/** 県リーグ（P3）：左に順位表、右に日程と結果 */
 export function LeagueView() {
   const game = useGameStore((s) => s.game)!;
   useGameStore((s) => s.rev);
@@ -17,32 +20,49 @@ export function LeagueView() {
   const pref = game.prefectures.find((p) => p.isPlayerPref)!;
   const mine = league ? divisionOf(league, game.playerSchoolId) : undefined;
   const [level, setLevel] = useState(mine?.level ?? 1);
-  const [tab, setTab] = useState<"table" | "fixtures">("table");
-  if (!league || league.divisions.length === 0) return <p className="text-sm text-gray-500">県リーグの組み分けはまだありません。</p>;
+  if (!league || league.divisions.length === 0) return <p className="bg-panel p-3 text-[0.8125rem] text-text-3">県リーグの組み分けはまだありません。</p>;
   const division = league.divisions.find((d) => d.level === level) ?? league.divisions[0];
   const levels = league.divisions.map((d) => String(d.level));
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-1.5">
       {!league.active && (
-        <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-900">県リーグは来年度（4月）から始まります。下は、評判をもとに決めた最初の組み分けです。</p>
+        <p className="flex shrink-0 items-center gap-2 border-l-4 border-warn bg-panel px-2 py-1 text-[0.75rem] font-bold text-warn">
+          <Icon name="info" size={14} />
+          県リーグは来年度（4月）から始まります。下は、評判をもとに決めた最初の組み分けです。
+        </p>
       )}
       {league.final && (
-        <p className="rounded-lg bg-green-50 p-2 text-sm font-bold text-pitch-dark">
+        <p className="cut-r shrink-0 self-start bg-yellow py-0.5 pl-2 pr-6 text-[0.8125rem] font-black text-ink">
           今年の成績：{league.final.playerLevel}部 {league.final.position}位（{league.final.size}校）
           {league.final.promoted ? "・昇格" : league.final.relegated ? "・降格" : ""}
         </p>
       )}
-      {levels.length > 1 && <Segmented options={levels} value={String(division.level)} onChange={(v) => setLevel(Number(v))} labels={Object.fromEntries(levels.map((l) => [l, `${l}部`]))} />}
-      <h2 className="text-sm font-black">
-        {leagueName(pref.name, division.level)}（{division.schoolIds.length}校・{division.doubleRound ? "2回総当たり" : "1回総当たり"}）
-      </h2>
-      <p className="text-[11px] text-gray-500">
-        勝ち3・分け1。上位{LEAGUE.promote}校は上の部へ、下位{LEAGUE.promote}校は下の部へ（1部の上位と最下部の下位はそのまま）。
-      </p>
-      {league.active && <Segmented options={["table", "fixtures"] as const} value={tab} onChange={setTab} labels={{ table: "順位表", fixtures: "日程・結果" }} />}
-      {(tab === "table" || !league.active) && <Table division={division} bottom={division.level === league.divisions.length} />}
-      {tab === "fixtures" && league.active && <Fixtures division={division} />}
+      <div className="flex min-h-0 flex-1 gap-2">
+        <section className="flex min-h-0 min-w-0 flex-[1.15] flex-col gap-1">
+          <div className="flex shrink-0 items-center gap-2">
+            {levels.length > 1 && (
+              <Segmented options={levels} value={String(division.level)} onChange={(v) => setLevel(Number(v))} labels={Object.fromEntries(levels.map((l) => [l, `${l}部`]))} className="w-auto shrink-0" />
+            )}
+            <h2 className="min-w-0 truncate bg-panel px-2 py-1 text-[0.8125rem] font-black">
+              {leagueName(pref.name, division.level)}
+              <span className="ml-1 text-[0.75rem] font-bold text-text-3">
+                {division.schoolIds.length}校・{division.doubleRound ? "2回総当たり" : "1回総当たり"}
+              </span>
+            </h2>
+          </div>
+          <Table division={division} bottom={division.level === league.divisions.length} />
+          <p className="shrink-0 bg-panel px-2 py-1 text-[0.75rem] leading-snug text-text-3">
+            勝ち3・分け1。上位{LEAGUE.promote}校は上の部へ、下位{LEAGUE.promote}校は下の部へ（1部の上位と最下部の下位はそのまま）。
+          </p>
+        </section>
+        {league.active && (
+          <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-1">
+            <Band className="shrink-0">日程・結果</Band>
+            <Fixtures key={division.level} division={division} />
+          </section>
+        )}
+      </div>
     </div>
   );
 }
@@ -53,42 +73,43 @@ function Table({ division, bottom }: { division: LeagueDivision; bottom: boolean
   const rows = standings(division);
   const k = LEAGUE.promote;
   return (
-    <table className="w-full text-xs">
-      <thead>
-        <tr className="text-[10px] text-gray-500">
-          <th className="w-6 text-right">位</th>
-          <th className="pl-2 text-left">学校</th>
-          <th className="w-6">試</th>
-          <th className="w-10">勝分敗</th>
-          <th className="w-8">差</th>
-          <th className="w-7">点</th>
-        </tr>
-      </thead>
-      <tbody>
+    <div className="flex min-h-0 flex-1 flex-col bg-panel">
+      <div className={`grid shrink-0 ${TABLE_COLS} items-center gap-1.5 border-b-2 border-line-2 px-2 py-1 text-[0.6875rem] font-black text-text-3`}>
+        <span className="text-right">位</span>
+        <span>学校</span>
+        <span className="text-center">試</span>
+        <span className="text-center">勝-分-敗</span>
+        <span className="text-center">差</span>
+        <span className="text-right">点</span>
+      </div>
+      <ol className="scroll-y min-h-0 flex-1">
         {rows.map((r, i) => {
           const s = game.schools[r.schoolId];
           const up = division.level > 1 && i < k;
           const down = !bottom && i >= rows.length - k;
+          const diff = r.goalsFor - r.goalsAgainst;
+          const isMe = r.schoolId === me;
           return (
-            <tr key={r.schoolId} className={`border-b border-gray-100 ${r.schoolId === me ? "bg-green-50 font-black" : ""}`}>
-              <td className={`text-right font-mono ${up ? "text-emerald-700" : down ? "text-red-700" : ""}`}>{i + 1}</td>
-              <td className="py-1.5 pl-2">
-                <div className="flex min-w-0 items-center gap-1">
-                  <RankBadge rank={s.rank} size="sm" />
-                  <span className="truncate">{s.name}</span>
-                </div>
-              </td>
-              <td className="text-center font-mono">{r.played}</td>
-              <td className="text-center font-mono text-[10px]">
+            <li
+              key={r.schoolId}
+              className={`grid min-h-9 ${TABLE_COLS} items-center gap-1.5 border-b border-l-[3px] border-b-line px-2 text-[0.8125rem] ${up ? "border-l-good" : down ? "border-l-bad" : "border-l-transparent"} ${isMe ? "bg-panel-3" : ""}`}
+            >
+              <span className={`font-num text-right font-bold ${up ? "text-good" : down ? "text-bad" : ""}`}>{i + 1}</span>
+              <span className="flex min-w-0 items-center gap-1">
+                <RankBadge rank={s.rank} size="sm" />
+                <span className={`truncate ${isMe ? "font-black text-yellow" : ""}`}>{s.name}</span>
+              </span>
+              <span className="font-num text-center text-text-2">{r.played}</span>
+              <span className="font-num text-center text-[0.75rem] text-text-2">
                 {r.won}-{r.drawn}-{r.lost}
-              </td>
-              <td className="text-center font-mono">{r.goalsFor - r.goalsAgainst > 0 ? `+${r.goalsFor - r.goalsAgainst}` : r.goalsFor - r.goalsAgainst}</td>
-              <td className="text-center font-mono font-bold">{r.points}</td>
-            </tr>
+              </span>
+              <span className="font-num text-center text-text-2">{diff > 0 ? `+${diff}` : diff}</span>
+              <span className="font-num text-right text-[0.9375rem] font-bold">{r.points}</span>
+            </li>
           );
         })}
-      </tbody>
-    </table>
+      </ol>
+    </div>
   );
 }
 
@@ -96,27 +117,44 @@ function Fixtures({ division }: { division: LeagueDivision }) {
   const game = useGameStore((s) => s.game)!;
   const me = game.playerSchoolId;
   const name = (id: string) => game.schools[id].name;
+  const boxRef = useRef<HTMLDivElement>(null);
+  const nextRef = useRef<HTMLElement>(null);
+  // まだ終わっていない節（なければ最後の節）
+  const next = Math.max(
+    0,
+    division.fixtures.findIndex((round) => round.some((f) => !f.score)),
+  );
+
+  // 開いたときは、次の節を上に出す
+  useEffect(() => {
+    const box = boxRef.current;
+    const el = nextRef.current;
+    if (!box || !el) return;
+    box.scrollTop += el.getBoundingClientRect().top - box.getBoundingClientRect().top;
+  }, [division]);
+
   return (
-    <div className="flex flex-col gap-3">
+    <div ref={boxRef} className="scroll-y min-h-0 flex-1 bg-panel px-2 pb-2">
       {division.fixtures.map((round, r) => {
         const rest = division.schoolIds.filter((id) => !round.some((f) => f.home === id || f.away === id));
         return (
-          <section key={r}>
-            <h3 className="mb-1 flex items-baseline gap-2 text-xs font-black text-gray-600">
-              第{r + 1}節<span className="font-normal text-gray-400">{formatDay(division.days[r])}</span>
+          <section key={r} ref={r === next ? nextRef : undefined} className="pt-1.5">
+            <h3 className="mb-1 flex items-baseline gap-2 border-b border-line pb-0.5">
+              <span className={`text-[0.75rem] font-black ${r === next ? "text-yellow" : "text-text-2"}`}>第{r + 1}節</span>
+              <span className="font-num text-[0.75rem] text-text-3">{formatDay(division.days[r])}</span>
             </h3>
-            <ul className="flex flex-col gap-1">
+            <ul className="flex flex-col gap-0.5">
               {round.map((f) => {
                 const mine = f.home === me || f.away === me;
                 return (
-                  <li key={f.id} className={`flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs ${mine ? "bg-green-50 ring-1 ring-pitch/40" : "bg-gray-50"}`}>
-                    <span className={`flex-1 truncate text-right ${f.home === me ? "font-black text-pitch-dark" : ""}`}>{name(f.home)}</span>
-                    <span className="w-12 shrink-0 text-center font-mono font-bold">{f.score ? `${f.score[0]}-${f.score[1]}` : "vs"}</span>
-                    <span className={`flex-1 truncate ${f.away === me ? "font-black text-pitch-dark" : ""}`}>{name(f.away)}</span>
+                  <li key={f.id} className={`flex min-h-7 items-center gap-1 px-1.5 text-[0.75rem] ${mine ? "border border-yellow bg-panel-3" : "bg-panel-2"}`}>
+                    <span className={`flex-1 truncate text-right ${f.home === me ? "font-black text-yellow" : ""}`}>{name(f.home)}</span>
+                    <span className={`font-num w-12 shrink-0 text-center text-[0.875rem] font-bold ${f.score ? "" : "text-text-3"}`}>{f.score ? `${f.score[0]}-${f.score[1]}` : "vs"}</span>
+                    <span className={`flex-1 truncate ${f.away === me ? "font-black text-yellow" : ""}`}>{name(f.away)}</span>
                   </li>
                 );
               })}
-              {rest.length > 0 && <li className="text-[11px] text-gray-400">休み：{rest.map(name).join("、")}</li>}
+              {rest.length > 0 && <li className="px-1.5 text-[0.75rem] text-text-3">休み：{rest.map(name).join("、")}</li>}
             </ul>
           </section>
         );

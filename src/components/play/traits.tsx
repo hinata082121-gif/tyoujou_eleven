@@ -2,7 +2,7 @@
 
 /**
  * 性格・プレースタイル・特殊能力の表示部品（SPEC 7.5〜7.7、PLAN 7章）。
- * 特殊能力のチップは角丸の四角に名前を書くだけ。色：○＝緑、◎＝青、金色＝金色の地に細い縁取り、×＝灰色。
+ * 特殊能力のチップは斜めに切った札。色：○＝緑、◎＝青、金色＝金色の地に明るい縁取り、×＝暗い地（DESIGN.md）。
  */
 import { useState } from "react";
 import {
@@ -29,13 +29,13 @@ import { Bar, Button, Sheet } from "../ui";
 export function skillChipClass(id: SkillId): string {
   switch (SKILL_DEFS[id].tier) {
     case "minus":
-      return "bg-gray-200 text-gray-600 border border-gray-300";
+      return "bg-panel-3 text-text-2 border border-line-2";
     case "double":
-      return "bg-sky-600 text-white border border-sky-700";
+      return "bg-skill-double text-ink";
     case "gold":
-      return "bg-amber-300 text-amber-950 border border-amber-600";
+      return "bg-gold text-ink border-2 border-gold-2";
     default:
-      return "bg-emerald-600 text-white border border-emerald-700";
+      return "bg-skill-plus text-ink";
   }
 }
 
@@ -44,7 +44,7 @@ export function SkillChip({ id, faded, onClick }: { id: SkillId; faded?: boolean
     <button
       type="button"
       onClick={onClick}
-      className={`min-h-8 rounded-md px-2 text-xs font-bold ${skillChipClass(id)} ${faded ? "opacity-40" : ""}`}
+      className={`pressable cut-r min-h-8 pl-2 pr-4 text-[0.75rem] font-black ${skillChipClass(id)} ${faded ? "opacity-40" : ""}`}
       title={SKILL_NAMES[id]}
     >
       {SKILL_NAMES[id]}
@@ -79,13 +79,13 @@ export function SkillSheet({ id, onClose, note }: { id: SkillId; onClose: () => 
     <Sheet onClose={onClose}>
       <div className="mb-2 flex items-center gap-2">
         <SkillChip id={id} />
-        {def.tier === "gold" && <span className="text-[11px] font-bold text-amber-700">{LEGEND_SKILL_NAME}</span>}
+        {def.tier === "gold" && <span className="text-[0.75rem] font-bold text-gold-2">{LEGEND_SKILL_NAME}</span>}
       </div>
-      <p className="mb-2 text-sm">{skillText(id)}</p>
-      {note && <p className="mb-2 text-xs text-gray-500">{note}</p>}
-      <p className="mb-1 text-xs text-gray-600">入手：{skillHint(id) || "—"}</p>
-      {aff.styles.length > 0 && <p className="mb-1 text-xs text-gray-600">身につけやすいスタイル：{aff.styles.map((s) => PLAY_STYLE_NAMES[s]).join("・")}</p>}
-      {aff.personalities.length > 0 && <p className="mb-1 text-xs text-gray-600">身につけやすい性格：{aff.personalities.join("・")}</p>}
+      <p className="mb-2 text-[0.875rem] leading-relaxed">{skillText(id)}</p>
+      {note && <p className="mb-2 text-[0.75rem] text-warn">{note}</p>}
+      <p className="mb-1 text-[0.75rem] text-text-2">入手：{skillHint(id) || "—"}</p>
+      {aff.styles.length > 0 && <p className="mb-1 text-[0.75rem] text-text-2">身につけやすいスタイル：{aff.styles.map((s) => PLAY_STYLE_NAMES[s]).join("・")}</p>}
+      {aff.personalities.length > 0 && <p className="mb-1 text-[0.75rem] text-text-2">身につけやすい性格：{aff.personalities.join("・")}</p>}
       <Button variant="secondary" className="mt-2 w-full" onClick={onClose}>
         閉じる
       </Button>
@@ -97,9 +97,9 @@ export function SkillSheet({ id, onClose, note }: { id: SkillId; onClose: () => 
 export function ProficiencyBar({ value }: { value: number }) {
   return (
     <div className="flex items-center gap-2">
-      <span className="text-[11px] text-gray-500">熟練度</span>
-      <Bar value={value} color="bg-violet-500" className="flex-1" />
-      <span className="w-8 text-right font-mono text-xs">{Math.floor(value)}</span>
+      <span className="text-[0.75rem] font-bold text-text-3">熟練度</span>
+      <Bar value={value} color="bg-teal" className="flex-1" />
+      <span className="font-num w-8 text-right text-[0.875rem]">{Math.floor(value)}</span>
     </div>
   );
 }
@@ -121,11 +121,11 @@ export function StyleChangeSheet({ player, onClose }: { player: Player; onClose:
   if (pick)
     return (
       <Sheet onClose={() => setPick(null)} title="スタイルを変える">
-        <p className="mb-2 text-sm">
+        <p className="mb-2 text-[0.875rem]">
           {player.name}のスタイルを「{PLAY_STYLE_NAMES[pick]}」に変えます。
         </p>
-        <p className="mb-3 rounded-lg bg-amber-50 p-2 text-sm font-bold text-amber-900">熟練度が 0 に戻ります（今 {Math.floor(player.styleProficiency)}）。</p>
-        {error && <p className="mb-2 text-xs text-red-700">{error}</p>}
+        <p className="mb-3 border-l-4 border-yellow bg-panel-2 p-2 text-[0.875rem] font-bold text-warn">熟練度が 0 に戻ります（今 {Math.floor(player.styleProficiency)}）。</p>
+        {error && <p className="mb-2 text-[0.75rem] text-bad">{error}</p>}
         <div className="flex gap-2">
           <Button variant="secondary" className="flex-1" onClick={() => setPick(null)}>
             やめる
@@ -145,12 +145,12 @@ export function StyleChangeSheet({ player, onClose }: { player: Player; onClose:
     );
   return (
     <Sheet onClose={onClose} title="スタイルを変える">
-      <p className="mb-2 text-[11px] text-gray-500">
+      <p className="mb-2 text-[0.75rem] text-text-2">
         主ポジションと、適性○以上のポジションのスタイルから選べます。今いる枠のポジションに合わないスタイルは、試合では効果が出ません。
       </p>
       {groups.map(({ g, styles }) => (
         <section key={g} className="mb-3">
-          <h3 className="mb-1 text-xs font-black text-gray-600">
+          <h3 className="mb-1 text-[0.75rem] font-black text-yellow">
             {GROUP_LABEL[g]}（{STYLE_GROUP_POSITIONS[g].map((p) => POSITION_NAMES[p]).join("・")}）
           </h3>
           <ul className="flex flex-col gap-1">
@@ -160,16 +160,16 @@ export function StyleChangeSheet({ player, onClose }: { player: Player; onClose:
                   type="button"
                   disabled={s === player.playStyle}
                   onClick={() => setPick(s)}
-                  className={`w-full rounded-lg border p-2 text-left ${s === player.playStyle ? "border-violet-400 bg-violet-50" : "border-gray-200 active:bg-gray-50"}`}
+                  className={`pressable w-full border-l-4 p-2 text-left ${s === player.playStyle ? "border-yellow bg-panel-3" : "border-line-2 bg-panel-2"}`}
                 >
                   <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-bold">{PLAY_STYLE_NAMES[s]}</span>
-                    <span className="rounded bg-gray-100 px-1 text-[10px] text-gray-600">{MOVEMENT_NAMES[PLAY_STYLE_DEFS[s].movement]}</span>
-                    {easy.includes(s) && <span className="rounded bg-emerald-100 px-1 text-[10px] font-bold text-emerald-800">伸ばしやすい</span>}
-                    {s === player.playStyle && <span className="ml-auto text-[10px] font-bold text-violet-700">今のスタイル</span>}
+                    <span className="text-[0.875rem] font-bold">{PLAY_STYLE_NAMES[s]}</span>
+                    <span className="bg-panel px-1 text-[0.6875rem] text-text-2">{MOVEMENT_NAMES[PLAY_STYLE_DEFS[s].movement]}</span>
+                    {easy.includes(s) && <span className="bg-skill-plus px-1 text-[0.6875rem] font-bold text-ink">伸ばしやすい</span>}
+                    {s === player.playStyle && <span className="ml-auto text-[0.6875rem] font-bold text-yellow">今のスタイル</span>}
                   </div>
-                  <p className="mt-0.5 text-[11px] text-gray-600">{PLAY_STYLE_TEXTS[s]}</p>
-                  <p className="text-[10px] text-gray-400">熟練度が上がる練習：{PLAY_STYLE_DEFS[s].practices.map((k) => PRACTICE_NAMES[k]).join("・")}</p>
+                  <p className="mt-0.5 text-[0.75rem] text-text-2">{PLAY_STYLE_TEXTS[s]}</p>
+                  <p className="text-[0.6875rem] text-text-3">熟練度が上がる練習：{PLAY_STYLE_DEFS[s].practices.map((k) => PRACTICE_NAMES[k]).join("・")}</p>
                 </button>
               </li>
             ))}

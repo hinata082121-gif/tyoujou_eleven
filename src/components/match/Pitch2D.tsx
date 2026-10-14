@@ -6,12 +6,12 @@ import { KIT_PALETTE } from "@/engine/config/look";
 import { gkKit, numberColor } from "@/engine/look";
 import type { MatchState, Side } from "@/engine/match/types";
 
-/** ピッチの大きさ（SVG の座標。縦長） */
+/** ピッチの大きさ（m。SVG の座標では横長に置く：横 = 長さ L、縦 = 幅 W） */
 const W = 68;
-const H = 105;
+const L = 105;
 
 /**
- * 簡易2D（P3）：演出タイムラインを上から見たピッチで再生する。自校は下から上へ攻める。
+ * 簡易2D（P3。R1 で横画面向けに横長にした）：演出タイムラインを上から見たピッチで再生する。自校は左から右へ攻める。
  * 選手は丸と背番号。丸はその試合のユニフォームのメインの色で塗る（P4。GK は GK の色）
  */
 export function Pitch2D({ ms, display, userSide }: { ms: MatchState; display: number; userSide: Side }) {
@@ -21,44 +21,44 @@ export function Pitch2D({ ms, display, userSide }: { ms: MatchState; display: nu
   const tl = useMemo(() => buildTimeline(ms), [ms, count]);
   const f = frameAt(ms, tl, display);
   const flip = userSide === 1;
-  const px = (x: number) => (flip ? 1 - x : x) * W;
-  const py = (y: number) => (flip ? 1 - y : y) * H;
+  // タイムラインの座標（x：幅の向き、y：自校から見て 0 が相手のゴール）を、横長の画面の座標にする
+  const sx = (_x: number, y: number) => (1 - (flip ? 1 - y : y)) * L;
+  const sy = (x: number) => (flip ? 1 - x : x) * W;
+  const at = (x: number, y: number) => `translate(${sx(x, y)}px, ${sy(x)}px)`;
   const move = { transition: "transform 110ms linear" } as const;
 
   return (
-    <svg viewBox={`-2 -2 ${W + 4} ${H + 4}`} className="h-full w-full" role="img" aria-label="試合の2D表示">
-      <rect x={-2} y={-2} width={W + 4} height={H + 4} className="fill-pitch" />
-      {Array.from({ length: 7 }, (_, i) => (
-        <rect key={i} x={0} y={(i * H) / 7} width={W} height={H / 14} fill="rgba(255,255,255,0.04)" />
-      ))}
-      <g fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth={0.35}>
-        <rect x={0} y={0} width={W} height={H} />
-        <line x1={0} y1={H / 2} x2={W} y2={H / 2} />
-        <circle cx={W / 2} cy={H / 2} r={9.15} />
-        <rect x={W / 2 - 20.16} y={0} width={40.32} height={16.5} />
-        <rect x={W / 2 - 20.16} y={H - 16.5} width={40.32} height={16.5} />
-        <rect x={W / 2 - 9.16} y={0} width={18.32} height={5.5} />
-        <rect x={W / 2 - 9.16} y={H - 5.5} width={18.32} height={5.5} />
-        <rect x={W / 2 - 3.66} y={-1.5} width={7.32} height={1.5} />
-        <rect x={W / 2 - 3.66} y={H} width={7.32} height={1.5} />
+    <svg viewBox={`-3 -2 ${L + 6} ${W + 4}`} preserveAspectRatio="xMidYMid meet" className="h-full w-full" role="img" aria-label="試合の2D表示">
+      <rect x={-3} y={-2} width={L + 6} height={W + 4} fill="#1d3b2b" />
+      {Array.from({ length: 10 }, (_, i) => (i % 2 ? <rect key={i} x={(i * L) / 10} y={0} width={L / 10} height={W} fill="#22442f" /> : null))}
+      <g fill="none" stroke="rgba(246,243,234,0.7)" strokeWidth={0.4}>
+        <rect x={0} y={0} width={L} height={W} />
+        <line x1={L / 2} y1={0} x2={L / 2} y2={W} />
+        <circle cx={L / 2} cy={W / 2} r={9.15} />
+        <rect x={0} y={W / 2 - 20.16} width={16.5} height={40.32} />
+        <rect x={L - 16.5} y={W / 2 - 20.16} width={16.5} height={40.32} />
+        <rect x={0} y={W / 2 - 9.16} width={5.5} height={18.32} />
+        <rect x={L - 5.5} y={W / 2 - 9.16} width={5.5} height={18.32} />
+        <rect x={-1.5} y={W / 2 - 3.66} width={1.5} height={7.32} />
+        <rect x={L} y={W / 2 - 3.66} width={1.5} height={7.32} />
       </g>
-      {f.flight && <line x1={px(f.flight.from.x)} y1={py(f.flight.from.y)} x2={px(f.flight.to.x)} y2={py(f.flight.to.y)} stroke="rgba(255,255,255,0.6)" strokeWidth={0.4} strokeDasharray="1.2 1.2" />}
+      {f.flight && <line x1={sx(f.flight.from.x, f.flight.from.y)} y1={sy(f.flight.from.x)} x2={sx(f.flight.to.x, f.flight.to.y)} y2={sy(f.flight.to.x)} stroke="rgba(255,255,255,0.7)" strokeWidth={0.4} strokeDasharray="1.2 1.2" />}
       {f.dots.map((d) => {
         const mine = d.side === userSide;
         const view = ms.view;
         const num = ms.teams[d.side].players[d.id]?.num ?? d.num;
         if (!view)
           return (
-            <g key={d.id} style={{ ...move, transform: `translate(${px(d.x)}px, ${py(d.y)}px)` }}>
-              <circle r={2.1} className={mine ? (d.gk ? "fill-amber-600" : "fill-amber-300") : d.gk ? "fill-sky-700" : "fill-sky-300"} stroke="rgba(0,0,0,0.45)" strokeWidth={0.3} />
-              <text y={0.95} textAnchor="middle" fontSize={2.6} fontWeight={700} className="fill-gray-900">
+            <g key={d.id} style={{ ...move, transform: at(d.x, d.y) }}>
+              <circle r={2.1} fill={mine ? (d.gk ? "#c99d05" : "#f2c21b") : d.gk ? "#2f6f9e" : "#7cc8ff"} stroke="rgba(0,0,0,0.45)" strokeWidth={0.3} />
+              <text y={0.95} textAnchor="middle" fontSize={2.6} fontWeight={700} fill="#0f1512">
                 {num}
               </text>
             </g>
           );
         const kit = d.gk ? gkKit(view.gk[d.side]) : view.kits[d.side];
         return (
-          <g key={d.id} style={{ ...move, transform: `translate(${px(d.x)}px, ${py(d.y)}px)` }}>
+          <g key={d.id} style={{ ...move, transform: at(d.x, d.y) }}>
             <circle r={2.1} fill={KIT_PALETTE[kit.main]} stroke={KIT_PALETTE[kit.sub]} strokeWidth={0.45} />
             <text y={0.95} textAnchor="middle" fontSize={2.6} fontWeight={700} fill={numberColor(kit) === 1 ? "#1c1c1e" : "#ffffff"}>
               {num}
@@ -66,7 +66,7 @@ export function Pitch2D({ ms, display, userSide }: { ms: MatchState; display: nu
           </g>
         );
       })}
-      <g style={{ ...move, transform: `translate(${px(f.ball.x)}px, ${py(f.ball.y)}px)` }}>
+      <g style={{ ...move, transform: at(f.ball.x, f.ball.y) }}>
         <circle r={1.05} fill="#fff" stroke="#111" strokeWidth={0.3} />
       </g>
     </svg>
