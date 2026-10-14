@@ -195,11 +195,12 @@ function chooseCard(state: GameState, policy: AutoPolicy) {
     return avgFit < 55 && rest ? rest : ([...hand].filter((c) => c.practice !== "rest").sort((a, b) => b.value - a.value)[0] ?? hand[0]);
   }
   if (avgFit < 62 && rest) return rest;
-  // 試合が近ければ、体力を戻しておく（終盤の疲れが試合を左右するため）
+  // 試合が近ければ、体力を戻しておく（終盤の疲れが試合を左右するため）。
+  // R2：試合の日はすごろく上では隠れるが、うまい監督は予定表で確かめている。学校行事の前には休まない
   const pos = state.calendar.position;
   const matchSoon = state.calendar.squares.slice(pos + 1, pos + 1 + SKILLED_REST.lookAhead).some((sq) => {
     const kind = sq.major?.kind;
-    return !!kind && kind !== "camp" && kind !== "scoutReply" && kind !== "graduation" && kind !== "yearEnd" && kind !== "entrance" && squareDisplay(state, sq).type === "major";
+    return !!kind && kind !== "school" && kind !== "camp" && kind !== "scoutReply" && kind !== "graduation" && kind !== "yearEnd" && kind !== "entrance" && squareDisplay(state, sq).type === "major";
   });
   if (matchSoon && avgFit < SKILLED_REST.beforeMatch && rest) return rest;
   const score = (c: (typeof hand)[number]) => (c.practice === "rest" ? 0.1 : c.value * PRACTICE_USEFULNESS[PRACTICES[c.practice].target]);
