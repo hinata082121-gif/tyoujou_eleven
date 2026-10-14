@@ -198,7 +198,7 @@ export function HomeView() {
                     <span className="relative mt-auto mb-auto text-ink">
                       <Icon name={PRACTICE_ICON[c.practice]} size={24} stroke={2.6} />
                     </span>
-                    <span className="relative whitespace-nowrap text-center text-[0.75rem] font-black leading-tight tracking-tight">{PRACTICE_NAMES[c.practice]}</span>
+                    <span className={`relative whitespace-nowrap text-center font-black leading-tight tracking-tight ${PRACTICE_NAMES[c.practice].length >= 6 ? "text-[0.6875rem] tracking-tighter" : "text-[0.75rem]"}`}>{PRACTICE_NAMES[c.practice]}</span>
                     <span className="relative whitespace-nowrap text-[0.6875rem] font-bold tracking-tight text-text-2">{TARGET_LABEL[PRACTICES[c.practice].target]}</span>
                   </button>
                 ))}
@@ -345,10 +345,10 @@ function SquareCell({ sq, view, current, passed, prep }: { sq: Square; view: Boa
   return (
     <div className={`relative h-[2.375rem] -skew-x-[8deg] border-b-4 ${SQUARE_LINE[view.type]} ${bg} ${passed ? "opacity-35" : ""}`}>
       <div className="h-full skew-x-[8deg]">
-        <span className="font-num block px-1 text-[0.8125rem] leading-[1.1rem]">{d === 1 ? `${m}/1` : d}</span>
-        {view.monthly && !current && <span className="absolute inset-x-1 bottom-0.5 bg-telop text-center text-[0.5625rem] font-black leading-[0.75rem] text-ink">指示</span>}
+        <span className={`font-num block whitespace-nowrap px-1 leading-[1.1rem] ${d === 1 ? "text-[0.6875rem] tracking-tighter" : "text-[0.8125rem]"}`}>{d === 1 ? `${m}/1` : d}</span>
+        {view.monthly && !current && <span className="absolute inset-x-0.5 bottom-0.5 overflow-hidden whitespace-nowrap bg-telop tracking-tighter text-center text-[0.5625rem] font-black leading-[0.75rem] text-ink">指示</span>}
         {hidden && !view.monthly && <span className="font-head absolute inset-x-0 bottom-0.5 text-center text-[0.875rem] leading-none text-text-3">？</span>}
-        {view.type === "person" && !view.monthly && <span className="absolute inset-x-0 bottom-px text-center text-[0.625rem] font-black leading-[0.6875rem] text-sq-person">人物</span>}
+        {view.type === "person" && !view.monthly && <span className="absolute inset-x-0 bottom-px overflow-hidden whitespace-nowrap text-center text-[0.625rem] font-black leading-[0.6875rem] tracking-tighter text-sq-person">人物</span>}
         {view.label && !(view.monthly && !current) && <span className="absolute inset-x-0 bottom-px block truncate text-center text-[0.625rem] font-black leading-[0.6875rem] tracking-tighter">{view.label}</span>}
       </div>
       {prep && !current && <span className="absolute -top-1.5 left-0 right-0 h-1 bg-telop" />}

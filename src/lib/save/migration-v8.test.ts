@@ -47,3 +47,27 @@ describe("R1 のセーブの移行（v7 → v8）", () => {
     expect(stats.tests.length).toBeGreaterThanOrEqual(5);
   }, 120000);
 });
+
+describe("R1 のセーブの移行（v7 → v8）：大会の最中・試合の途中", () => {
+  const load = (f: string) => JSON.parse(decompressFromBase64(readFileSync(join(__dirname, `fixtures/${f}`), "utf8"))!);
+
+  it("大会の最中（夏の県予選の途中）：県予選の次の試合が行われ、1 年遊び続けられる", () => {
+    const raw = load("v7-r1-cup.lz.txt");
+    expect(raw.schemaVersion).toBe(7);
+    const s = fromRawSave(raw);
+    // 行事は今日より後で、大会・リーグなどの日とは重ならない（1 マスに大マスは 1 つ）
+    const pos = s.calendar.position;
+    expect(s.calendar.squares.filter((q) => q.major?.kind === "school").every((q) => q.day > pos)).toBe(true);
+    const stats = autoplayYears(s, 1, "skilled");
+    expect(stats.matches[0]?.kind).toBe("summerQualifier");
+    expect(stats.monthly).toBeGreaterThanOrEqual(10);
+  }, 120000);
+
+  it("試合の途中：観戦中の試合が残り、終えたあとで遊び続けられる", () => {
+    const s = fromRawSave(load("v7-r1-match.lz.txt"));
+    expect(s.activeMatch?.kind).toBe("summerQualifier");
+    const stats = autoplayYears(s, 1, "skilled");
+    expect(stats.matches[0]?.kind).toBe("summerQualifier");
+    expect(stats.tests.length).toBeGreaterThanOrEqual(4);
+  }, 120000);
+});
