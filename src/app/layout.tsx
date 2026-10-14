@@ -6,7 +6,7 @@ import "./globals.css";
 
 // フォントはビルドのときに取ってきて、自分のサイトから配信する（docs/DESIGN.md）
 const dela = Dela_Gothic_One({ weight: "400", subsets: ["latin"], variable: "--font-dela", display: "swap", preload: false });
-const mplus = M_PLUS_1({ weight: ["400", "700", "900"], subsets: ["latin"], variable: "--font-mplus", display: "swap", preload: false });
+const mplus = M_PLUS_1({ subsets: ["latin"], variable: "--font-mplus", display: "swap", preload: false });
 const oswald = Oswald({ weight: ["500", "700"], subsets: ["latin"], variable: "--font-oswald", display: "swap" });
 
 export const metadata: Metadata = {
