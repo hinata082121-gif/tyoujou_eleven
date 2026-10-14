@@ -147,7 +147,7 @@ export const kitsClash = (a: Kit, b: Kit) => colorDistance(a.main, b.main) < KIT
 /** 背番号の文字の色（メインが明るければ黒、暗ければ白） */
 export const numberColor = (kit: Kit) => (colorLightness(kit.main) >= KIT.darkNumberL ? 1 : 0);
 
-const farthestFrom = (rng: Rng | null, candidates: readonly number[], others: number[]) => {
+export const farthestFrom = (rng: Rng | null, candidates: readonly number[], others: number[]) => {
   let best = candidates[0];
   let bestD = -1;
   for (const c of candidates) {

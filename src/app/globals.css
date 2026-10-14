@@ -64,6 +64,14 @@
   --color-rank-f: #9aa29d;
   --color-rank-g: #6d7571;
 
+  /* 特殊能力の札（○・◎・金色・×）。文字は ink（× だけ明るい文字） */
+  --color-skill-plus: #6ee08a;
+  --color-skill-double: #7cc8ff;
+  --color-gold: #e0a92a;
+  --color-gold-2: #fff0b0;
+  /* 熟練度・特訓（紫は使わず、明るい青緑） */
+  --color-teal: #4fd1c5;
+
   /* 体力のバー */
   --color-fit-high: #58c26a;
   --color-fit-mid: #f2c21b;
@@ -123,53 +131,84 @@ html {
   }
 }
 
-html,
-body {
-  height: 100%;
-  overflow: hidden;
-  background: var(--color-night);
-  color: var(--color-text);
-  font-family: var(--font-body);
-  -webkit-tap-highlight-color: transparent;
-  -webkit-text-size-adjust: 100%;
-  overscroll-behavior: none;
+@layer base {
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+    background: var(--color-night);
+    color: var(--color-text);
+    font-family: var(--font-body);
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior: none;
+  }
+
+  button {
+    cursor: pointer;
+    touch-action: manipulation;
+    font: inherit;
+    color: inherit;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
 }
 
-button {
-  cursor: pointer;
-  touch-action: manipulation;
-  font: inherit;
-  color: inherit;
-}
-button:disabled {
-  cursor: not-allowed;
-}
-input,
-select,
-textarea {
-  font: inherit;
+@layer components {
+  /* 芝の刈り目の背景 */
+  .bg-pitch-stripes {
+    background-color: var(--color-turf);
+    background-image:
+      linear-gradient(90deg, rgb(0 0 0 / 0.45), transparent 30%, transparent 70%, rgb(0 0 0 / 0.45)),
+      repeating-linear-gradient(90deg, var(--color-turf) 0 4rem, var(--color-turf-2) 4rem 8rem);
+  }
+
+  /* 斜めに切った帯（右下を切る・左上を切る・両方） */
+  .cut-r {
+    clip-path: polygon(0 0, 100% 0, calc(100% - 0.75em) 100%, 0 100%);
+  }
+  .cut-l {
+    clip-path: polygon(0.75em 0, 100% 0, 100% 100%, 0 100%);
+  }
+  .cut-lr {
+    clip-path: polygon(0.75em 0, 100% 0, calc(100% - 0.75em) 100%, 0 100%);
+  }
+
+  .font-head {
+    font-family: var(--font-head);
+    font-weight: 400;
+    letter-spacing: 0.02em;
+  }
+  .font-num {
+    font-family: var(--font-num);
+    font-feature-settings: "tnum";
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .scroll-y {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .scroll-x {
+    overflow-x: auto;
+    overscroll-behavior: contain;
+  }
 }
 
-/* 芝の刈り目の背景 */
-.bg-pitch-stripes {
-  background-color: var(--color-turf);
-  background-image:
-    linear-gradient(90deg, rgb(0 0 0 / 0.45), transparent 30%, transparent 70%, rgb(0 0 0 / 0.45)),
-    repeating-linear-gradient(90deg, var(--color-turf) 0 4rem, var(--color-turf-2) 4rem 8rem);
-}
+/* 押したときの反応は、帯や影のクラスより強くする（レイヤーの外に置く） */
 
-/* 斜めに切った帯（右下を切る・左上を切る・両方） */
-.cut-r {
-  clip-path: polygon(0 0, 100% 0, calc(100% - 0.75em) 100%, 0 100%);
-}
-.cut-l {
-  clip-path: polygon(0.75em 0, 100% 0, 100% 100%, 0 100%);
-}
-.cut-lr {
-  clip-path: polygon(0.75em 0, 100% 0, calc(100% - 0.75em) 100%, 0 100%);
-}
-
-/* 押したときの反応：2px 沈んで影が縮む */
 .pressable {
   transition:
     transform var(--dur-press) ease-out,
@@ -182,42 +221,16 @@ textarea {
   filter: brightness(0.88);
 }
 
-.font-head {
-  font-family: var(--font-head);
-  font-weight: 400;
-  letter-spacing: 0.02em;
-}
-.font-num {
-  font-family: var(--font-num);
-  font-feature-settings: "tnum";
-}
-
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-.no-scrollbar {
-  scrollbar-width: none;
-}
-.scroll-y {
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
-}
-.scroll-x {
-  overflow-x: auto;
-  overscroll-behavior: contain;
-}
-
 /* 演出 */
 @keyframes band-in {
   0% {
-    transform: translateX(-110%) skewX(-12deg);
+    transform: translateX(-110%);
   }
   60% {
-    transform: translateX(4%) skewX(-12deg);
+    transform: translateX(4%);
   }
   100% {
-    transform: translateX(0) skewX(-12deg);
+    transform: none;
   }
 }
 @keyframes pop-in {

@@ -55,9 +55,11 @@ export interface Settings {
   tournamentView: "3d" | "2d" | "text";
   /** 3D の画質（P4） */
   quality3d: "standard" | "light";
+  /** イベントの見せ方（R1）：場面で見る（立ち絵とせりふの枠）か、文章だけ（ホームの右に並べる） */
+  eventView: "scene" | "text";
 }
 
-const defaultSettings: Settings = { skipMove: false, matchSpeed: 1, leagueMode: "manage", matchView: "2d", tournamentView: "3d", quality3d: "standard" };
+const defaultSettings: Settings = { skipMove: false, matchSpeed: 1, leagueMode: "manage", matchView: "2d", tournamentView: "3d", quality3d: "standard", eventView: "scene" };
 
 function readSettings(): Settings {
   try {
