@@ -1,5 +1,8 @@
 "use client";
 
+import { academicBand, trustBand } from "@/engine/school/life";
+import { LifeBars } from "./LifeBars";
+
 import { useState } from "react";
 import { PLAY_STYLE_NAMES, PLAY_STYLE_SHORT, POSITION_NAMES, SKILL_CATEGORY_NAMES, SKILL_LINE_NAMES, SKILL_NAMES } from "@/engine/config/names";
 import { PLAY_STYLE_DEFS } from "@/engine/config/playStyle";
@@ -15,8 +18,8 @@ import { fitnessColor, RankBadge, Segmented } from "../ui";
 import { StaffList } from "../staff/StaffView";
 import { overallRank, overallValue } from "./format";
 
-type SortKey = "overall" | "grade" | "position" | "fitness" | "height" | "proficiency" | "skills";
-const SORT_LABELS: Record<SortKey, string> = { overall: "総合", grade: "学年", position: "ポジ", fitness: "体力", height: "身長", proficiency: "熟練", skills: "特能" };
+type SortKey = "overall" | "grade" | "position" | "fitness" | "height" | "proficiency" | "skills" | "academic" | "trust";
+const SORT_LABELS: Record<SortKey, string> = { overall: "総合", grade: "学年", position: "ポジ", fitness: "体力", height: "身長", proficiency: "熟練", skills: "特能", academic: "学力", trust: "信頼" };
 const STYLE_GROUPS: StyleGroup[] = ["FW", "MF", "DF", "GK"];
 const SKILL_CATEGORIES: SkillCategory[] = ["shoot", "dribble", "pass", "setPiece", "defense", "gk", "mental", "body"];
 
@@ -61,6 +64,8 @@ export function SquadView() {
       height: (a, b) => b.heightCm - a.heightCm,
       proficiency: (a, b) => b.styleProficiency - a.styleProficiency,
       skills: (a, b) => plusCount(b) - plusCount(a) || goldCount(b) - goldCount(a) || overallValue(b) - overallValue(a),
+      academic: (a, b) => (b.academic ?? 0) - (a.academic ?? 0),
+      trust: (a, b) => (b.trust ?? 0) - (a.trust ?? 0),
     };
   const list = [...filtered].sort(cmp[sort]);
 
@@ -122,7 +127,7 @@ export function SquadView() {
         </SelectBox>
       </div>
       <div className="flex min-h-0 flex-1 flex-col bg-panel">
-        <div className="grid shrink-0 grid-cols-[2rem_1.75rem_minmax(0,1fr)_2.25rem_2.5rem_6.5rem_3rem_1.5rem_4.5rem_2.25rem] items-center gap-2 border-b-2 border-line-2 px-2 py-1 text-[0.6875rem] font-black text-text-3">
+        <div className="grid shrink-0 grid-cols-[2rem_1.75rem_minmax(0,1fr)_2.25rem_2.5rem_5.25rem_2.75rem_1.5rem_2.25rem_2.25rem_3.25rem_2.25rem] items-center gap-2 border-b-2 border-line-2 px-2 py-1 text-[0.6875rem] font-black text-text-3">
           <span />
           <span className="whitespace-nowrap">ランク</span>
           <span>
@@ -133,6 +138,8 @@ export function SquadView() {
           <span>スタイル</span>
           <span>特能</span>
           <span>調子</span>
+          <span>学力</span>
+          <span>信頼</span>
           <span>体力</span>
           <span className="text-right">総合</span>
         </div>
@@ -142,7 +149,7 @@ export function SquadView() {
               <button
                 type="button"
                 onClick={() => selectPlayer(p.id)}
-                className={`pressable grid min-h-11 w-full grid-cols-[2rem_1.75rem_minmax(0,1fr)_2.25rem_2.5rem_6.5rem_3rem_1.5rem_4.5rem_2.25rem] items-center gap-2 border-b border-line px-2 text-left text-[0.8125rem] ${p.status === "retired" ? "opacity-60" : ""}`}
+                className={`pressable grid min-h-11 w-full grid-cols-[2rem_1.75rem_minmax(0,1fr)_2.25rem_2.5rem_5.25rem_2.75rem_1.5rem_2.25rem_2.25rem_3.25rem_2.25rem] items-center gap-2 border-b border-line px-2 text-left text-[0.8125rem] ${p.status === "retired" ? "opacity-60" : ""}`}
               >
                 <PlayerFace look={p.look} size={32} kit={school.kits?.first} expr={p.injuryDays > 0 ? "sad" : "normal"} />
                 <RankBadge rank={overallRank(p)} size="sm" />
@@ -157,6 +164,8 @@ export function SquadView() {
                       停止
                     </span>
                   )}
+                  {(p.remedialDays ?? 0) > 0 && <span className="shrink-0 bg-red px-1 text-[0.6875rem] font-black text-white">補習</span>}
+                  {(p.awayDays ?? 0) > 0 && <span className="shrink-0 bg-panel-3 px-1 text-[0.6875rem] font-bold">旅行</span>}
                   {p.injuryDays > 0 && (
                     <span className="flex shrink-0 items-center gap-0.5 text-[0.6875rem] font-black text-bad">
                       <Icon name="injury" size={11} />
@@ -179,6 +188,8 @@ export function SquadView() {
                 <span className={CONDITION_TEXT[p.condition]} title="調子">
                   <Icon name={CONDITION_ICONS[p.condition]} size={16} />
                 </span>
+                <LifeBars value={academicBand(p)} label="学力" tone="telop" size="sm" />
+                <LifeBars value={trustBand(p)} label="信頼度" size="sm" />
                 <span className="flex items-center gap-1">
                   <span className="h-1.5 flex-1 -skew-x-[20deg] bg-panel-3">
                     <i className={`block h-full ${fitnessColor(p.fitness)}`} style={{ width: `${p.fitness}%` }} />

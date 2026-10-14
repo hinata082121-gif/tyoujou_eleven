@@ -4,6 +4,7 @@
  * 表情の選び方もここに置く（エンジンには置かない）。
  */
 import { choiceDef } from "@/engine/choice";
+import { addEventLines } from "@/engine/events/speech";
 import { POSITION_NAMES, ROLE_NAMES, SKILL_NAMES } from "@/engine/config/names";
 import { SKILL_DEFS } from "@/engine/config/skills";
 import type { EventOutcome, CastRef } from "@/engine/events";
@@ -209,6 +210,7 @@ function lineExpr(o: EventOutcome, speaking: boolean, name?: string): Expression
   const surname = name?.split(" ")[0];
   const mine = surname ? (o.effects ?? []).filter((e) => e.label === surname || e.label.startsWith(`${surname}`)) : [];
   if (o.kind === "school:graduation") return speaking ? "sad" : "focus";
+  if (o.kind === "injury" || o.kind === "practiceInjury") return "sad";
   if (mine.some((e) => e.tone === "bad")) return speaking ? "frustrated" : "sad";
   if (mine.some((e) => e.tone === "good")) return "joy";
   if (o.tone === "good") return "joy";
@@ -286,20 +288,17 @@ export function scenesFromCard(game: GameState, card: CardResult, mode: "importa
   const scenes: EventSceneData[] = [];
   // 練習中のケガ（練習の途中で起きるので先に見せる）
   (card.injuredIds ?? []).forEach((id, i) => {
-    const a = actorFor(game, { kind: "player", id }, "surprise", "sad");
-    if (!a) return;
     const p = playerSchool(game).players.find((x) => x.id === id);
-    scenes.push({
-      key: `inj${i}`,
-      bg: BG_FOR_KIND.practiceInjury,
+    if (!p) return;
+    const o: EventOutcome = {
       title: "練習中のケガ",
+      text: `${card.practice}の最中に、${p.name}が倒れ込んだ。全治${p.injuryDays}日の見込み。`,
       tone: "bad",
-      text: `${card.practice}の最中に、${a.name}が倒れ込んだ。${p ? `全治${p.injuryDays}日の見込み。` : ""}`,
-      speaker: { name: a.name, role: a.role },
-      speakerKey: a.key,
-      actors: [a],
-      badges: p ? [{ label: "ケガ", value: `全治${p.injuryDays}日`, tone: "bad" }] : [],
-    });
+      kind: "practiceInjury",
+      cast: [{ kind: "player", id }],
+      effects: [{ label: "ケガ", value: `全治${p.injuryDays}日`, tone: "bad" }],
+    };
+    scenes.push(...scenesFromOutcome(game, addEventLines(game, o), `inj${i}`));
   });
   card.outcomes
     .filter((o) => showsAsScene(o, mode))

@@ -206,3 +206,34 @@ describe("選択肢のあるイベントと信頼度（R2）", () => {
     expect(trustDownMult(p)).toBeCloseTo(1.3);
   });
 });
+
+describe("イベントのせりふ（R2。PLAN 5.3）", () => {
+  it("すごろくのイベントすべてに、型ごとのせりふがある", async () => {
+    const { EVENTS } = await import("../config/events");
+    const { EVENT_LINES } = await import("../config/eventLines");
+    for (const e of EVENTS) expect(EVENT_LINES[e.id], e.id).toBeDefined();
+    for (const k of ["green", "yellow", "training", "donation", "practiceInjury", "staffFix"]) expect(EVENT_LINES[k], k).toBeDefined();
+  });
+
+  it("出来事に地の文と人物のせりふが付き（先輩の技は先輩 → 後輩の順）、埋め込みの残りがない", async () => {
+    const { addEventLines } = await import("../events/speech");
+    const s = start("r2-lines");
+    const school = playerSchool(s);
+    const p = school.players.find((x) => x.status === "active")!;
+    const snack = addEventLines(s, { title: "差し入れ", text: "保護者会から差し入れが届いた。部員の体力が回復した。", tone: "good", kind: "snack", cast: [] });
+    expect(snack.lines![0]).toEqual({ speaker: null, text: "保護者会から差し入れが届いた。" });
+    expect(snack.lines![1].speaker?.id).toBe(school.captainId);
+    const teach = addEventLines(s, {
+      title: "先輩の背中",
+      text: `${p.name}が後輩に自分の技を伝えた。`,
+      tone: "good",
+      kind: "seniorTeach",
+      cast: [
+        { kind: "player", id: p.id },
+        { kind: "player", id: school.players[1].id },
+      ],
+    });
+    expect(teach.lines!.map((l) => l.speaker?.id ?? null)).toEqual([null, p.id, school.players[1].id]);
+    for (const l of [...snack.lines!, ...teach.lines!]) expect(l.text).not.toMatch(/[{}]/);
+  });
+});

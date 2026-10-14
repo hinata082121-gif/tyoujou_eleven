@@ -69,6 +69,7 @@ import {
 } from "../competition/bracket";
 import { matchFatigueDrop, schoolTeamInput, simulateCpuMatch } from "../competition/simulate";
 import { landOnSquare, type EventOutcome } from "../events";
+import { addEventLines } from "../events/speech";
 import { createMatch, simulateToEnd } from "../match/engine";
 import { autoSetup } from "../match/lineup";
 import type { ActiveMatch } from "../match/types";
@@ -662,10 +663,10 @@ function moveDays(state: GameState, rng: Rng, value: number, practice: PracticeK
     // 人物マス：選択肢のあるイベント（R2）。結果は confirmChoice で返す
   } else if (days > 0) {
     const donation = sq.baseType === "blue" ? tryDonation(state, rng) : null;
-    if (donation) outcomes.push(donation);
+    if (donation) outcomes.push(addEventLines(state, donation));
     else {
       const ctx = { rng, players: school.players, reputation: state.reputation, calendar: cal, practice: practice ?? "rest", alumni: state.alumni, staff: state.staff };
-      const o = landOnSquare(ctx, sq.baseType);
+      const o = addEventLines(state, landOnSquare(ctx, sq.baseType));
       outcomes.push(o);
       addLog(state, `${o.title}：${o.text}`, o.tone);
     }
