@@ -5,14 +5,18 @@ import { useEffect, useRef, useState } from "react";
 import { FORMATIONS } from "@/engine/config/formations";
 import { POSITION_NAMES } from "@/engine/config/names";
 import { pendingMatchLabel } from "@/engine/game";
-import { cancelSubstitution, injuredAwaitingSub, isBreakPhase, isOut, isPlayingPhase, playersShort, playSegment, resumeFromBreak, subsRemaining } from "@/engine/match/engine";
+import { cancelSubstitution, injuredAwaitingSub, isBreakPhase, isPlayingPhase, playSegment, resumeFromBreak, subsRemaining } from "@/engine/match/engine";
 import { manualFormation, manualSubstitution, manualTactics } from "@/engine/match/orders";
 import { halfReport } from "@/engine/match/report";
-import { describeEvent, isHighlight, isIncident, isMinorEvent } from "@/engine/match/text";
-import type { MatchState, MatchTeamState, Side } from "@/engine/match/types";
+import { isMinorEvent } from "@/engine/match/text";
+import type { MatchTeamState, Side } from "@/engine/match/types";
 import { FORMATION_IDS } from "@/engine/types";
 import { useGameStore } from "@/store/gameStore";
-import { Bar, Button, fitnessColor, Segmented, Sheet } from "../ui";
+import { Icon, type IconName } from "../icons";
+import { PlayerFace } from "../look/Figure";
+import { usePortrait } from "../shell/usePortrait";
+import { Bar, Button, fitnessColor, IconButton, Label, Segmented, Sheet } from "../ui";
+import { EventLine, Momentum, Scoreboard, TeamStatus } from "./broadcast";
 import { Pitch2D } from "./Pitch2D";
 import { PkScreen } from "./PkScreen";
 import { TacticsEditor } from "./TacticsEditor";
@@ -31,33 +35,12 @@ const Match3D = dynamic(
 );
 
 function Stadium3DLoading() {
-  return <div className="absolute inset-0 flex items-center justify-center bg-pitch-dark text-sm text-white/80">スタジアムを準備しています…</div>;
+  return <div className="absolute inset-0 flex items-center justify-center bg-night text-[0.875rem] font-bold text-text-2">スタジアムを準備しています…</div>;
 }
 
 /** 等速：試合時間 15 分 = 現実の 1 分（SPEC 10.7） */
 const GAME_MINUTES_PER_SECOND = 15 / 60;
 const TICK_MS = 100;
-
-function visibleScore(ms: MatchState, display: number): [number, number] {
-  const s: [number, number] = [0, 0];
-  for (const e of ms.events) {
-    if (e.minute > display) break;
-    if (e.type === "goal" || e.type === "pkGoal") s[e.side]++;
-  }
-  return s;
-}
-
-function phaseLabel(ms: MatchState, display: number): string {
-  if (ms.phase === "PK") return "PK戦";
-  if (ms.phase === "END" && display >= ms.minute) return "試合終了";
-  if (ms.phase === "HT" && display >= ms.minute) return "ハーフタイム";
-  if (ms.phase === "ET_BREAK" && display >= ms.minute) return "延長戦の前";
-  if (ms.phase === "ET_HT" && display >= ms.minute) return "延長ハーフタイム";
-  const h = ms.rules.halfMinutes;
-  if (display < h) return "前半";
-  if (display < 2 * h) return "後半";
-  return display < 2 * h + (ms.rules.extraTimeHalfMinutes ?? 0) ? "延長前半" : "延長後半";
-}
 
 export function MatchScreen() {
   const game = useGameStore((s) => s.game)!;
@@ -68,6 +51,7 @@ export function MatchScreen() {
   const speed = useGameStore((s) => s.settings.matchSpeed);
   const settings = useGameStore((s) => s.settings);
   const updateSettings = useGameStore((s) => s.updateSettings);
+  const portrait = usePortrait();
   const am = game.activeMatch!;
   /** トーナメントは「トーナメントの表示」（3D／2D／テキスト）、リーグ戦・練習試合は今までの表示の設定（P4） */
   const tournament = am.kind !== "league" && am.kind !== "practice";
@@ -106,10 +90,12 @@ export function MatchScreen() {
   const inBreak = isBreakPhase(ms) && caughtUp;
   const inPk = ms.phase === "PK" && caughtUp;
   const ended = ms.phase === "END" && caughtUp;
+  /** 縦に持っている間は時計を止める（R1。縦持ちの画面が出ている） */
+  const stopped = paused || panel || portrait;
 
   useEffect(() => {
     // 3D の読み込み中は時計を進めない
-    if (paused || panel || inBreak || inPk || ended || (use3d && !ready3d)) return;
+    if (stopped || inBreak || inPk || ended || (use3d && !ready3d)) return;
     const id = setInterval(() => {
       const state = useGameStore.getState().game?.activeMatch?.state;
       if (!state) return;
@@ -125,7 +111,7 @@ export function MatchScreen() {
       setDisplay(displayRef.current);
     }, TICK_MS);
     return () => clearInterval(id);
-  }, [paused, panel, inBreak, inPk, ended, speed, use3d, ready3d]);
+  }, [stopped, inBreak, inPk, ended, speed, use3d, ready3d]);
 
   // 自校にケガ人が出たら一時停止して、交代を選べるようにする（選ばずに閉じれば自動で交代）
   useEffect(() => {
@@ -141,246 +127,235 @@ export function MatchScreen() {
     setPanel(true);
   }, [display, panel, ms, side, breaksOnly]);
 
-  const score = visibleScore(ms, display);
   const events = ms.events.filter((e) => e.minute <= display && !isMinorEvent(e)).slice(-80).reverse();
-  const momentum = ms.momentumHistory.slice(0, Math.floor(display / 5));
-  const current = (momentum.at(-1) ?? 0) * (side === 0 ? 1 : -1);
 
   if (inPk) return <PkScreen />;
 
-  return (
-    <main className="flex h-dvh flex-col">
-      <div className="bg-pitch-dark px-3 pb-2 pt-2 text-white">
-        <div className="text-center text-[11px] text-white/70">{label}</div>
-        <div className="mt-1 flex items-center gap-2">
-          <span className="flex-1 truncate text-right text-sm font-bold">{ms.teams[0].name}</span>
-          <span className="rounded-lg bg-black/30 px-3 py-1 font-mono text-2xl font-black">
-            {score[0]} - {score[1]}
-          </span>
-          <span className="flex-1 truncate text-sm font-bold">{ms.teams[1].name}</span>
-        </div>
-        <TeamStatusRow ms={ms} display={display} />
-        <div className="mt-1 text-center text-xs">
-          {phaseLabel(ms, display)} {!ended && !inBreak && `${Math.floor(display)}分`}
-          {ms.pk && ` PK ${ms.pk.score[0]}-${ms.pk.score[1]}`}
-        </div>
-        <div className="mt-2">
-          <div className="mb-0.5 flex justify-between text-[10px] text-white/70">
-            <span>試合の流れ</span>
-            <span>{current > 10 ? "自校ペース" : current < -10 ? "相手ペース" : "互角"}</span>
-          </div>
-          <div className="flex h-6 items-center gap-px border-y border-white/10 bg-[linear-gradient(transparent_calc(50%-0.5px),rgba(255,255,255,0.35)_calc(50%-0.5px),rgba(255,255,255,0.35)_calc(50%+0.5px),transparent_calc(50%+0.5px))]">
-            {momentum.map((m, i) => {
-              const v = m * (side === 0 ? 1 : -1);
-              const h = Math.max(1, Math.min(12, Math.abs(v) / 2.5));
-              return (
-                <div key={i} className="flex h-6 flex-1 flex-col justify-center">
-                  <div className={`w-full ${v >= 0 ? "bg-amber-300" : "bg-sky-300"}`} style={{ height: h, marginTop: v >= 0 ? -h : h }} />
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
+  const breakLabel = ms.phase === "HT" ? "ハーフタイム" : ms.phase === "ET_BREAK" ? "延長戦の前" : "延長ハーフタイム";
+  const setView = (v: "3d" | "2d" | "text") => updateSettings(tournament ? { tournamentView: v } : { matchView: v === "3d" ? "2d" : v });
+  const nextSpeed = () => updateSettings({ matchSpeed: speed === 1 ? 2 : speed === 2 ? 4 : 1 });
 
-      {use3d && (
-        <div className="relative min-h-0 flex-1 bg-pitch-dark">
-          <Match3D
-            ms={ms}
-            display={Math.min(display, ms.minute)}
-            playing={!(paused || panel || inBreak || inPk || ended)}
-            speed={speed}
-            userSide={side}
-            quality={settings.quality3d}
-            perf={perf}
-            load={loadTimes}
-            onReady={() => setReady3d(true)}
-            onError={() => setLost3d(true)}
-          />
-          <button type="button" className="absolute right-1.5 top-1.5 z-10 rounded-md bg-black/40 px-2 py-1 text-[10px] font-bold text-white" onClick={() => updateSettings({ tournamentView: "2d" })}>
-            2D にする
-          </button>
-          <button
-            type="button"
-            aria-label="速報の一覧"
-            className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/75 via-black/45 to-transparent px-3 pb-1.5 pt-6 text-left text-[12px] leading-snug text-white"
-            onClick={() => setTickerOpen(true)}
-          >
-            {events.slice(0, 3).reverse().map((e, i) => (
-              <div key={`${e.minute}-${i}-${e.type}`} className={`truncate ${i === Math.min(2, events.length - 1) ? "font-bold" : "text-white/75"}`}>
-                <span className="mr-1.5 font-mono text-[10px] text-white/60">{e.minute}&apos;</span>
-                {describeEvent(ms, e)}
-              </div>
-            ))}
-          </button>
-        </div>
-      )}
-      {no3d && view === "3d" && <p className="bg-amber-50 px-3 py-1 text-[11px] text-amber-900">{no3d === "webgl" ? "この端末では 3D を表示できないため、2D で表示しています。" : "3D の表示が止まったため、2D に切り替えました。"}</p>}
-      {view2d && (
-        <div className="relative h-[42dvh] shrink-0 bg-pitch">
-          <Pitch2D ms={ms} display={Math.min(display, ms.minute)} userSide={side} />
-        </div>
-      )}
-      {!use3d && (
-        <div className="flex justify-end gap-1 border-b border-gray-100 px-2">
-          {tournament && view !== "3d" && (
-            <button type="button" className="min-h-8 px-2 text-[11px] font-bold text-pitch-dark" onClick={() => updateSettings({ tournamentView: "3d" })}>
-              3D で見る
-            </button>
-          )}
-          <button
-            type="button"
-            className="min-h-8 px-2 text-[11px] font-bold text-pitch-dark"
-            onClick={() => updateSettings(tournament ? { tournamentView: view2d ? "text" : "2d" } : { matchView: view2d ? "text" : "2d" })}
-          >
-            {view2d ? "テキストだけにする" : "2D を表示する"}
-          </button>
-        </div>
-      )}
-      <ul className={`${use3d ? "hidden" : "flex-1"} overflow-y-auto px-3 py-2 text-sm`}>
-        {events.map((e, i) => (
-          <li
-            key={`${e.minute}-${i}-${e.type}`}
-            className={`border-b border-gray-100 py-1 ${isHighlight(e) ? "font-black" : ""} ${e.type === "goal" || e.type === "pkGoal" ? (e.side === side ? "bg-amber-50 text-amber-900" : "bg-sky-50 text-sky-900") : isIncident(e) ? (e.type === "note" ? "bg-emerald-50 font-bold text-emerald-900" : "font-bold text-red-800") : ""}`}
-          >
-            <span className="mr-2 inline-block w-8 text-right font-mono text-xs text-gray-400">{e.minute}&apos;</span>
-            {describeEvent(ms, e)}
-          </li>
-        ))}
-      </ul>
+  const ordersPanel = panel && (
+    <OrdersPanel
+      side={side}
+      opp={opp}
+      presetOut={presetOut}
+      onClose={() => {
+        setPanel(false);
+        setPresetOut(null);
+      }}
+      breakAction={
+        inBreak
+          ? {
+              label: ms.phase === "HT" ? "後半開始" : ms.phase === "ET_BREAK" ? "延長戦開始" : "延長後半開始",
+              run: () => {
+                resumeFromBreak(ms);
+                touch(true);
+                setPanel(false);
+              },
+            }
+          : undefined
+      }
+    />
+  );
 
-      <div className="border-t border-gray-200 bg-white p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-        {ended ? (
-          <Button className="w-full" onClick={finishMatch}>
-            結果へ
-          </Button>
-        ) : inBreak ? (
-          <div className="flex gap-2">
-            {breaksOnly && (
-              <Button variant="secondary" onClick={toAuto}>
-                結果のみ
-              </Button>
-            )}
-            <Button className="flex-1" onClick={() => setPanel(true)}>
-              {ms.phase === "HT" ? "ハーフタイム（采配・後半開始）" : ms.phase === "ET_BREAK" ? "延長戦の前（采配・延長開始）" : "延長ハーフタイム（采配・再開）"}
-            </Button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            <div className="w-36">
-              <Segmented options={["1", "2", "4"] as const} value={String(speed) as "1" | "2" | "4"} onChange={(v) => updateSettings({ matchSpeed: Number(v) as 1 | 2 | 4 })} labels={{ "1": "等速", "2": "2倍", "4": "4倍" }} />
-            </div>
-            <Button variant="secondary" className="flex-1" onClick={() => setPaused((p) => !p)}>
-              {paused ? "▶ 再開" : "⏸ 一時停止"}
-            </Button>
-            {breaksOnly ? (
-              <Button className="flex-1 !px-2 !text-xs" onClick={toAuto}>
-                結果のみに切り替え
-              </Button>
-            ) : (
-              <Button className="flex-1" onClick={() => setPanel(true)}>
-                采配
-              </Button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {tickerOpen && use3d && (
-        <Sheet onClose={() => setTickerOpen(false)} title="速報">
-          <ul className="text-sm">
-            {events.map((e, i) => (
-              <li key={`${e.minute}-${i}-${e.type}`} className={`border-b border-gray-100 py-1 ${isHighlight(e) ? "font-black" : ""}`}>
-                <span className="mr-2 inline-block w-8 text-right font-mono text-xs text-gray-400">{e.minute}&apos;</span>
-                {describeEvent(ms, e)}
-              </li>
-            ))}
-          </ul>
-          <Button className="mt-3 w-full" variant="secondary" onClick={() => setTickerOpen(false)}>
-            閉じる
-          </Button>
-        </Sheet>
-      )}
-      {panel && (
-        <OrdersPanel
-          side={side}
-          opp={opp}
-          presetOut={presetOut}
-          onClose={() => {
-            setPanel(false);
-            setPresetOut(null);
-          }}
-          breakAction={
-            inBreak
-              ? {
-                  label: ms.phase === "HT" ? "後半開始" : ms.phase === "ET_BREAK" ? "延長戦開始" : "延長後半開始",
-                  run: () => {
-                    resumeFromBreak(ms);
-                    touch(true);
-                    setPanel(false);
-                  },
-                }
-              : undefined
-          }
+  /** 3D：画面いっぱいに 3D、左上にスコアボード、左下に速報のテロップ、右の端に操作のボタンを縦に */
+  if (use3d)
+    return (
+      <main className="fixed inset-0 overflow-hidden bg-night">
+        <Match3D
+          ms={ms}
+          display={Math.min(display, ms.minute)}
+          playing={!(stopped || inBreak || inPk || ended)}
+          speed={speed}
+          userSide={side}
+          quality={settings.quality3d}
+          perf={perf}
+          load={loadTimes}
+          onReady={() => setReady3d(true)}
+          onError={() => setLost3d(true)}
         />
+        <div className={`pointer-events-none absolute left-[max(0.5rem,var(--safe-l))] top-[max(0.5rem,var(--safe-t))] z-10 ${perf ? "mt-24" : ""}`}>
+          <div className="pointer-events-auto">
+            <Scoreboard ms={ms} display={display} label={label} compact />
+          </div>
+          <div className="mt-1 w-[17rem] max-w-full">
+            <TeamStatus ms={ms} display={display} />
+          </div>
+        </div>
+        <button
+          type="button"
+          aria-label="速報の一覧"
+          className="pressable absolute bottom-[max(0.5rem,var(--safe-b))] left-[max(0.5rem,var(--safe-l))] z-10 w-[min(32rem,62%)] border-l-4 border-yellow bg-panel/90 py-1 text-left"
+          onClick={() => setTickerOpen(true)}
+        >
+          <ul>
+            {events
+              .slice(0, 3)
+              .reverse()
+              .map((e, i, arr) => (
+                <EventLine key={`${e.minute}-${i}-${e.type}`} ms={ms} e={e} userSide={side} className={`!border-0 !py-0.5 ${i === arr.length - 1 ? "" : "opacity-75"} [&>span:last-child]:truncate`} />
+              ))}
+            {events.length === 0 && <li className="px-2 py-0.5 text-[0.8125rem] font-bold text-text-3">まもなくキックオフ</li>}
+          </ul>
+        </button>
+        <div className="absolute bottom-[max(0.5rem,var(--safe-b))] right-[max(0.5rem,var(--safe-r))] top-[max(0.5rem,var(--safe-t))] z-10 flex w-[4.25rem] flex-col items-stretch justify-end gap-1.5">
+          <RailButton icon="squad" label="2D" onClick={() => setView("2d")} />
+          {ended ? (
+            <RailButton icon="next" label="結果へ" primary onClick={finishMatch} />
+          ) : inBreak ? (
+            <>
+              {breaksOnly && <RailButton icon="speed" label="結果のみ" onClick={toAuto} />}
+              <RailButton icon="tactics" label={breakLabel} primary onClick={() => setPanel(true)} />
+            </>
+          ) : (
+            <>
+              <RailButton icon="speed" label={`${speed}倍`} onClick={nextSpeed} />
+              {breaksOnly ? <RailButton icon="next" label="結果のみ" onClick={toAuto} /> : <RailButton icon="tactics" label="采配" onClick={() => setPanel(true)} />}
+              <RailButton icon={paused ? "play" : "pause"} label={paused ? "再開" : "一時停止"} primary={paused} onClick={() => setPaused((p) => !p)} />
+            </>
+          )}
+        </div>
+        {tickerOpen && (
+          <Sheet onClose={() => setTickerOpen(false)} title="速報" wide>
+            <ul>
+              {events.map((e, i) => (
+                <EventLine key={`${e.minute}-${i}-${e.type}`} ms={ms} e={e} userSide={side} />
+              ))}
+            </ul>
+          </Sheet>
+        )}
+        {ordersPanel}
+      </main>
+    );
+
+  /** テキスト・2D：上にスコアボード、左に 2D のピッチか速報、右に試合の流れ・状態・操作 */
+  const log = (
+    <ul className="scroll-y min-h-0 flex-1 bg-panel">
+      {events.map((e, i) => (
+        <EventLine key={`${e.minute}-${i}-${e.type}`} ms={ms} e={e} userSide={side} />
+      ))}
+      {events.length === 0 && <li className="px-2 py-2 text-[0.8125rem] font-bold text-text-3">まもなくキックオフ</li>}
+    </ul>
+  );
+  return (
+    <main className="bg-pitch-stripes fixed inset-0 flex flex-col gap-1.5 pb-[max(0.5rem,var(--safe-b))] pl-[max(0.5rem,var(--safe-l))] pr-[max(0.5rem,var(--safe-r))] pt-[max(0.375rem,var(--safe-t))]">
+      <Scoreboard ms={ms} display={display} label={label} />
+      {no3d && view === "3d" && (
+        <p className="flex items-center gap-1.5 bg-panel px-2 py-1 text-[0.75rem] font-bold text-warn">
+          <Icon name="warning" size={14} />
+          {no3d === "webgl" ? "この端末では 3D を表示できないため、2D で表示しています。" : "3D の表示が止まったため、2D に切り替えました。"}
+        </p>
       )}
+      <div className="flex min-h-0 flex-1 gap-1.5">
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {view2d ? (
+            <div className="relative min-h-0 flex-1 bg-panel">
+              <Pitch2D ms={ms} display={Math.min(display, ms.minute)} userSide={side} />
+            </div>
+          ) : (
+            log
+          )}
+        </section>
+        <aside className="flex min-h-0 w-[16rem] shrink-0 flex-col gap-1.5">
+          <Momentum ms={ms} display={display} userSide={side} />
+          <TeamStatus ms={ms} display={display} />
+          {view2d ? log : <div className="min-h-0 flex-1" />}
+          <div className="flex gap-1">
+            {tournament && view !== "3d" && (
+              <Button variant="ghost" small className="flex-1 !px-1" onClick={() => setView("3d")}>
+                3D で見る
+              </Button>
+            )}
+            <Button variant="ghost" small className="flex-1 !px-1" onClick={() => setView(view2d ? "text" : "2d")}>
+              {view2d ? "文章だけ" : "2D を出す"}
+            </Button>
+          </div>
+          {ended ? (
+            <Button icon="next" cut onClick={finishMatch}>
+              結果へ
+            </Button>
+          ) : inBreak ? (
+            <div className="flex gap-1.5">
+              {breaksOnly && (
+                <Button variant="secondary" className="!px-2" onClick={toAuto}>
+                  結果のみ
+                </Button>
+              )}
+              <Button icon="tactics" className="min-w-0 flex-1 !px-2" onClick={() => setPanel(true)}>
+                {breakLabel}の采配
+              </Button>
+            </div>
+          ) : (
+            <>
+              <Segmented options={["1", "2", "4"] as const} value={String(speed) as "1" | "2" | "4"} onChange={(v) => updateSettings({ matchSpeed: Number(v) as 1 | 2 | 4 })} labels={{ "1": "等速", "2": "2倍", "4": "4倍" }} />
+              <div className="flex gap-1.5">
+                <Button variant="secondary" icon={paused ? "play" : "pause"} className="flex-1 !px-2" onClick={() => setPaused((p) => !p)}>
+                  {paused ? "再開" : "一時停止"}
+                </Button>
+                {breaksOnly ? (
+                  <Button className="flex-1 !px-2" onClick={toAuto}>
+                    結果のみに
+                  </Button>
+                ) : (
+                  <Button icon="tactics" className="flex-1 !px-2" onClick={() => setPanel(true)}>
+                    采配
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
+        </aside>
+      </div>
+      {ordersPanel}
     </main>
   );
 }
 
-/** 両チームの人数（減っているときだけ）と退場者・ケガ人 */
-function TeamStatusRow({ ms, display }: { ms: MatchState; display: number }) {
-  const info = (t: MatchTeamState, side: Side) => {
-    // まだ表示していない時間のイベントは出さない
-    const shown = new Set(ms.events.filter((e) => e.side === side && e.minute <= display && (e.type === "red" || e.type === "secondYellow" || e.type === "injury")).map((e) => e.players![0]));
-    const out = t.onPitch.filter((id) => isOut(t.players[id]) && shown.has(id));
-    const short = out.length > 0 ? playersShort(t) : 0;
-    return { short, out: out.map((id) => `${t.players[id].sentOff ? "🟥" : "✚"}${t.players[id].name.split(" ")[0]}`) };
-  };
-  const a = info(ms.teams[0], 0);
-  const b = info(ms.teams[1], 1);
-  if (a.short === 0 && b.short === 0 && a.out.length === 0 && b.out.length === 0) return null;
+/** 3D の右の端の縦のボタン（アイコンと短い文字） */
+function RailButton({ icon, label, onClick, primary }: { icon: IconName; label: string; onClick: () => void; primary?: boolean }) {
   return (
-    <div className="mt-1 flex gap-2 text-[10px]">
-      <span className="flex-1 truncate text-right">
-        {a.short > 0 && <b className="mr-1 rounded bg-red-600 px-1">{11 - a.short}人</b>}
-        {a.out.join(" ")}
-      </span>
-      <span className="w-20" />
-      <span className="flex-1 truncate">
-        {b.short > 0 && <b className="mr-1 rounded bg-red-600 px-1">{11 - b.short}人</b>}
-        {b.out.join(" ")}
-      </span>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`pressable flex min-h-12 flex-col items-center justify-center gap-0.5 px-1 text-[0.6875rem] font-black leading-tight shadow-hard ${primary ? "bg-yellow text-ink" : "bg-panel/90 text-text"}`}
+    >
+      <Icon name={icon} size={18} />
+      <span className="max-w-full truncate">{label}</span>
+    </button>
   );
 }
 
 /** 作戦ノートのルールごとの状態（待機中／実行済み／停止中） */
 function NoteStatus({ team }: { team: MatchTeamState }) {
   const note = team.note;
-  if (!note) return <div className="rounded-lg bg-gray-50 p-2 text-[11px] text-gray-500">作戦ノート：なし</div>;
+  if (!note) return <div className="bg-panel-2 px-2 py-1.5 text-[0.75rem] font-bold text-text-3">作戦ノート：なし</div>;
   return (
-    <section className="rounded-lg border border-gray-200 p-2">
-      <h3 className="mb-1 text-xs font-black">作戦ノート「{note.noteName}」</h3>
-      <ul className="flex flex-col gap-0.5 text-[11px]">
+    <section className="bg-panel-2 p-1.5">
+      <h3 className="mb-1 flex items-center gap-1 text-[0.75rem] font-black text-yellow">
+        <Icon name="note" size={13} />
+        作戦ノート「{note.noteName}」
+      </h3>
+      <ul className="flex flex-col gap-0.5 text-[0.75rem]">
         {note.rules
           .filter((r) => r.enabled)
           .map((r) => {
             const st = note.fired.includes(r.id) ? "実行済み" : note.stopped.includes(r.id) ? "停止中" : "待機中";
-            const color = st === "実行済み" ? "text-emerald-700" : st === "停止中" ? "text-gray-400" : "text-gray-700";
+            const color = st === "実行済み" ? "text-good" : st === "停止中" ? "text-text-3" : "text-text-2";
             return (
-              <li key={r.id} className="flex justify-between">
+              <li key={r.id} className="flex justify-between gap-2">
                 <span className="truncate">{r.name}</span>
-                <span className={`font-bold ${color}`}>{st}</span>
+                <span className={`shrink-0 font-bold ${color}`}>{st}</span>
               </li>
             );
           })}
       </ul>
-      <p className="mt-1 text-[10px] text-gray-500">自分で交代・戦術変更をすると、関係するルールはこの試合では止まります。</p>
+      <p className="mt-1 text-[0.6875rem] text-text-3">自分で交代・戦術変更をすると、関係するルールはこの試合では止まります。</p>
     </section>
   );
 }
 
+/** 采配（横画面：左にフォーメーション・戦術・状況、右に選手交代） */
 function OrdersPanel({
   side,
   opp,
@@ -407,6 +382,8 @@ function OrdersPanel({
   const slots = FORMATIONS[team.formation];
   const pendingOut = new Set(pending?.subs.map((s) => s.out));
   const pendingIn = new Set(pending?.subs.map((s) => s.in));
+  const kit = ms.view?.kits[side];
+  const look = (id: string) => team.players[id]?.look;
 
   const sub = (inId: string) => {
     if (!selOut) return;
@@ -419,117 +396,138 @@ function OrdersPanel({
   };
 
   return (
-    <Sheet onClose={breakAction ? undefined : onClose} title={breakAction ? "采配" : "采配（次の5分から反映）"}>
-      <div className="flex flex-col gap-3">
-        <div className="rounded-lg bg-gray-50 p-2 text-xs text-gray-600">
-          相手：{ms.teams[opp].name}（{ms.teams[opp].formation}）・交代 残り{subsRemaining(team, ms.rules)}人
-        </div>
-        {presetOut && team.players[presetOut]?.injury && (
-          <p className="rounded-lg bg-red-50 p-2 text-xs font-bold text-red-800">
-            {team.players[presetOut].name}がケガでプレーを続けられない。入れる選手を選んでください（選ばずに閉じると、位置に合う控えが自動で入ります）。
-          </p>
-        )}
-        {breakAction && <HalfTimeReport side={side} />}
-        <NoteStatus team={team} />
-
-        <section>
-          <h3 className="mb-1 text-sm font-black">フォーメーション</h3>
-          <div className="grid grid-cols-5 gap-1">
-            {FORMATION_IDS.map((f) => (
-              <button
-                key={f}
-                type="button"
-                onClick={() => {
-                  manualFormation(ms, side, f);
-                  touch(true);
-                }}
-                className={`min-h-10 rounded-lg text-xs font-bold ${formation === f ? "bg-pitch text-white" : "bg-gray-100"}`}
-              >
-                {f}
-              </button>
-            ))}
+    <Sheet onClose={breakAction ? undefined : onClose} title={breakAction ? "采配" : "采配（次の5分から反映）"} wide>
+      <div className="grid grid-cols-2 gap-2">
+        {/* 左：状況・フォーメーション・戦術 */}
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <div className="bg-panel-2 px-2 py-1.5 text-[0.75rem] font-bold text-text-2">
+            相手：{ms.teams[opp].name}（{ms.teams[opp].formation}）・交代 残り<span className="font-num text-yellow">{subsRemaining(team, ms.rules)}</span>人
           </div>
-        </section>
+          {presetOut && team.players[presetOut]?.injury && (
+            <p className="flex items-start gap-1.5 border-l-4 border-red bg-panel-2 p-1.5 text-[0.75rem] font-bold text-bad">
+              <Icon name="injury" size={14} className="mt-px" />
+              {team.players[presetOut].name}がケガでプレーを続けられない。入れる選手を選んでください（選ばずに閉じると、位置に合う控えが自動で入ります）。
+            </p>
+          )}
+          {breakAction && <HalfTimeReport side={side} />}
+          <section className="bg-panel p-1.5">
+            <Label className="!mb-1">フォーメーション</Label>
+            <div className="grid grid-cols-5 gap-0.5">
+              {FORMATION_IDS.map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => {
+                    manualFormation(ms, side, f);
+                    touch(true);
+                  }}
+                  aria-pressed={formation === f}
+                  className={`pressable font-num min-h-9 text-[0.8125rem] ${formation === f ? "bg-yellow text-ink" : "bg-panel-2 text-text-2"}`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+          </section>
+          <TacticsEditor
+            tactics={tactics}
+            onChange={(t) => {
+              manualTactics(ms, side, t);
+              touch(true);
+            }}
+          />
+          <NoteStatus team={team} />
+        </div>
 
-        <TacticsEditor
-          tactics={tactics}
-          onChange={(t) => {
-            manualTactics(ms, side, t);
-            touch(true);
-          }}
-        />
-
-        <section>
-          <h3 className="mb-1 text-sm font-black">選手交代（下げる選手 → 入れる選手の順にタップ）</h3>
-          <ul className="flex flex-col gap-1">
+        {/* 右：選手交代 */}
+        <section className="flex min-w-0 flex-col gap-1">
+          <Label className="!mb-0">選手交代（下げる選手、入れる選手の順にタップ）</Label>
+          <ul className="flex flex-col gap-0.5">
             {team.onPitch.map((id, i) => {
               const p = team.players[id];
               const out = pendingOut.has(id);
               const gone = !!p.sentOff;
+              const lk = look(id);
               return (
                 <li key={id}>
                   <button
                     type="button"
                     disabled={out || gone}
                     onClick={() => setSelOut(selOut === id ? null : id)}
-                    className={`flex min-h-10 w-full items-center gap-2 rounded-lg px-2 text-left ${selOut === id ? "bg-amber-100 ring-2 ring-amber-400" : "bg-gray-50"} ${out ? "opacity-50" : ""}`}
+                    className={`pressable flex min-h-10 w-full items-center gap-1.5 border-l-4 px-1.5 text-left ${selOut === id ? "border-yellow bg-panel-3" : "border-transparent bg-panel-2"} ${out ? "opacity-60" : ""}`}
                   >
-                    <span className="w-9 text-[11px] font-black text-pitch-dark">{gone ? "—" : POSITION_NAMES[slots[i].pos]}</span>
-                    <span className="flex-1 truncate text-sm font-bold">{p.name}</span>
-                    {out && <span className="text-[10px] text-amber-700">交代予定</span>}
-                    {gone && <span className="text-[10px] text-red-700">退場</span>}
-                    {!gone && p.injury && <span className="text-[10px] text-red-700">ケガ</span>}
-                    {!gone && (p.yellow ?? 0) > 0 && <span className="text-[10px]">🟨</span>}
-                    {p.goals > 0 && <span className="text-xs">⚽×{p.goals}</span>}
-                    <Bar value={p.stamina} color={fitnessColor(p.stamina)} className="!h-1.5 !w-12" />
+                    <span className="w-8 shrink-0 text-[0.75rem] font-black text-yellow">{gone ? "-" : POSITION_NAMES[slots[i].pos]}</span>
+                    {lk && <PlayerFace look={lk} kit={kit} size={26} />}
+                    <span className="min-w-0 flex-1 truncate text-[0.8125rem] font-bold">{p.name}</span>
+                    {out && <span className="text-[0.6875rem] font-bold text-warn">交代予定</span>}
+                    {gone && <span className="text-[0.6875rem] font-bold text-bad">退場</span>}
+                    {!gone && p.injury && <Icon name="injury" size={12} className="text-bad" title="ケガ" />}
+                    {!gone && (p.yellow ?? 0) > 0 && <Icon name="card" size={12} className="text-yellow" title="イエローカード" />}
+                    {p.goals > 0 && (
+                      <span className="font-num flex items-center gap-0.5 text-[0.75rem] text-yellow">
+                        <Icon name="ball" size={12} />
+                        {p.goals}
+                      </span>
+                    )}
+                    <Bar value={p.stamina} color={fitnessColor(p.stamina)} className="!h-1.5 !w-10" />
                   </button>
                 </li>
               );
             })}
           </ul>
-          <h4 className="mb-1 mt-2 text-xs font-black text-gray-600">控え</h4>
-          <ul className="flex flex-col gap-1">
+          <Label className="!mb-0 mt-1">控え</Label>
+          <ul className="flex flex-col gap-0.5">
             {team.bench.map((id) => {
               const p = team.players[id];
               const inPending = pendingIn.has(id);
+              const lk = look(id);
               return (
-                <li key={id} className="flex items-center gap-1">
+                <li key={id} className="flex items-center gap-0.5">
                   <button
                     type="button"
                     disabled={!selOut || inPending}
                     onClick={() => sub(id)}
-                    className="flex min-h-10 flex-1 items-center gap-2 rounded-lg bg-gray-50 px-2 text-left disabled:opacity-60"
+                    className={`pressable flex min-h-10 min-w-0 flex-1 items-center gap-1.5 px-1.5 text-left disabled:opacity-70 ${selOut && !inPending ? "bg-panel-3" : "bg-panel-2"}`}
                   >
-                    <span className="w-9 text-[11px] font-black text-gray-500">{POSITION_NAMES[p.mainPosition]}</span>
-                    <span className="flex-1 truncate text-sm">{p.name}</span>
-                    {inPending && <span className="text-[10px] text-amber-700">→{team.players[pending!.subs.find((s) => s.in === id)!.out].name.split(" ")[0]}と交代</span>}
+                    <span className="w-8 shrink-0 text-[0.75rem] font-black text-text-3">{POSITION_NAMES[p.mainPosition]}</span>
+                    {lk && <PlayerFace look={lk} kit={kit} size={26} />}
+                    <span className="min-w-0 flex-1 truncate text-[0.8125rem]">{p.name}</span>
+                    {inPending && (
+                      <span className="flex shrink-0 items-center gap-0.5 text-[0.6875rem] font-bold text-warn">
+                        <Icon name="sub" size={12} />
+                        {team.players[pending!.subs.find((s) => s.in === id)!.out].name.split(" ")[0]}と交代
+                      </span>
+                    )}
                   </button>
                   {inPending && (
-                    <button
-                      type="button"
-                      className="min-h-10 min-w-9 text-gray-400"
+                    <IconButton
+                      name="close"
+                      label="交代を取り消す"
+                      className="!min-h-10 !min-w-10"
                       onClick={() => {
                         cancelSubstitution(ms, side, id);
                         touch(true);
                       }}
-                      aria-label="交代を取り消す"
-                    >
-                      ×
-                    </button>
+                    />
                   )}
                 </li>
               );
             })}
-            {team.bench.length === 0 && <li className="text-xs text-gray-400">控えはいません</li>}
+            {team.bench.length === 0 && <li className="bg-panel-2 px-2 py-1.5 text-[0.75rem] text-text-3">控えはいません</li>}
           </ul>
-          {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+          {error && <p className="text-[0.75rem] font-bold text-bad">{error}</p>}
+          <div className="mt-auto pt-1.5">
+            {breakAction ? (
+              <Button icon="whistle" cut className="w-full" onClick={breakAction.run}>
+                {breakAction.label}
+              </Button>
+            ) : (
+              <Button icon="play" className="w-full" onClick={onClose}>
+                閉じて再開
+              </Button>
+            )}
+          </div>
         </section>
-
-        {breakAction ? (
-          <Button onClick={breakAction.run}>{breakAction.label}</Button>
-        ) : (
-          <Button onClick={onClose}>閉じて再開</Button>
-        )}
       </div>
     </Sheet>
   );
@@ -541,37 +539,37 @@ function HalfTimeReport({ side }: { side: Side }) {
   const ms = game.activeMatch!.state;
   const r = halfReport(ms, side);
   const pct = Math.round(r.possession * 100);
-  const color = { 優勢: "text-emerald-700", 互角: "text-gray-600", 押されている: "text-red-600" } as const;
+  const color = { 優勢: "text-good", 互角: "text-text-2", 押されている: "text-bad" } as const;
   return (
-    <section className="rounded-lg border border-gray-200 p-2 text-xs">
-      <h3 className="mb-1 text-sm font-black">{ms.phase === "HT" ? "前半" : "ここまで"}の状況</h3>
+    <section className="bg-panel p-1.5 text-[0.75rem]">
+      <Label className="!mb-1">{ms.phase === "HT" ? "前半" : "ここまで"}の状況</Label>
       <div className="mb-1 flex items-center gap-2">
-        <span className="w-14 shrink-0 font-bold">支配率</span>
-        <span className="w-8 text-right">{pct}%</span>
-        <div className="flex h-2 flex-1 overflow-hidden rounded-full bg-sky-300">
-          <div className="h-full bg-amber-400" style={{ width: `${pct}%` }} />
+        <span className="w-14 shrink-0 font-bold text-text-2">支配率</span>
+        <span className="font-num w-8 text-right text-yellow">{pct}%</span>
+        <div className="flex h-2 flex-1 bg-info">
+          <div className="h-full bg-yellow" style={{ width: `${pct}%` }} />
         </div>
-        <span className="w-8">{100 - pct}%</span>
+        <span className="font-num w-8 text-info">{100 - pct}%</span>
       </div>
-      <div className="mb-2 flex gap-2">
-        <span className="w-14 shrink-0 whitespace-nowrap font-bold">シュート</span>
+      <div className="mb-1.5 flex gap-2">
+        <span className="w-14 shrink-0 whitespace-nowrap font-bold text-text-2">シュート</span>
         <span>
-          自校 {r.shots[0]}本（枠内{r.onTarget[0]}） ／ 相手 {r.shots[1]}本（枠内{r.onTarget[1]}）
+          自校 <b className="font-num">{r.shots[0]}</b>本（枠内{r.onTarget[0]}） ／ 相手 <b className="font-num">{r.shots[1]}</b>本（枠内{r.onTarget[1]}）
         </span>
       </div>
       <table className="w-full text-center">
-        <thead className="text-[10px] text-gray-500">
-          <tr>
-            <th className="text-left">ゾーン</th>
-            <th>自校の攻撃</th>
-            <th>相手の攻撃</th>
-            <th>優劣</th>
+        <thead className="text-[0.6875rem] text-text-3">
+          <tr className="border-b border-line">
+            <th className="text-left font-bold">ゾーン</th>
+            <th className="font-bold">自校の攻撃</th>
+            <th className="font-bold">相手の攻撃</th>
+            <th className="font-bold">優劣</th>
           </tr>
         </thead>
         <tbody>
           {r.zones.map((z) => (
-            <tr key={z.zone}>
-              <td className="text-left font-bold">{z.zone}</td>
+            <tr key={z.zone} className="border-b border-line">
+              <td className="py-0.5 text-left font-bold">{z.zone}</td>
               <td>
                 {z.ourAttacks}回（好機{z.ourChances}）
               </td>

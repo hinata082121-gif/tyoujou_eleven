@@ -1,16 +1,24 @@
 "use client";
 
-import { useEffect } from "react";
+import dynamic from "next/dynamic";
+import { useEffect, useSyncExternalStore } from "react";
 import { NewGameScreen } from "@/components/screens/NewGameScreen";
 import { PlayScreen } from "@/components/screens/PlayScreen";
 import { SlotsScreen } from "@/components/screens/SlotsScreen";
 import { TitleScreen } from "@/components/screens/TitleScreen";
 import { useGameStore } from "@/store/gameStore";
 
+/** 開発用：?demo3d=1 で 3D 観戦のデモを出す（R1）。通常の画面のバンドルに入れないよう、動的に読み込む */
+const Demo3DScreen = dynamic(() => import("@/components/demo/Demo3DScreen").then((m) => m.Demo3DScreen), { ssr: false });
+const noSubscribe = () => () => {};
+const isDemo3d = () => new URLSearchParams(window.location.search).get("demo3d") === "1";
+
 export default function Home() {
   const screen = useGameStore((s) => s.screen);
   const init = useGameStore((s) => s.init);
+  const demo3d = useSyncExternalStore(noSubscribe, isDemo3d, () => false);
   useEffect(() => init(), [init]);
+  if (demo3d) return <Demo3DScreen />;
   switch (screen) {
     case "title":
       return <TitleScreen />;

@@ -6,8 +6,7 @@ import { CardScenes } from "../event/EventScene";
 import { Icon } from "../icons";
 import { SideNav } from "../shell/SideNav";
 import { TopBar } from "../shell/TopBar";
-import { MatchScreen } from "../match/MatchScreen";
-import { PreMatchScreen } from "../match/PreMatchScreen";
+import dynamic from "next/dynamic";
 import { BracketView } from "../play/BracketView";
 import { CaptainScreen } from "../play/CaptainScreen";
 import { SkillBook } from "../play/SkillBook";
@@ -20,6 +19,14 @@ import { RecordsView } from "../play/RecordsView";
 import { SquadView } from "../play/SquadView";
 import { NotesScreen } from "../notes/NotesScreen";
 import { StaffReviewScreen } from "../staff/StaffView";
+
+/** 試合まわりの画面は、試合のときだけ読み込む（R1。ホームなどの最初の読み込みを軽くする） */
+const MatchScreen = dynamic(() => import("../match/MatchScreen").then((m) => m.MatchScreen), { ssr: false, loading: () => <Loading /> });
+const PreMatchScreen = dynamic(() => import("../match/PreMatchScreen").then((m) => m.PreMatchScreen), { ssr: false, loading: () => <Loading /> });
+
+function Loading() {
+  return <div className="bg-pitch-stripes fixed inset-0" />;
+}
 
 export function PlayScreen() {
   const game = useGameStore((s) => s.game);
