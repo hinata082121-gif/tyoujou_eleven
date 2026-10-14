@@ -10,9 +10,10 @@ import { useGameStore } from "@/store/gameStore";
 import { Icon } from "../icons";
 import { RankBadge, Segmented } from "../ui";
 import { LeagueView } from "./LeagueView";
+import { ScheduleView } from "./ScheduleView";
 
 type Season = "winter" | "summer" | "rookie";
-type Tab = Season | "league";
+type Tab = Season | "league" | "plan";
 const SEASON_KINDS: Record<Season, [CompetitionKind, CompetitionKind]> = {
   winter: ["prefQualifier", "national"],
   summer: ["summerQualifier", "summerNational"],
@@ -38,12 +39,14 @@ export function BracketView() {
     return ["winter", c.national ? 1 : 0];
   };
   const [init] = useState(initial);
-  const [tab, setTab] = useState<Tab>(init[0]);
-  const season: Season = tab === "league" ? "winter" : tab;
+  const bracketTab = useGameStore((s) => s.bracketTab);
+  const [tab, setTab] = useState<Tab>(bracketTab === "plan" ? "plan" : init[0]);
+  const season: Season = tab === "league" || tab === "plan" ? "winter" : tab;
   const [stage, setStage] = useState<0 | 1>(init[1]);
   const kind = SEASON_KINDS[season][stage];
-  const tabs = game.league ? (["league", "summer", "winter", "rookie"] as const) : (["summer", "winter", "rookie"] as const);
-  const top = <Segmented options={tabs} value={tab} onChange={(v) => setTab(v)} labels={{ league: "リーグ", summer: "夏", winter: "冬", rookie: "新人戦" }} className="w-[17rem] shrink-0" />;
+  const tabs = game.league ? (["plan", "league", "summer", "winter", "rookie"] as const) : (["plan", "summer", "winter", "rookie"] as const);
+  const top = <Segmented options={tabs} value={tab} onChange={(v) => setTab(v)} labels={{ plan: "予定", league: "リーグ", summer: "夏", winter: "冬", rookie: "新人戦" }} className="w-[21rem] shrink-0" />;
+  if (tab === "plan") return <ScheduleView top={top} />;
   if (tab === "league")
     return (
       <div className="flex min-h-0 flex-1 flex-col gap-1.5">

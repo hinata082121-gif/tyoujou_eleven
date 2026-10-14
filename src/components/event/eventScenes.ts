@@ -3,6 +3,7 @@
  * 表示だけ。エンジンの EventOutcome の kind（出来事の種類）と cast（関わった人の ID）から作り、ゲームの状態は変えない。
  * 表情の選び方もここに置く（エンジンには置かない）。
  */
+import { choiceDef } from "@/engine/choice";
 import { POSITION_NAMES, ROLE_NAMES, SKILL_NAMES } from "@/engine/config/names";
 import { SKILL_DEFS } from "@/engine/config/skills";
 import type { EventOutcome, CastRef } from "@/engine/events";
@@ -48,6 +49,8 @@ export interface EventSceneData {
   text: string;
   /** 名前の札（中心の人）。いなければ札を出さない（題名は左上の札） */
   speaker?: { name: string; role: string };
+  /** 話している人の立ち絵（R2。少し前に出して明るくする） */
+  speakerKey?: string;
   actors: SceneActor[];
   badges: SceneBadge[];
 }
@@ -154,10 +157,132 @@ function badgesFor(game: GameState, o: EventOutcome): SceneBadge[] {
   return out.slice(0, 3);
 }
 
-/** 場面にする出来事か（分かれ道は分かれ道の画面で見せる） */
-const isScene = (o: EventOutcome) => o.kind !== "branch";
+/** 学校行事の出来事 → 背景（R2） */
+const BG_FOR_SCHOOL: Record<string, SceneBg> = {
+  "school:test": "exam",
+  "school:testPrep": "exam",
+  "school:sportsDay": "sportsDay",
+  "school:culturalFestival": "festival",
+  "school:schoolTrip": "trip",
+  "school:entrance": "entrance",
+  "school:graduation": "gym",
+  tripReturn: "gate",
+};
 
-export function scenesFromCard(game: GameState, card: CardResult): EventSceneData[] {
+function bgFor(kind: string | undefined): SceneBg {
+  if (!kind) return "ground";
+  if (BG_FOR_SCHOOL[kind]) return BG_FOR_SCHOOL[kind];
+  if (kind.startsWith("choice:")) return (choiceDef(kind.slice(7))?.bg as SceneBg | undefined) ?? "clubroom";
+  return BG_FOR_KIND[kind] ?? "ground";
+}
+
+/** 特殊能力の出来事（身についた・消えたときだけ場面。何も起きなかったときは文章だけ） */
+const SKILL_KINDS = new Set(["training", "obTeach", "staffTeach", "seniorTeach", "selfAwake", "badHabit"]);
+/** いつも場面にする出来事 */
+const SCENE_KINDS = new Set(["injury", "practiceInjury", "obCoaching", "donation"]);
+
+/**
+ * 大事な出来事か（R2。PHASE_R2_PLAN 6.1 の表）。設定が「大事なものだけ」のとき、大事な出来事は場面で、
+ * そのほかはホームの速報の帯に文章だけで流す
+ */
+export function isImportant(o: EventOutcome): boolean {
+  if (!o.kind || o.kind === "branch") return false;
+  if ((o.learned ?? []).length > 0) return true;
+  if (o.kind.startsWith("school:") || o.kind.startsWith("choice:")) return true;
+  if (SKILL_KINDS.has(o.kind)) return false;
+  return SCENE_KINDS.has(o.kind);
+}
+
+/** 文章だけで流す出来事か（「大事なものだけ」の設定のとき） */
+export const isTextOnly = (o: EventOutcome) => o.kind !== "branch" && !isImportant(o);
+
+/** 設定ごとに、場面にする出来事か（分かれ道は分かれ道の画面で見せる） */
+export function showsAsScene(o: EventOutcome, mode: "important" | "all" | "text"): boolean {
+  if (o.kind === "branch") return false;
+  if (mode === "all") return true;
+  if (mode === "text") return false;
+  return isImportant(o);
+}
+
+/** せりふのある出来事（R2）の、表情。結果の札にその人の名前があれば、札の良し悪しで決める（調子が下がった人は曇る） */
+function lineExpr(o: EventOutcome, speaking: boolean, name?: string): Expression {
+  const surname = name?.split(" ")[0];
+  const mine = surname ? (o.effects ?? []).filter((e) => e.label === surname || e.label.startsWith(`${surname}`)) : [];
+  if (o.kind === "school:graduation") return speaking ? "sad" : "focus";
+  if (mine.some((e) => e.tone === "bad")) return speaking ? "frustrated" : "sad";
+  if (mine.some((e) => e.tone === "good")) return "joy";
+  if (o.tone === "good") return "joy";
+  if (o.tone === "bad") return speaking ? "frustrated" : "sad";
+  return speaking ? "normal" : "focus";
+}
+
+/**
+ * せりふのある出来事を、場面の並びにする（R2。一言ずつ 1 枚。話す人を名前の札に出し、結果の札は最後の 1 枚に）
+ */
+function scenesFromLines(game: GameState, o: EventOutcome, keyPrefix: string): EventSceneData[] {
+  const lines = o.lines ?? [];
+  const refs = [...(o.cast ?? [])];
+  for (const l of lines) if (l.speaker && !refs.some((r) => r.kind === l.speaker!.kind && r.id === l.speaker!.id)) refs.push(l.speaker);
+  const bg = bgFor(o.kind);
+  const badges = (o.effects && o.effects.length > 0 ? o.effects : badgesFor(game, o)).slice(0, 4);
+  return lines.map((l, i) => {
+    const visible = refs.slice(0, 3);
+    if (l.speaker && !visible.some((r) => r.id === l.speaker!.id)) visible[visible.length - 1] = l.speaker;
+    const actors = visible
+      .map((r) => actorFor(game, r, "normal"))
+      .filter((a): a is SceneActor => !!a)
+      .map((a) => ({ ...a, expr: lineExpr(o, !!l.speaker && a.key.endsWith(`:${l.speaker.id}`), a.name) }));
+    const sp = l.speaker ? actors.find((a) => a.key.endsWith(`:${l.speaker!.id}`)) : undefined;
+    return {
+      key: `${keyPrefix}l${i}`,
+      bg,
+      title: o.title,
+      tone: o.tone,
+      text: l.text,
+      speaker: sp ? { name: sp.name, role: sp.role } : undefined,
+      speakerKey: sp?.key,
+      actors: actors.length > 0 ? actors : teamCast(game).map((r) => actorFor(game, r, lineExpr(o, false))).filter((a): a is SceneActor => !!a),
+      badges: i === lines.length - 1 ? badges : [],
+    };
+  });
+}
+
+/** 1 つの出来事を場面にする */
+export function scenesFromOutcome(game: GameState, o: EventOutcome, keyPrefix = "o"): EventSceneData[] {
+  if (o.lines && o.lines.length > 0) return scenesFromLines(game, o, keyPrefix);
+  const learnedBad = (o.learned ?? []).some((l) => l.kind === "learn" && SKILL_DEFS[l.skill].tier === "minus");
+  const ex = exprFor(o.kind, o.tone, learnedBad);
+  const refs = o.cast && o.cast.length > 0 ? o.cast : teamCast(game);
+  const named = !!o.cast && o.cast.length > 0;
+  const actors = refs
+    .slice(0, 3)
+    .map((r, j) => actorFor(game, r, j === 0 ? ex.lead : ex.others, j === 0 ? ex.after : undefined))
+    .filter((a): a is SceneActor => !!a);
+  const lead = actors[0];
+  return [
+    {
+      key: keyPrefix,
+      bg: bgFor(o.kind),
+      title: o.title,
+      tone: o.tone,
+      text: o.text,
+      speaker: named && lead ? { name: lead.name, role: lead.role } : undefined,
+      speakerKey: named && lead ? lead.key : undefined,
+      actors,
+      badges: o.effects && o.effects.length > 0 ? o.effects.slice(0, 4) : badgesFor(game, o),
+    },
+  ];
+}
+
+/** 立ち絵を選ぶ（選択肢の場面用。話す人を先に） */
+export function actorsFor(game: GameState, refs: CastRef[], expr: Expression): SceneActor[] {
+  return refs
+    .slice(0, 3)
+    .map((r) => actorFor(game, r, expr))
+    .filter((a): a is SceneActor => !!a);
+}
+
+export function scenesFromCard(game: GameState, card: CardResult, mode: "important" | "all" | "text" = "all"): EventSceneData[] {
   const scenes: EventSceneData[] = [];
   // 練習中のケガ（練習の途中で起きるので先に見せる）
   (card.injuredIds ?? []).forEach((id, i) => {
@@ -171,30 +296,13 @@ export function scenesFromCard(game: GameState, card: CardResult): EventSceneDat
       tone: "bad",
       text: `${card.practice}の最中に、${a.name}が倒れ込んだ。${p ? `全治${p.injuryDays}日の見込み。` : ""}`,
       speaker: { name: a.name, role: a.role },
+      speakerKey: a.key,
       actors: [a],
       badges: p ? [{ label: "ケガ", value: `全治${p.injuryDays}日`, tone: "bad" }] : [],
     });
   });
-  card.outcomes.filter(isScene).forEach((o, i) => {
-    const learnedBad = (o.learned ?? []).some((l) => l.kind === "learn" && SKILL_DEFS[l.skill].tier === "minus");
-    const ex = exprFor(o.kind, o.tone, learnedBad);
-    const refs = o.cast && o.cast.length > 0 ? o.cast : teamCast(game);
-    const named = !!o.cast && o.cast.length > 0;
-    const actors = refs
-      .slice(0, 3)
-      .map((r, j) => actorFor(game, r, j === 0 ? ex.lead : ex.others, j === 0 ? ex.after : undefined))
-      .filter((a): a is SceneActor => !!a);
-    const lead = actors[0];
-    scenes.push({
-      key: `o${i}`,
-      bg: (o.kind && BG_FOR_KIND[o.kind]) || "ground",
-      title: o.title,
-      tone: o.tone,
-      text: o.text,
-      speaker: named && lead ? { name: lead.name, role: lead.role } : undefined,
-      actors,
-      badges: badgesFor(game, o),
-    });
-  });
+  card.outcomes
+    .filter((o) => showsAsScene(o, mode))
+    .forEach((o, i) => scenes.push(...scenesFromOutcome(game, o, `o${i}`)));
   return scenes;
 }

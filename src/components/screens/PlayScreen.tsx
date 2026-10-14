@@ -2,7 +2,9 @@
 
 import { UniformScreen } from "../look/UniformScreen";
 import { useGameStore } from "@/store/gameStore";
-import { CardScenes } from "../event/EventScene";
+import { useState } from "react";
+import { CardScenes, ChoiceScreen, GraduationScene, QueuedScenes } from "../event/EventScene";
+import { MonthlyScreen } from "../play/MonthlyScreen";
 import { Icon } from "../icons";
 import { SideNav } from "../shell/SideNav";
 import { TopBar } from "../shell/TopBar";
@@ -49,18 +51,22 @@ export function PlayScreen() {
   const lastCard = useGameStore((s) => s.lastCard);
   const scenesSeen = useGameStore((s) => s.scenesSeen);
   const eventView = useGameStore((s) => s.settings.eventView);
+  const sceneQueue = useGameStore((s) => s.sceneQueue);
+  const [gradSeen, setGradSeen] = useState<number | null>(null);
 
   if (!game) return null;
 
   // 結果や行事の画面を優先して出す
   if (lastMatch) return <MatchResultScreen />;
   if (lastAlumni) return <AlumniScreen />;
+  // 待っている出来事の場面（行事・選択の結果・入学式。R2）
+  if (!moving && sceneQueue.length > 0) return <QueuedScenes key={`q${sceneQueue.length}-${sceneQueue[0].kind}-${sceneQueue[0].title}`} />;
   if (lastFreshmen) return <FreshmenScreen />;
   if (lastCamp) return <CampResultScreen />;
   if (game.activeMatch) return <MatchScreen />;
   if (notesOpen) return <NotesScreen />;
   // カードの出来事の場面（移動の演出が終わってから。試合前などの画面より先に見せる）
-  if (!moving && lastCard && !scenesSeen && eventView === "scene") return <CardScenes key={`${lastCard.from}-${lastCard.to}`} />;
+  if (!moving && lastCard && !scenesSeen && eventView !== "text") return <CardScenes key={`${lastCard.from}-${lastCard.to}`} />;
   if (!moving && game.pending?.type === "staff") return <StaffReviewScreen />;
   if (!moving && game.pending?.type === "captain")
     return (
@@ -77,6 +83,8 @@ export function PlayScreen() {
         {selected && <PlayerDetail />}
       </>
     );
+  if (!moving && game.pending?.type === "monthly") return <MonthlyScreen />;
+  if (!moving && game.pending?.type === "choice") return <ChoiceScreen key={`${game.calendar.position}-${game.pending.eventId}`} />;
   if (!moving && game.pending?.type === "match") return <PreMatchScreen />;
   if (!moving && game.pending?.type === "camp") return <CampScreen />;
   if (!moving && game.pending?.type === "branch") return <BranchScreen />;
@@ -84,7 +92,7 @@ export function PlayScreen() {
   if (scoutOpen) return <ScoutScreen />;
   if (facilitiesOpen) return <FacilitiesScreen />;
   if (uniformOpen) return <UniformScreen />;
-  if (!moving && game.pending?.type === "graduation") return <GraduationScreen />;
+  if (!moving && game.pending?.type === "graduation") return gradSeen === game.year ? <GraduationScreen /> : <GraduationScene onDone={() => setGradSeen(game.year)} />;
   if (!moving && game.pending?.type === "yearEnd") return <YearEndScreen />;
 
   return (
