@@ -179,7 +179,7 @@ export function HomeView() {
                 </Button>
               </div>
             ) : (
-              <div className="mt-1 grid min-h-0 flex-1 grid-cols-4 gap-2.5">
+              <div className="mt-1 grid min-h-0 flex-1 gap-2.5" style={{ gridTemplateColumns: `repeat(${Math.max(4, cal.hand.length)}, minmax(0, 1fr))` }}>
                 {cal.hand.map((c, i) => (
                   <button
                     key={c.id}
@@ -190,12 +190,12 @@ export function HomeView() {
                     className="pressable anim-fade-up relative flex min-h-[7rem] flex-col items-center overflow-hidden border border-line-2 bg-panel px-1.5 pb-1.5 pt-1 shadow-hard"
                   >
                     <span className="absolute -left-5 -right-5 top-[42%] h-[24%] -rotate-12 bg-yellow" aria-hidden />
-                    <span className="font-num relative text-[3rem] font-bold leading-none text-text">{c.value}</span>
+                    <span className="font-num relative text-[clamp(2rem,9vh,3rem)] font-bold leading-none text-text">{c.value}</span>
                     <span className="relative mt-auto mb-auto text-ink">
                       <Icon name={PRACTICE_ICON[c.practice]} size={24} stroke={2.6} />
                     </span>
                     <span className="relative whitespace-nowrap text-center text-[0.75rem] font-black leading-tight tracking-tight">{PRACTICE_NAMES[c.practice]}</span>
-                    <span className="relative text-[0.6875rem] font-bold text-text-2">{TARGET_LABEL[PRACTICES[c.practice].target]}</span>
+                    <span className="relative whitespace-nowrap text-[0.6875rem] font-bold tracking-tight text-text-2">{TARGET_LABEL[PRACTICES[c.practice].target]}</span>
                   </button>
                 ))}
               </div>

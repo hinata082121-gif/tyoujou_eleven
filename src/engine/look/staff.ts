@@ -7,6 +7,7 @@
 import { KIT, STAFF_LOOK } from "../config/look";
 import type { GameState, Look, SchoolKits } from "../types";
 import type { StaffMember, StaffRole } from "../types/staff";
+import { staffAge } from "../staff";
 import { colorDistance, farthestFrom, generateLook, normalizeLook } from ".";
 
 export type StaffOutfitKind = "polo" | "jersey";
@@ -30,8 +31,6 @@ export interface StaffAppearance {
   build: number;
   outfit: StaffOutfit;
 }
-
-export const staffAge = (member: Pick<StaffMember, "age18Year">, year: number) => 18 + year - member.age18Year;
 
 /** 年齢から髪の灰色の割合と体の厚みを出す */
 export function ageEffects(age: number): { gray: number; build: number } {

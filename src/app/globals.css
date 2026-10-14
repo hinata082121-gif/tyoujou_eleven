@@ -298,6 +298,27 @@ html {
   }
 }
 
+/*
+ * ゲームの画面の枠。大きな画面（PC など）では、横長になりすぎないように 64rem × 36rem までにして中央に置く。
+ * contain で、中の position: fixed もこの枠に収める
+ */
+.app-root {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: 100%;
+  height: 100%;
+  max-width: 64rem;
+  max-height: 36rem;
+  contain: layout paint;
+}
+body {
+  background-color: var(--color-night);
+  background-image:
+    linear-gradient(90deg, rgb(0 0 0 / 0.55), transparent 25%, transparent 75%, rgb(0 0 0 / 0.55)),
+    repeating-linear-gradient(90deg, var(--color-turf) 0 4rem, var(--color-turf-2) 4rem 8rem);
+}
+
 /* 縦に持ったとき：ゲームの画面を隠し、横向きにしてもらう */
 .portrait-notice {
   display: none;
