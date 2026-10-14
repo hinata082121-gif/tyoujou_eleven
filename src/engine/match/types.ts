@@ -1,5 +1,6 @@
 import type { RngState } from "../rng";
-import type { Aptitude, Condition, DribbleMove, Foot, FormationId, MatchKind, MatchRules, NoteRule, Personality, PlayStyle, Position, SchoolRank, SkillId, Stats, Tactics } from "../types";
+import type { Aptitude, Condition, DribbleMove, Foot, FormationId, Kit, Look, MatchKind, MatchRules, NoteRule, Personality, PlayStyle, Position, SchoolRank, SkillId, Stats, Tactics } from "../types";
+import type { VenueStage } from "../config/look";
 import type { Lane } from "../config/formations";
 
 export type Side = 0 | 1;
@@ -31,6 +32,10 @@ export interface MatchPlayer {
   minutes?: number;
   /** 出場中の記録（スタイル別の貢献の集計と、試合での成果に使う） */
   ms?: MatchPlayerStats;
+  // ---- P4（表示用の写し。試合の計算には使わない） ----
+  look?: Look;
+  /** 背番号 */
+  num?: number;
 }
 
 export interface MatchPlayerStats {
@@ -269,6 +274,20 @@ export interface MatchState {
   kind?: MatchKind;
   /** 大舞台（全国大会・県予選の決勝。P2b） */
   bigStage?: boolean;
+  /** 表示用の情報（P4。ユニフォーム・ホーム・会場。試合の計算には使わない） */
+  view?: MatchView;
+}
+
+/** 試合の表示用の情報（P4） */
+export interface MatchView {
+  /** ホーム側のチーム */
+  home: Side;
+  /** そのチームが着るユニフォーム（チームの順） */
+  kits: [Kit, Kit];
+  /** GK の色（パレットの番号。チームの順） */
+  gk: [number, number];
+  /** 会場の段階（トーナメントのみ） */
+  venue?: VenueStage;
 }
 
 /** ゲームの中で進行中の試合 */

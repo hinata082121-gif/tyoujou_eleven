@@ -13,10 +13,10 @@ import { Rng } from "@/engine/rng";
 import { catchUpSkills, initialSkills } from "@/engine/skills/learn";
 import { emptyStaffState, generateCpuStaff, generateFictionalAlumni, makeStaffProfile, makeTemporaryCoach } from "@/engine/staff";
 import { PERSONALITIES, type Alumnus, type Career, type LogEntry, type Personality, type Player, type Position, type School, type SeasonRecord, type Stats } from "@/engine/types";
-import { packGame, packTraits, unpackGame, unpackPlayer, type PackedPlayer, type PackedTraits } from "./codec";
-import { upgradeToPhase2c, upgradeToPhase3 } from "@/engine/game";
+import { packGame, packTraits, unpackGame, unpackPlayer, withLookSlot, type PackedPlayer, type PackedTraits } from "./codec";
+import { upgradeToPhase2c, upgradeToPhase3, upgradeToPhase4 } from "@/engine/game";
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type RawSave = { schemaVersion: number; [key: string]: any };
@@ -166,12 +166,25 @@ export function migrateV5toV6(data: RawSave): RawSave {
   return { ...data, schemaVersion: 6, game: packGame(state) };
 }
 
+/**
+ * v6（Phase 3）→ v7（Phase 4）：部員の圧縮形式の 18 番目（添字 17）に見た目と背番号の欄を差し込み、
+ * 全選手・OB に見た目、全校にユニフォーム、背番号を付ける（ゲームのシードと ID から作るので、毎回同じになる）
+ */
+export function migrateV6toV7(data: RawSave): RawSave {
+  const game = structuredClone(data.game);
+  for (const school of Object.values(game.schools) as { players: unknown[][] }[]) school.players = school.players.map((a) => withLookSlot(a));
+  const state = unpackGame(game);
+  upgradeToPhase4(state);
+  return { ...data, schemaVersion: 7, game: packGame(state) };
+}
+
 /** MIGRATIONS[n] は バージョン n → n+1 の変換 */
 export const MIGRATIONS: Record<number, Migration> = {
   2: migrateV2toV3,
   3: migrateV3toV4,
   4: migrateV4toV5,
   5: migrateV5toV6,
+  6: migrateV6toV7,
 };
 
 export const OLD_FORMAT_MESSAGE = "このセーブは古い形式のため読み込めません";

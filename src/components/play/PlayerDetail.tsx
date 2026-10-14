@@ -17,7 +17,9 @@ import { SKILL_DEFS } from "@/engine/config/skills";
 import { statRank } from "@/engine/player/rank";
 import { playerSchool } from "@/engine/season";
 import { POSITIONS, type SkillId } from "@/engine/types";
+import { bodyScale, generateKits } from "@/engine/look";
 import { useGameStore } from "@/store/gameStore";
+import { KitFigure } from "../look/Figure";
 import { Bar, Button, fitnessColor, RankBadge, Sheet } from "../ui";
 import { overallRank, overallValue, statLabel, visibleStats } from "./format";
 import { ProficiencyBar, SkillChip, SkillSheet, StyleChangeSheet } from "./traits";
@@ -35,6 +37,8 @@ export function PlayerDetail() {
   const p = school.players.find((x) => x.id === id);
   if (!p) return null;
   const close = () => selectPlayer(null);
+  const kits = school.kits ?? generateKits(game.seed, school.id);
+  const body = bodyScale(p.heightCm, p.stats.physical);
   const isCaptain = school.captainId === p.id;
   const skills = [...p.skills].sort((a, b) => TIER_ORDER[SKILL_DEFS[a].tier] - TIER_ORDER[SKILL_DEFS[b].tier]);
   if (skill)
@@ -49,13 +53,19 @@ export function PlayerDetail() {
   return (
     <Sheet onClose={close}>
       <div className="mb-3 flex items-center gap-3">
-        <RankBadge rank={overallRank(p)} size="lg" />
+        <div className="flex shrink-0 items-end rounded-xl bg-gradient-to-b from-sky-100 to-green-200 px-1 pt-1">
+          <KitFigure kit={kits.first} number={p.shirtNumber} look={p.look} height={body.height} build={body.build} size={104} />
+        </div>
         <div className="flex-1">
+          <div className="mb-1">
+            <RankBadge rank={overallRank(p)} size="md" />
+          </div>
           <div className="flex items-center gap-1.5 text-lg font-black">
             {p.name}
             {isCaptain && <span className="rounded bg-pitch-dark px-1.5 text-xs text-white" title="キャプテン">C</span>}
           </div>
           <div className="text-xs text-gray-600">
+            {p.shirtNumber !== undefined && `背番号 ${p.shirtNumber}・`}
             {p.grade}年{p.admission === "scholarship" && "（特待生）"}・{POSITION_NAMES[p.mainPosition]}・{p.heightCm}cm・利き足 {FOOT_NAMES[p.foot]}
             {p.status === "retired" && "・引退済み"}
           </div>

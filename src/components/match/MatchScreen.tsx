@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import { FORMATIONS } from "@/engine/config/formations";
 import { POSITION_NAMES } from "@/engine/config/names";
@@ -15,6 +16,23 @@ import { Bar, Button, fitnessColor, Segmented, Sheet } from "../ui";
 import { Pitch2D } from "./Pitch2D";
 import { PkScreen } from "./PkScreen";
 import { TacticsEditor } from "./TacticsEditor";
+import { webglSupported } from "@/view3d/webgl";
+import type { LoadTimes } from "@/view3d/Match3D";
+
+/** 3D の描画（three）は、3D で観戦するときだけ読み込む（P4。ほかの画面の読み込みを重くしない） */
+const loadTimes: LoadTimes = { start: 0 };
+const Match3D = dynamic(
+  () =>
+    import("@/view3d/Match3D").then((m) => {
+      loadTimes.code = performance.now();
+      return m.default;
+    }),
+  { ssr: false, loading: () => <Stadium3DLoading /> },
+);
+
+function Stadium3DLoading() {
+  return <div className="absolute inset-0 flex items-center justify-center bg-pitch-dark text-sm text-white/80">スタジアムを準備しています…</div>;
+}
 
 /** 等速：試合時間 15 分 = 現実の 1 分（SPEC 10.7） */
 const GAME_MINUTES_PER_SECOND = 15 / 60;
@@ -48,9 +66,23 @@ export function MatchScreen() {
   const finishMatch = useGameStore((s) => s.finishMatch);
   const switchToAuto = useGameStore((s) => s.switchToAuto);
   const speed = useGameStore((s) => s.settings.matchSpeed);
-  const view2d = useGameStore((s) => s.settings.matchView) === "2d";
+  const settings = useGameStore((s) => s.settings);
   const updateSettings = useGameStore((s) => s.updateSettings);
   const am = game.activeMatch!;
+  /** トーナメントは「トーナメントの表示」（3D／2D／テキスト）、リーグ戦・練習試合は今までの表示の設定（P4） */
+  const tournament = am.kind !== "league" && am.kind !== "practice";
+  const [lost3d, setLost3d] = useState(false);
+  const view = tournament ? settings.tournamentView : settings.matchView;
+  const no3d: null | "webgl" | "lost" = view !== "3d" ? null : lost3d ? "lost" : webglSupported() ? null : "webgl";
+  const use3d = view === "3d" && no3d === null;
+  const view2d = view === "2d" || (view === "3d" && no3d !== null);
+  const [ready3d, setReady3d] = useState(false);
+  const [perf] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("perf") === "1");
+  const [tickerOpen, setTickerOpen] = useState(false);
+  useEffect(() => {
+    if (view !== "3d") return;
+    loadTimes.start = performance.now();
+  }, [view]);
   const ms = am.state;
   const side = am.userSide;
   const opp: Side = side === 0 ? 1 : 0;
@@ -76,7 +108,8 @@ export function MatchScreen() {
   const ended = ms.phase === "END" && caughtUp;
 
   useEffect(() => {
-    if (paused || panel || inBreak || inPk || ended) return;
+    // 3D の読み込み中は時計を進めない
+    if (paused || panel || inBreak || inPk || ended || (use3d && !ready3d)) return;
     const id = setInterval(() => {
       const state = useGameStore.getState().game?.activeMatch?.state;
       if (!state) return;
@@ -92,7 +125,7 @@ export function MatchScreen() {
       setDisplay(displayRef.current);
     }, TICK_MS);
     return () => clearInterval(id);
-  }, [paused, panel, inBreak, inPk, ended, speed]);
+  }, [paused, panel, inBreak, inPk, ended, speed, use3d, ready3d]);
 
   // 自校にケガ人が出たら一時停止して、交代を選べるようにする（選ばずに閉じれば自動で交代）
   useEffect(() => {
@@ -150,17 +183,61 @@ export function MatchScreen() {
         </div>
       </div>
 
+      {use3d && (
+        <div className="relative min-h-0 flex-1 bg-pitch-dark">
+          <Match3D
+            ms={ms}
+            display={Math.min(display, ms.minute)}
+            playing={!(paused || panel || inBreak || inPk || ended)}
+            speed={speed}
+            userSide={side}
+            quality={settings.quality3d}
+            perf={perf}
+            load={loadTimes}
+            onReady={() => setReady3d(true)}
+            onError={() => setLost3d(true)}
+          />
+          <button type="button" className="absolute right-1.5 top-1.5 z-10 rounded-md bg-black/40 px-2 py-1 text-[10px] font-bold text-white" onClick={() => updateSettings({ tournamentView: "2d" })}>
+            2D にする
+          </button>
+          <button
+            type="button"
+            aria-label="速報の一覧"
+            className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/75 via-black/45 to-transparent px-3 pb-1.5 pt-6 text-left text-[12px] leading-snug text-white"
+            onClick={() => setTickerOpen(true)}
+          >
+            {events.slice(0, 3).reverse().map((e, i) => (
+              <div key={`${e.minute}-${i}-${e.type}`} className={`truncate ${i === Math.min(2, events.length - 1) ? "font-bold" : "text-white/75"}`}>
+                <span className="mr-1.5 font-mono text-[10px] text-white/60">{e.minute}&apos;</span>
+                {describeEvent(ms, e)}
+              </div>
+            ))}
+          </button>
+        </div>
+      )}
+      {no3d && view === "3d" && <p className="bg-amber-50 px-3 py-1 text-[11px] text-amber-900">{no3d === "webgl" ? "この端末では 3D を表示できないため、2D で表示しています。" : "3D の表示が止まったため、2D に切り替えました。"}</p>}
       {view2d && (
         <div className="relative h-[42dvh] shrink-0 bg-pitch">
           <Pitch2D ms={ms} display={Math.min(display, ms.minute)} userSide={side} />
         </div>
       )}
-      <div className="flex justify-end border-b border-gray-100 px-2">
-        <button type="button" className="min-h-8 px-2 text-[11px] font-bold text-pitch-dark" onClick={() => updateSettings({ matchView: view2d ? "text" : "2d" })}>
-          {view2d ? "テキストだけにする" : "2D を表示する"}
-        </button>
-      </div>
-      <ul className="flex-1 overflow-y-auto px-3 py-2 text-sm">
+      {!use3d && (
+        <div className="flex justify-end gap-1 border-b border-gray-100 px-2">
+          {tournament && view !== "3d" && (
+            <button type="button" className="min-h-8 px-2 text-[11px] font-bold text-pitch-dark" onClick={() => updateSettings({ tournamentView: "3d" })}>
+              3D で見る
+            </button>
+          )}
+          <button
+            type="button"
+            className="min-h-8 px-2 text-[11px] font-bold text-pitch-dark"
+            onClick={() => updateSettings(tournament ? { tournamentView: view2d ? "text" : "2d" } : { matchView: view2d ? "text" : "2d" })}
+          >
+            {view2d ? "テキストだけにする" : "2D を表示する"}
+          </button>
+        </div>
+      )}
+      <ul className={`${use3d ? "hidden" : "flex-1"} overflow-y-auto px-3 py-2 text-sm`}>
         {events.map((e, i) => (
           <li
             key={`${e.minute}-${i}-${e.type}`}
@@ -209,6 +286,21 @@ export function MatchScreen() {
         )}
       </div>
 
+      {tickerOpen && use3d && (
+        <Sheet onClose={() => setTickerOpen(false)} title="速報">
+          <ul className="text-sm">
+            {events.map((e, i) => (
+              <li key={`${e.minute}-${i}-${e.type}`} className={`border-b border-gray-100 py-1 ${isHighlight(e) ? "font-black" : ""}`}>
+                <span className="mr-2 inline-block w-8 text-right font-mono text-xs text-gray-400">{e.minute}&apos;</span>
+                {describeEvent(ms, e)}
+              </li>
+            ))}
+          </ul>
+          <Button className="mt-3 w-full" variant="secondary" onClick={() => setTickerOpen(false)}>
+            閉じる
+          </Button>
+        </Sheet>
+      )}
       {panel && (
         <OrdersPanel
           side={side}

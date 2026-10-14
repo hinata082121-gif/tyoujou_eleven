@@ -1,5 +1,6 @@
 "use client";
 
+import { UniformScreen } from "../look/UniformScreen";
 import { REPUTATION_NAMES, yearLabel } from "@/engine/config/names";
 import { dateLabel } from "@/engine/game";
 import { playerSchool } from "@/engine/season";
@@ -44,6 +45,7 @@ export function PlayScreen() {
   const teamOpen = useGameStore((s) => s.teamOpen);
   const scoutOpen = useGameStore((s) => s.scoutOpen);
   const facilitiesOpen = useGameStore((s) => s.facilitiesOpen);
+  const uniformOpen = useGameStore((s) => s.uniformOpen);
   const lastCamp = useGameStore((s) => s.lastCamp);
 
   if (!game) return null;
@@ -77,6 +79,7 @@ export function PlayScreen() {
   if (!moving && game.pending?.type === "scoutReply") return <ScoutReplyScreen />;
   if (scoutOpen) return <ScoutScreen />;
   if (facilitiesOpen) return <FacilitiesScreen />;
+  if (uniformOpen) return <UniformScreen />;
   if (!moving && game.pending?.type === "graduation") return <GraduationScreen />;
   if (!moving && game.pending?.type === "yearEnd") return <YearEndScreen />;
 

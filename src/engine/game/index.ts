@@ -2,6 +2,8 @@
  * ゲーム全体の進行。UI はここの関数だけを呼ぶ。
  * 関数は GameState を直接書き換える（大きな状態を毎回コピーしないため）。
  */
+import { ensureLooks, renumberAll } from "../look";
+import { decorateMatch } from "../look/match";
 import { buildCalendarParts, campDays, chooseBranchPath, competitionDays, type CalendarPlan, dateToDay, formatDay, nationalDays, newCalendar, prefQualifierDays, refillHand } from "../calendar";
 import { CPU_GROWTH } from "../config/growth";
 import {
@@ -235,6 +237,9 @@ function startYear(state: GameState, rng: Rng) {
   // キャプテンはスタッフの編成の後に指名する（おすすめを初期選択にしておく）
   autoCaptain(playerSchool(state));
   startStaffYear(state, rng);
+  // 見た目・ユニフォーム（無い人・学校に付ける）と背番号の付け直し（P4。ゲームの乱数は使わない）
+  ensureLooks(state);
+  renumberAll(state);
   addLog(state, `${MAJOR_NAMES.entrance}。新入生が入部した。`, "info");
   addLog(state, `今年の${COMPETITION_NAMES.summer}は${host.name}で開催される。`, "info");
   grantFacilitiesForReputation(state);
@@ -264,6 +269,17 @@ function leagueDivisionsForYear(state: GameState): string[][] {
  * P2c までのゲームに県リーグを足す（セーブの v5 → v6）。学校は今のチーム力の順に部に分け、
  * 自校は評判に応じた部に入れる（弱小・そこそこは最下部、名門は 1 部）。その年のリーグ戦は行わず、次の 4/1 から始める
  */
+/**
+ * P3 のセーブ → P4：全選手・OB に見た目、全校にユニフォーム、背番号を付ける。試合の途中なら表示用の情報も付ける。
+ * どれもゲームの乱数を使わない（ゲームのシードと ID から作る）ので、同じセーブなら何度読み込んでも同じになる
+ */
+export function upgradeToPhase4(state: GameState) {
+  ensureLooks(state);
+  renumberAll(state);
+  if (state.activeMatch) decorateMatch(state, state.activeMatch);
+  addLog(state, "選手に見た目と背番号、学校にユニフォームが付いた。自校のユニフォームは、メニューの「ユニフォーム」からいつでも変えられます。", "info");
+}
+
 export function upgradeToPhase3(state: GameState) {
   const divs = splitDivisions(cpuPrefByStrength(state));
   const k = divs.length;
@@ -1070,6 +1086,8 @@ export function startPlayerMatch(state: GameState, setup: TeamSetup, mode: "watc
       started: true,
       mode,
     };
+    // 表示用の情報（ユニフォーム・会場・見た目の写し。P4。乱数は使わない）
+    decorateMatch(state, match);
     if (mode === "auto") {
       match.state.teams[0].isUser = false;
       simulateToEnd(match.state);

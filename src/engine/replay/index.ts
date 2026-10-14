@@ -55,7 +55,7 @@ export interface ReplayFrame {
 
 const clamp01 = (v: number) => Math.max(0.02, Math.min(0.98, v));
 const flipLane = (l: Lane): Lane => (l === "L" ? "R" : l === "R" ? "L" : "C");
-const AIR: Partial<Record<MatchEventType, true>> = { cross: true, longBall: true, longBallShort: true, longBallLost: true, switchPlay: true, corner: true, freeKick: true, longThrow: true };
+export const AIR: Partial<Record<MatchEventType, true>> = { cross: true, longBall: true, longBallShort: true, longBallLost: true, switchPlay: true, corner: true, freeKick: true, longThrow: true };
 
 /** 決まった散らばり（イベントの番号から作る。乱数は使わない） */
 function jitter(i: number, k: number): number {
@@ -106,7 +106,7 @@ export function buildTimeline(ms: MatchState): ReplayTimeline {
 }
 
 /** 時刻 t の並び（記録した並びのうち、t までの最後のもの） */
-function shapeAt(team: MatchTeamState, t: number) {
+export function shapeAt(team: MatchTeamState, t: number) {
   const shapes = team.shapes ?? [{ minute: 0, formation: team.formation, onPitch: team.onPitch }];
   let s = shapes[0];
   for (const x of shapes) if (x.minute <= t) s = x;

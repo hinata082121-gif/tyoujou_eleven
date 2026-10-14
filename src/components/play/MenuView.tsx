@@ -16,6 +16,7 @@ export function MenuView() {
   const setTeamOpen = useGameStore((s) => s.setTeamOpen);
   const setScoutOpen = useGameStore((s) => s.setScoutOpen);
   const setFacilitiesOpen = useGameStore((s) => s.setFacilitiesOpen);
+  const setUniformOpen = useGameStore((s) => s.setUniformOpen);
   const [msg, setMsg] = useState<string | null>(null);
 
   const exportJson = async () => {
@@ -45,6 +46,9 @@ export function MenuView() {
       <Button variant="secondary" onClick={() => setFacilitiesOpen(true)}>
         🏟️ 設備
       </Button>
+      <Button variant="secondary" onClick={() => setUniformOpen(true)}>
+        👕 ユニフォーム
+      </Button>
       <Button variant="secondary" onClick={() => setScoutOpen(true)}>
         🎓 特待生スカウト
       </Button>
@@ -57,7 +61,18 @@ export function MenuView() {
         <Segmented options={["manage", "auto"] as const} value={settings.leagueMode} onChange={(v) => updateSettings({ leagueMode: v })} labels={{ manage: "采配あり", auto: "結果のみ" }} />
       </div>
       <div className="flex flex-col gap-1 rounded-xl border border-gray-200 p-3">
-        <span className="text-sm">観戦の表示（トーナメントを含むすべての試合）</span>
+        <span className="text-sm">トーナメントの観戦の表示</span>
+        <Segmented options={["3d", "2d", "text"] as const} value={settings.tournamentView} onChange={(v) => updateSettings({ tournamentView: v })} labels={{ "3d": "3D", "2d": "2D＋速報", text: "テキストのみ" }} />
+        {settings.tournamentView === "3d" && (
+          <>
+            <span className="mt-1 text-xs text-gray-600">3D の画質</span>
+            <Segmented options={["standard", "light"] as const} value={settings.quality3d} onChange={(v) => updateSettings({ quality3d: v })} labels={{ standard: "標準", light: "軽量" }} />
+          </>
+        )}
+        <span className="text-[11px] text-gray-500">動作が重いときは、画質を「軽量」にするか、「2D＋速報」にしてください。</span>
+      </div>
+      <div className="flex flex-col gap-1 rounded-xl border border-gray-200 p-3">
+        <span className="text-sm">リーグ戦・練習試合の観戦の表示</span>
         <Segmented options={["2d", "text"] as const} value={settings.matchView} onChange={(v) => updateSettings({ matchView: v })} labels={{ "2d": "2D＋速報", text: "テキストのみ" }} />
         <span className="text-[11px] text-gray-500">動作が重いときは「テキストのみ」にしてください。</span>
       </div>

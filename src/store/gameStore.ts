@@ -32,7 +32,8 @@ import {
 } from "@/engine/game";
 import type { CampResult } from "@/engine/camp";
 import type { VisitResult } from "@/engine/scout";
-import type { Alumnus, CampPolicy, GameState, Player, PlayStyle, SkillId, StaffRole, TeamSetup } from "@/engine/types";
+import type { Alumnus, CampPolicy, GameState, Player, PlayStyle, SchoolKits, SkillId, StaffRole, TeamSetup } from "@/engine/types";
+import { setPlayerKits } from "@/engine/look";
 import { SaveManager, type SlotSummary } from "@/lib/save";
 
 export type Screen = "title" | "slots" | "new" | "play";
@@ -48,11 +49,15 @@ export interface Settings {
   matchSpeed: 1 | 2 | 4;
   /** リーグ戦・練習試合の試合前に、初めに選ばれているモード（P3） */
   leagueMode: "manage" | "auto";
-  /** 観戦の表示（P3。簡易2D かテキスト） */
+  /** リーグ戦・練習試合の観戦の表示（P3。簡易2D かテキスト。P4 からトーナメントは tournamentView） */
   matchView: "2d" | "text";
+  /** トーナメントの観戦の表示（P4。標準は 3D） */
+  tournamentView: "3d" | "2d" | "text";
+  /** 3D の画質（P4） */
+  quality3d: "standard" | "light";
 }
 
-const defaultSettings: Settings = { skipMove: false, matchSpeed: 1, leagueMode: "manage", matchView: "2d" };
+const defaultSettings: Settings = { skipMove: false, matchSpeed: 1, leagueMode: "manage", matchView: "2d", tournamentView: "3d", quality3d: "standard" };
 
 function readSettings(): Settings {
   try {
@@ -107,6 +112,10 @@ interface GameStore {
   setScoutOpen(v: boolean): void;
   facilitiesOpen: boolean;
   setFacilitiesOpen(v: boolean): void;
+  /** P4：ユニフォームの設定の画面（メニューから） */
+  uniformOpen: boolean;
+  setUniformOpen(v: boolean): void;
+  saveKits(kits: SchoolKits): void;
   lastCamp: CampResult | null;
   clearLastCamp(): void;
   lastVisit: VisitResult | null;
@@ -118,7 +127,7 @@ interface GameStore {
   updateSettings(patch: Partial<Settings>): void;
 
   loadSlot(slot: number): Promise<void>;
-  createGame(slot: number, schoolName: string, prefectureId: string): Promise<void>;
+  createGame(slot: number, schoolName: string, prefectureId: string, kits?: SchoolKits): Promise<void>;
   /** エンジンで書き換えた後に呼ぶ：画面更新とオートセーブ */
   touch(save?: boolean): void;
   save(): Promise<void>;
@@ -201,6 +210,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setFacilitiesOpen(v) {
     set({ facilitiesOpen: v });
   },
+  uniformOpen: false,
+  setUniformOpen(v) {
+    set({ uniformOpen: v });
+  },
+  saveKits(kits) {
+    const game = get().game;
+    if (!game) return;
+    setPlayerKits(game, kits);
+    get().touch();
+  },
   lastCamp: null,
   clearLastCamp() {
     set({ lastCamp: null });
@@ -237,15 +256,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
     } catch {
       // 無視
     }
-    set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null, notesOpen: false, skillBookOpen: false, teamOpen: false, squadSkillFilter: null, matchDraft: null, scoutOpen: false, facilitiesOpen: false, lastCamp: null, lastVisit: null });
+    set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null, notesOpen: false, skillBookOpen: false, teamOpen: false, squadSkillFilter: null, matchDraft: null, scoutOpen: false, facilitiesOpen: false, uniformOpen: false, lastCamp: null, lastVisit: null });
   },
 
-  async createGame(slot, schoolName, prefectureId) {
+  async createGame(slot, schoolName, prefectureId, kits) {
     const buf = new Uint32Array(2);
     crypto.getRandomValues(buf);
     const seed = `${Date.now().toString(36)}-${buf[0].toString(36)}${buf[1].toString(36)}`;
     const game = newGame(seed, schoolName, prefectureId);
-    set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null, notesOpen: false, skillBookOpen: false, teamOpen: false, squadSkillFilter: null, matchDraft: null, scoutOpen: false, facilitiesOpen: false, lastCamp: null, lastVisit: null });
+    if (kits) setPlayerKits(game, kits);
+    set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null, notesOpen: false, skillBookOpen: false, teamOpen: false, squadSkillFilter: null, matchDraft: null, scoutOpen: false, facilitiesOpen: false, uniformOpen: false, lastCamp: null, lastVisit: null });
     try {
       window.localStorage.setItem(LAST_SLOT_KEY, String(slot));
     } catch {

@@ -76,6 +76,37 @@ export interface Player {
   skills: SkillId[];
   /** 試合での成果の通算（自校のみ） */
   feats?: PlayerFeats;
+  /** 見た目（P4。無いのは生成前の一瞬だけ。ensureLooks で付ける） */
+  look?: Look;
+  /** 背番号（P4。年度の初めに自動で付け直す。P5 で手動で変えられるようにする予定） */
+  shirtNumber?: number;
+}
+
+/**
+ * 選手の見た目（SPEC 17.1。P4）。値は config/look.ts の一覧の番号（一覧は後ろに足すだけ）。
+ * 要素を足すときは、ここに省略できる欄として足し、古いセーブは 0 として読む
+ */
+export interface Look {
+  hair: number;
+  hairColor: number;
+  skin: number;
+  eyes: number;
+  brows: number;
+  mouth: number;
+}
+
+/** ユニフォーム（SPEC 17.2。P4）。template は KIT_TEMPLATES、色は KIT_PALETTE の番号 */
+export interface Kit {
+  template: number;
+  main: number;
+  sub: number;
+  shorts: number;
+  socks: number;
+}
+
+export interface SchoolKits {
+  first: Kit;
+  second: Kit;
 }
 
 export interface PlayerRecord {
@@ -121,6 +152,8 @@ export interface School {
   cpuFacilities?: Facilities;
   /** CPU 校の、大会の本戦の間だけ持ち越す体力（選手 ID → 体力）。本戦が終わったら消す（P2c） */
   carryFitness?: { day: number; fit: Record<string, number> };
+  /** ユニフォームの 1st・2nd（P4） */
+  kits?: SchoolKits;
 }
 
 // ================= 設備（SPEC 15章。P2c） =================
@@ -337,6 +370,8 @@ export interface Alumnus {
   skills: SkillId[];
   /** 特待生として入部した（P2c） */
   scholarship?: boolean;
+  /** 見た目（P4。在学中のものを引き継ぐ） */
+  look?: Look;
 }
 
 export interface SeasonRecord {

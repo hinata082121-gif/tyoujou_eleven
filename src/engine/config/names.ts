@@ -639,3 +639,17 @@ export const DRIBBLE_MOVE_NAMES: Record<DribbleMove, string> = {
   chopTouch: "チョップタッチ",
   scissors: "シザース",
 };
+
+// ================= 見た目・ユニフォーム・会場（P4） =================
+
+/** 髪型（config/look.ts の HAIR_STYLES と同じ順） */
+export const HAIR_STYLE_NAMES = ["短髪", "坊主", "長め", "ツーブロック", "くせ毛", "ツンツン", "マッシュ", "センター分け"] as const;
+
+/** ユニフォームのテンプレート（config/look.ts の KIT_TEMPLATES と同じ順） */
+export const KIT_TEMPLATE_NAMES = ["無地", "縦縞", "横縞", "ハーフ", "サッシュ", "肩・袖の切り替え", "胸の太いライン", "ピンストライプ"] as const;
+
+/** ユニフォームの色（config/look.ts の KIT_PALETTE と同じ順） */
+export const KIT_COLOR_NAMES = ["白", "黒", "灰", "紺", "青", "水色", "緑", "深緑", "黄緑", "黄", "金", "橙", "赤", "えんじ", "ピンク", "紫", "茶", "ベージュ", "ターコイズ", "ラベンダー", "銀", "濃い灰", "ミント", "サーモン"] as const;
+
+/** 会場の段階（SPEC 10.8） */
+export const VENUE_NAMES = { 1: "学校のグラウンド", 2: "小さな競技場", 3: "競技場", 4: "大きなスタジアム" } as const;

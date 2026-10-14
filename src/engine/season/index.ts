@@ -58,6 +58,7 @@ export function graduate(state: GameState, rng: Rng): Alumnus[] {
       playStyle: p.playStyle,
       skills: [...p.skills],
       ...(p.admission === "scholarship" ? { scholarship: true } : {}),
+      ...(p.look ? { look: { ...p.look } } : {}),
     };
   });
   school.players = school.players.filter((p) => p.grade !== 3);
