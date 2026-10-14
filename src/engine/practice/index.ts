@@ -5,6 +5,7 @@ import { CRAFTSMAN_FAVORITE_MULT, INSPIRED_PRACTICE, PERSONALITY_CONDITION, PERS
 import { PLAY_STYLE_DEFS, PROFICIENCY, STYLE_GROWTH_BONUS } from "../config/playStyle";
 import { gainProficiency, styleUsesPractice } from "../player/traits";
 import type { Rng } from "../rng";
+import { trustDownMult } from "../school/life";
 import type { Condition, Player, PracticeKind, StatKey } from "../types";
 
 export type GainMap = Record<string, Partial<Record<StatKey, number>>>;
@@ -45,6 +46,14 @@ export interface PracticeStaffOptions {
   fitnessCostMult?: number;
   /** 熟練度の伸びの倍率（合宿。P2c） */
   proficiencyMult?: number;
+  /** 月初の指示の重点（R2）：その選手の重点の能力と、経験点の合計のうち重点に回す割合。無ければ重点なし */
+  focus?: (p: Player) => { stats: StatKey[]; share: number } | null;
+  /** 練習の効率の倍率（選手ごと。R2：テスト前の「短くする」） */
+  playerExpMult?: (p: Player) => number;
+  /** 体力の消耗の倍率（選手ごと。R2：テスト前の「短くする」） */
+  playerFitnessCostMult?: (p: Player) => number;
+  /** 練習に出ない選手（R2：補習・修学旅行など。体力は休みと同じく回復する） */
+  absent?: (p: Player) => boolean;
 }
 
 /** 性格による練習の倍率（PLAN 2.2）。ひらめき型は練習 1 回ごとに引く */
@@ -70,7 +79,8 @@ export function styleGrowthMult(p: Player, stat: StatKey): number {
 export function driftCondition(rng: Rng, p: Player, opts: Pick<PracticeStaffOptions, "conditionDownMult" | "conditionUpMult"> = {}) {
   const pc = PERSONALITY_CONDITION[p.personality];
   const dir = p.condition > 0 ? -1 : p.condition < 0 ? 1 : rng.chance(pc.upChance ?? 0.5) ? 1 : -1;
-  const mult = pc.drift * (dir < 0 ? (opts.conditionDownMult ?? 1) : (opts.conditionUpMult ?? 1));
+  // 信頼度が高いほど調子が下がりにくい（R2。信頼度を持たない CPU 校の選手は 1）
+  const mult = pc.drift * (dir < 0 ? (opts.conditionDownMult ?? 1) * trustDownMult(p) : (opts.conditionUpMult ?? 1));
   if (rng.chance(CONDITION_DRIFT_CHANCE * mult)) shiftCondition(p, dir);
 }
 
@@ -89,18 +99,33 @@ export function practiceOneDay(rng: Rng, players: Player[], kind: PracticeKind, 
       p.fitness = clampFit(p.fitness + recovery);
       continue;
     }
+    if (opts.absent?.(p)) {
+      p.fitness = clampFit(p.fitness + NON_TARGET_FITNESS + recovery);
+      driftCondition(rng, p, opts);
+      continue;
+    }
     if (isPracticeTarget(p, kind)) {
       const eff =
-        practiceEfficiency(p) * mult * GROWTH.practiceMult * (opts.staffMult?.(p) ?? 1) * (opts.teamMult ?? 1) * personalityPracticeMult(rng, p, kind, opts.rolls);
+        practiceEfficiency(p) * mult * GROWTH.practiceMult * (opts.staffMult?.(p) ?? 1) * (opts.teamMult ?? 1) * personalityPracticeMult(rng, p, kind, opts.rolls) * (opts.playerExpMult?.(p) ?? 1);
+      const day: Partial<Record<StatKey, number>> = {};
       for (const [stat, value] of Object.entries(def.gains) as [StatKey, number][]) {
         if (def.fieldOnly?.includes(stat) && p.mainPosition === "GK") continue;
-        const exp = value * eff * styleGrowthMult(p, stat);
+        day[stat] = value * eff * styleGrowthMult(p, stat);
+      }
+      // 月初の指示の重点：合計の share を重点の能力に回す（合計は変えない。R2）
+      const f = kind === "rest" ? null : (opts.focus?.(p) ?? null);
+      if (f && f.stats.length > 0 && f.share > 0) {
+        const total = Object.values(day).reduce((a, b) => a + (b ?? 0), 0);
+        for (const k of Object.keys(day) as StatKey[]) day[k] = day[k]! * (1 - f.share);
+        for (const k of f.stats) day[k] = (day[k] ?? 0) + (total * f.share) / f.stats.length;
+      }
+      for (const [stat, exp] of Object.entries(day) as [StatKey, number][]) {
         addExp(p, stat, exp);
         const g = (gains[p.id] ??= {});
         g[stat] = (g[stat] ?? 0) + exp;
       }
       if (kind !== "rest" && styleUsesPractice(p.playStyle, kind)) gainProficiency(p, PROFICIENCY.perPracticeDay * (opts.proficiencyMult ?? 1));
-      const cost = def.fitness < 0 ? def.fitness * (opts.fitnessCostMult ?? 1) : def.fitness;
+      const cost = def.fitness < 0 ? def.fitness * (opts.fitnessCostMult ?? 1) * (opts.playerFitnessCostMult?.(p) ?? 1) : def.fitness;
       p.fitness = clampFit(p.fitness + cost + recovery);
     } else {
       p.fitness = clampFit(p.fitness + NON_TARGET_FITNESS + recovery);

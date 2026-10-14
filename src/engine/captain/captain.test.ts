@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { confirmCaptain, finishStaff, newGame } from "../game";
+import { confirmCaptain, confirmMonthly, finishStaff, newGame } from "../game";
 import { autoplayYears } from "../game/autoplay";
 import { playerSchool } from "../season";
 import { appointCaptain, autoCaptain, captainCandidates, captainConditionMults, captainOf, captainPracticeMult, captainScore } from ".";
@@ -16,6 +16,9 @@ describe("キャプテン", () => {
     expect(confirmCaptain(s, "nobody")).not.toBeNull();
     expect(confirmCaptain(s, freshman.id)).toBeNull();
     expect(captainOf(school)?.id).toBe(freshman.id);
+    // 4/1 はキャプテンの指名の後に月初の指示（R2）
+    expect(s.pending?.type).toBe("monthly");
+    confirmMonthly(s);
     expect(s.pending).toBeUndefined();
     // 指名の時期以外は変えられない
     expect(confirmCaptain(s, school.players[0].id)).not.toBeNull();

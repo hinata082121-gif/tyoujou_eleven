@@ -1,5 +1,6 @@
 import { careerWeights, LOG_LIMIT, NEW_YEAR_FITNESS } from "../config/season";
 import { CAREER_NAMES } from "../config/names";
+import { CHOICE } from "../config/choiceEvents";
 import { growHeight } from "../player/growth";
 import { overall } from "../player/rating";
 import { gradeSize } from "../reputation";
@@ -30,6 +31,8 @@ export function retireThirdYears(state: GameState) {
 
 export function decideCareer(rng: Rng, p: Player): Career {
   const w = careerWeights(overall(p));
+  // 進路の相談（R2 の選択肢のイベント）で決めた進路は出やすい
+  if (p.careerHint) w[p.careerHint] *= CHOICE.careerHintMult;
   return rng.weighted(CAREER_KEYS, (c) => w[c]);
 }
 

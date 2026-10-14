@@ -35,6 +35,21 @@ export interface EventOutcome {
   kind?: string;
   /** 表示用（R1）：関わった人（指導した OB・スタッフ・先輩を先に、そのあと対象の選手）。乱数は使わない */
   cast?: CastRef[];
+  /** 表示用（R2）：せりふ（話す人と、話し方の型で選んだ一文。null は地の文） */
+  lines?: SceneLine[];
+  /** 表示用（R2）：結果の札（「調子 ＋1」など） */
+  effects?: EffectBadge[];
+}
+
+export interface SceneLine {
+  speaker: CastRef | null;
+  text: string;
+}
+
+export interface EffectBadge {
+  label: string;
+  value: string;
+  tone: "good" | "bad" | "info";
 }
 
 /** 出来事に出てくる人（表示用） */
@@ -46,7 +61,7 @@ export interface CastRef {
 const playerCast = (ps: Player[]): CastRef[] => ps.map((p) => ({ kind: "player", id: p.id }));
 
 /** スタッフの役割ごとの、個別指導の候補 */
-const STAFF_TEACH_POOLS: Record<StaffRole, SkillId[]> = {
+export const STAFF_TEACH_POOLS: Record<StaffRole, SkillId[]> = {
   head: [...TRAINING_POOLS.tactics, ...TRAINING_POOLS.pass],
   gk: TRAINING_POOLS.gk,
   physical: [...TRAINING_POOLS.physical, ...TRAINING_POOLS.run],
@@ -255,5 +270,6 @@ export function landOnSquare(ctx: EventContext, type: Exclude<SquareType, "major
     const cast = [...new Set(learned.map((l) => l.playerId))].map((id): CastRef => ({ kind: "player", id }));
     return { title: "特訓", text, tone: learned.some((l) => l.kind === "learn" && !isMinus(l.skill)) || learned.some((l) => l.kind === "remove") ? "good" : "info", learned: learned.length ? learned : undefined, kind: "training", cast };
   }
-  return applyEvent(ctx, pickEvent(ctx.rng, type));
+  // 人物マスは選択肢のあるイベント（choice）。起きるものが無いときだけ白マスとして扱う
+  return applyEvent(ctx, pickEvent(ctx.rng, type === "person" ? "white" : type));
 }

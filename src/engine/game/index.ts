@@ -4,7 +4,14 @@
  */
 import { ensureLooks, renumberAll } from "../look";
 import { decorateMatch } from "../look/match";
-import { buildCalendarParts, campDays, chooseBranchPath, competitionDays, type CalendarPlan, dateToDay, formatDay, nationalDays, newCalendar, prefQualifierDays, refillHand } from "../calendar";
+import { buildCalendarParts, campDays, chooseBranchPath, competitionDays, type CalendarPlan, dateToDay, formatDay, monthIndex, nationalDays, newCalendar, placeSchoolEvents, prefQualifierDays, refillHand } from "../calendar";
+import { PRACTICE_OFFER_DAYS } from "../config/calendar";
+import { CHOICE } from "../config/choiceEvents";
+import { SCHOOL_EVENT_LABELS } from "../config/schoolEvents";
+import { absDay, choiceDef, choiceView, decodeCast, encodeCast, pickChoiceEvent, prepareChoice, pruneMemory, rememberChoice, resolveChoice, type ChoiceView } from "../choice";
+import { beginMonthly, chooseAutoFocus, finishMonthly, headFocusQuality, monthlyDue, practiceFocus, resetMonthlyForYear, setFocus } from "../monthly";
+import { addTrust, ensureSchoolLife } from "../school/life";
+import { endSchoolDay, isAbsent, noPracticeDay, prepPracticeMults, relayLine, runRelay, runTest, schoolEventOf, setTestPrep, startSchoolDay, tripOutcome } from "../school/events";
 import { CPU_GROWTH } from "../config/growth";
 import {
   CAMP_NAMES,
@@ -127,6 +134,7 @@ import {
   type School,
   type Square,
   type StaffRole,
+  type StatKey,
   type TacticsNote,
   type TeamSetup,
 } from "../types";
@@ -205,7 +213,7 @@ function yearPlan(state: GameState) {
     rookieRegion: roundsFor(rookieRegionSize(state)),
   };
   const myDiv = state.league?.active ? divisionOf(state.league, state.playerSchoolId) : undefined;
-  const plan: CalendarPlan = { rounds, camps: true, scoutReply: true, branches: true, leagueDays: myDiv?.days };
+  const plan: CalendarPlan = { rounds, camps: true, scoutReply: true, branches: true, leagueDays: myDiv?.days, school: true };
   return { prefRounds, nationalRounds, summerQualifierRounds, plan };
 }
 
@@ -240,6 +248,13 @@ function startYear(state: GameState, rng: Rng) {
   // 見た目・ユニフォーム（無い人・学校に付ける）と背番号の付け直し（P4。ゲームの乱数は使わない）
   ensureLooks(state);
   renumberAll(state);
+  // 学校生活（R2）：学力・信頼度（新入生）、月初の指示の記録、行事の進み具合、約束
+  ensureSchoolLife(state);
+  resetMonthlyForYear(state);
+  state.school = state.school?.lastTest ? { lastTest: state.school.lastTest } : {};
+  state.promises = [];
+  pruneMemory(state);
+  for (let d = 1; d <= PRACTICE_OFFER_DAYS; d++) deliverOffer(state, rng, d);
   addLog(state, `${MAJOR_NAMES.entrance}。新入生が入部した。`, "info");
   addLog(state, `今年の${COMPETITION_NAMES.summer}は${host.name}で開催される。`, "info");
   grantFacilitiesForReputation(state);
@@ -279,6 +294,37 @@ export function upgradeToPhase4(state: GameState) {
   if (state.activeMatch) decorateMatch(state, state.activeMatch);
   addLog(state, "選手に見た目と背番号、学校にユニフォームが付いた。自校のユニフォームは、メニューの「ユニフォーム」からいつでも変えられます。", "info");
 }
+
+/**
+ * P4a・R1 のセーブ → R2：自校の部員に学力・信頼度（キャプテンは高め）、これから先の日程に学校行事と人物マス、
+ * 月初の指示は読み込んだ日の次の 1 日から。ゲームのシードから作った専用の乱数を使うので、同じセーブなら毎回同じになる
+ */
+export function upgradeToPhaseR2(state: GameState) {
+  const rng = Rng.fromSeed(`${state.seed}:migrate-v8`);
+  ensureSchoolLife(state);
+  const school = playerSchool(state);
+  const cap = school.players.find((p) => p.id === school.captainId);
+  if (cap) addTrust(cap, CAPTAIN_TRUST);
+  const cal = state.calendar;
+  const pos = cal.position;
+  placeSchoolEvents(cal.squares, pos + 1);
+  // 人物マス：これから先の通常マス（青・赤・白・緑）の一部を置き換える（分岐の先の道は除く）
+  const inBranch = (d: number) => cal.branches?.some((b) => d > b.day && d <= b.day + b.paths[0].squares.length);
+  for (const sq of cal.squares) {
+    if (sq.day <= pos || sq.major || inBranch(sq.day)) continue;
+    if (["blue", "red", "white", "green"].includes(sq.baseType) && rng.chance(PERSON_SQUARE_SHARE)) sq.baseType = "person";
+  }
+  state.monthly = { doneMonth: monthIndex(pos) };
+  state.school ??= {};
+  state.promises ??= [];
+  state.eventMemory ??= {};
+  // これから先 10 日以内の練習試合の申し込み
+  for (let d = pos + 1; d <= Math.min(cal.squares.length - 1, pos + PRACTICE_OFFER_DAYS); d++) deliverOffer(state, rng, d);
+  addLog(state, "学校行事・月初の育成指示・選択肢のあるイベントが加わった。すごろくは 10 日先までだけ見え、大会の日程は「大会」の「予定」で確かめられます。", "info");
+}
+
+/** R2 の移行で、通常マス（青・赤・白・緑）を人物マスに置き換える割合（人物マスが全体の 13% 前後になる） */
+const PERSON_SQUARE_SHARE = 0.2;
 
 export function upgradeToPhase3(state: GameState) {
   const divs = splitDivisions(cpuPrefByStrength(state));
@@ -531,6 +577,9 @@ function practiceOptions(state: GameState, school: School, kindFor: (p: Player) 
     // ひらめき型の倍率は、カード 1 枚の間は同じ
     rolls: {} as Record<string, number>,
     playerInjuryMult: (p: Player) => durabilityMult(p.skills),
+    // 月初の指示の重点と、補習・修学旅行で練習に出ない部員（R2）
+    focus: practiceFocus,
+    absent: isAbsent,
   };
 }
 
@@ -565,19 +614,30 @@ function moveDays(state: GameState, rng: Rng, value: number, practice: PracticeK
   const injured: Player[] = [];
   let to = from;
   const opts = practiceOptions(state, school, () => practice ?? "rest");
+  const news: EventOutcome[] = [];
   for (let d = from + 1; d <= last; d++) {
-    if (practice) {
-      const r = runPractice(rng, school.players, practice, 1, mult, opts);
+    startSchoolDay(state, d);
+    const hurt = school.players.filter((p) => p.injuryDays > 0).map((p) => p.id);
+    const sq = cal.squares[d];
+    if (practice && schoolEventOf(sq) === "testPrep" && isStopSquare(state, sq)) {
+      // テスト前の初日：方針を決めてから、この日の練習をする（confirmChoice）
+      (state.school ??= {}).prepDayPractice = { day: d, practice };
+    } else if (practice && !noPracticeDay(state, d)) {
+      const pm = prepPracticeMults(state, d);
+      const dayOpts = pm.exp === 1 && pm.fitness === 1 ? opts : { ...opts, playerExpMult: () => pm.exp, playerFitnessCostMult: () => pm.fitness };
+      const r = runPractice(rng, school.players, practice, 1, mult, dayOpts);
       for (const [id, g] of Object.entries(r.gains)) {
         const acc = (gainsAll[id] ??= {});
         for (const [k, v] of Object.entries(g)) acc[k as keyof typeof acc] = (acc[k as keyof typeof acc] ?? 0) + (v ?? 0);
       }
       injured.push(...r.injured);
     } else idleDay(rng, school.players, NON_TARGET_FITNESS + DAILY_RECOVERY * opts.recoveryMult, opts);
+    markHealed(state, hurt, d);
+    news.push(...endOfSchoolDay(state, rng, d));
     cal.position = d;
     to = d;
-    processWorldDay(state, rng, d);
-    if (cal.squares[d].major && isStopSquare(state, cal.squares[d])) break;
+    news.push(...processWorldDay(state, rng, d));
+    if (monthlyDue(state, d) || (sq.major && isStopSquare(state, sq))) break;
   }
   const days = to - from;
   if (practice) cal.lastGain = { practice, perPlayer: gainsAll };
@@ -587,15 +647,19 @@ function moveDays(state: GameState, rng: Rng, value: number, practice: PracticeK
   }
 
   // 止まったマスの効果
-  const outcomes: EventOutcome[] = [];
+  const outcomes: EventOutcome[] = [...news];
   const sq = cal.squares[to];
   let stoppedAt: MajorKind | undefined;
-  if (sq.major && isStopSquare(state, sq)) {
-    stoppedAt = sq.major.kind;
-    setPendingForMajor(state, rng, sq);
+  const stopMajor = !!sq.major && isStopSquare(state, sq);
+  if (days > 0 && (stopMajor || monthlyDue(state, to))) {
+    if (stopMajor) stoppedAt = sq.major!.kind;
+    const o = stopForDay(state, rng, to);
+    if (o) outcomes.push(o);
   } else if (sq.baseType === "branch" && cal.branches?.some((b) => b.day === to && b.chosen === undefined)) {
     state.pending = { type: "branch", day: to };
     outcomes.push({ title: "分かれ道", text: "道が分かれている。どの道を進むか選ぼう。", tone: "info", kind: "branch" });
+  } else if (days > 0 && sq.baseType === "person" && startChoiceEvent(state, rng)) {
+    // 人物マス：選択肢のあるイベント（R2）。結果は confirmChoice で返す
   } else if (days > 0) {
     const donation = sq.baseType === "blue" ? tryDonation(state, rng) : null;
     if (donation) outcomes.push(donation);
@@ -625,10 +689,101 @@ function tryDonation(state: GameState, rng: Rng): EventOutcome | null {
   return { title: "OBからの寄付", text, tone: "good", kind: "donation" };
 }
 
-function setPendingForMajor(state: GameState, rng: Rng, sq: Square) {
+/**
+ * 必ず止まる日の処理（R2）。月初の指示がある日は、先に指示（卒業式の日だけは卒業式が先）、そのあと大マス。
+ * 結果をその場で見せる行事（テスト・修学旅行）は、場面の出来事を返す
+ */
+function stopForDay(state: GameState, rng: Rng, day: number): EventOutcome | null {
+  const sq = state.calendar.squares[day];
+  const major = !!sq.major && isStopSquare(state, sq);
+  if (monthlyDue(state, day)) {
+    state.monthly ??= { doneMonth: -1 };
+    if (major && sq.major!.kind === "graduation") {
+      state.monthly.after = "monthly";
+      return setPendingForMajor(state, rng, sq);
+    }
+    beginMonthly(state, rng, day);
+    if (major) state.monthly.after = "major";
+    else delete state.monthly.after;
+    return null;
+  }
+  return major ? setPendingForMajor(state, rng, sq) : null;
+}
+
+/** 練習試合の申し込み（試合の PRACTICE_OFFER_DAYS 日前。R2）。届いたら速報の出来事を返す */
+function deliverOffer(state: GameState, rng: Rng, matchDay: number): EventOutcome | null {
+  const sq = state.calendar.squares[matchDay];
+  if (sq?.major?.kind !== "practiceMatch") return null;
+  const school = (state.school ??= {});
+  if (school.offers?.[matchDay]) return null;
+  const opp = pickPracticeOpponent(state, rng);
+  school.offers = { ...school.offers, [matchDay]: opp.id };
+  const text = `${opp.name}（ランク${opp.rank}）から、${formatDay(matchDay)}の練習試合の申し込みが届いた。`;
+  addLog(state, text, "info");
+  return { title: "練習試合の申し込み", text, tone: "info", kind: "offer" };
+}
+
+/** ケガが治った日を記録する（選択肢のイベント「ケガからの復帰」用） */
+function markHealed(state: GameState, before: string[], day: number) {
+  if (before.length === 0) return;
+  const school = playerSchool(state);
+  for (const id of before) {
+    const p = school.players.find((x) => x.id === id);
+    if (p && p.injuryDays <= 0) (state.eventMemory ??= {})[`healed:${id}`] = absDay(state, day);
+  }
+}
+
+/** 1 日の終わりの学校生活（補習・修学旅行の残り日数）。修学旅行から帰った日は速報を返す */
+function endOfSchoolDay(state: GameState, rng: Rng, day: number): EventOutcome[] {
+  const back = endSchoolDay(state, rng, day);
+  if (back.length === 0) return [];
+  const text = `修学旅行から2年生が帰ってきた。${back.map((n) => n.split(" ")[0]).join("・")}は気分転換になったようだ（調子 ＋1）。`;
+  addLog(state, text, "good");
+  return [{ title: "修学旅行から帰ってきた", text, tone: "good", kind: "tripReturn" }];
+}
+
+/** 人物マス：条件に合う選択肢のイベントを起こす（無ければ false） */
+function startChoiceEvent(state: GameState, rng: Rng): boolean {
+  const pick = pickChoiceEvent(state, rng);
+  if (!pick) return false;
+  rememberChoice(state, pick.def, pick.cast);
+  state.pending = { type: "choice", eventId: pick.def.id, cast: encodeCast(pick.cast) };
+  return true;
+}
+
+/** ID を決めて選択肢のイベントを起こす（学校行事の選択・合宿の夜） */
+function startChoiceById(state: GameState, rng: Rng, id: string): boolean {
+  const pick = prepareChoice(state, rng, id);
+  if (!pick) return false;
+  rememberChoice(state, pick.def, pick.cast);
+  state.pending = { type: "choice", eventId: pick.def.id, cast: encodeCast(pick.cast) };
+  return true;
+}
+
+function setPendingForMajor(state: GameState, rng: Rng, sq: Square): EventOutcome | null {
   const kind = sq.major!.kind;
+  if (kind === "school") {
+    const ev = sq.major!.event;
+    if (ev === "test") {
+      const o = runTest(state, rng, sq.major!.round ?? 0, sq.day);
+      addLog(state, `${o.title}：平均${state.school?.lastTest?.average ?? 0}点${state.school?.lastTest?.failed.length ? `。赤点${state.school.lastTest.failed.length}人は補習` : "。赤点なし"}。`, o.tone);
+      return o;
+    }
+    if (ev === "schoolTrip") {
+      const o = tripOutcome(state);
+      addLog(state, o.text, "info");
+      return o;
+    }
+    // テスト前・体育祭・文化祭は選択肢の場面
+    if (ev && !startChoiceById(state, rng, ev)) {
+      // 部員がいないなど：テスト前は「短くする」にしておく
+      if (ev === "testPrep") setTestPrep(state, sq.major!.round ?? 0, "short");
+    }
+    return null;
+  }
   if (kind === "practiceMatch") {
-    const opp = pickPracticeOpponent(state, rng);
+    const offered = state.school?.offers?.[sq.day];
+    const opp = offered && state.schools[offered] ? state.schools[offered] : pickPracticeOpponent(state, rng);
     state.pending = { type: "match", kind: "practice", opponentId: opp.id };
     addLog(state, `${COMPETITION_NAMES.practice}：${opp.name}（ランク${opp.rank}）と対戦する。`, "info");
   } else if (isCompetitionKind(kind)) {
@@ -655,6 +810,7 @@ function setPendingForMajor(state: GameState, rng: Rng, sq: Square) {
   } else if (kind === "yearEnd") {
     state.pending = { type: "yearEnd" };
   }
+  return null;
 }
 
 /** 練習試合の相手：基本はランクが近い学校。2〜3 回に 1 回はランクが 1〜2 段階上の学校 */
@@ -715,27 +871,37 @@ export function advanceToNextMatch(state: GameState): CardResult | null {
     const recovery = ADJUST_DAY_RECOVERY * playerRecoveryMult(state);
     let to = from;
     let stoppedAt: MajorKind | undefined;
+    const outcomes: EventOutcome[] = [];
     for (let d = from + 1; d <= target; d++) {
+      startSchoolDay(state, d);
+      const hurt = school.players.filter((p) => p.injuryDays > 0).map((p) => p.id);
       const mood = captainConditionMults(school);
       idleDay(rng, school.players, recovery, { conditionDownMult: mood.down, conditionUpMult: mood.up });
+      markHealed(state, hurt, d);
+      outcomes.push(...endOfSchoolDay(state, rng, d));
       cal.position = d;
       to = d;
-      processWorldDay(state, rng, d);
+      outcomes.push(...processWorldDay(state, rng, d));
       const sq = cal.squares[d];
-      if (sq.major && isStopSquare(state, sq)) {
-        stoppedAt = sq.major.kind;
-        setPendingForMajor(state, rng, sq);
+      const stopMajor = !!sq.major && isStopSquare(state, sq);
+      if (stopMajor || monthlyDue(state, d)) {
+        if (stopMajor) stoppedAt = sq.major!.kind;
+        const o = stopForDay(state, rng, d);
+        if (o) outcomes.push(o);
         break;
       }
     }
     updatePlayerRank(state);
-    return { from, to, days: to - from, practice: "調整", outcomes: [], stoppedAt, injured: [] };
+    return { from, to, days: to - from, practice: "調整", outcomes, stoppedAt, injured: [] };
   });
 }
 
 // ================= 世界の進行（CPU の試合など） =================
 
-function processWorldDay(state: GameState, rng: Rng, day: number) {
+function processWorldDay(state: GameState, rng: Rng, day: number): EventOutcome[] {
+  const news: EventOutcome[] = [];
+  const offer = deliverOffer(state, rng, day + PRACTICE_OFFER_DAYS);
+  if (offer) news.push(offer);
   if (day === dateToDay(...CPU_GROWTH.autumnDate)) {
     for (const s of Object.values(state.schools)) if (!s.isPlayer) autumnCpuGrowth(rng, s);
   }
@@ -760,6 +926,7 @@ function processWorldDay(state: GameState, rng: Rng, day: number) {
     if (mine && mine.winner === undefined) continue;
     simulateRemainingRound(state, rng, b);
   }
+  return news;
 }
 
 function rulesFor(b: Bracket, round: number): MatchRules {
@@ -925,6 +1092,8 @@ export function confirmCamp(state: GameState, policy: CampPolicy): CampResult | 
     state.campPolicy = { ...policy };
     state.pending = undefined;
     updatePlayerRank(state);
+    // 合宿の最後の夜（選択肢のあるイベント。R2）
+    startChoiceById(state, rng, "campNight");
     return result;
   });
 }
@@ -1319,6 +1488,7 @@ export function finishPlayerMatch(state: GameState): MatchSummary | null {
       refillHand(rng, state.calendar, handSize(state.reputation));
     }
     grantFacilitiesForReputation(state);
+    if (official) resolvePromises(state, new Set([...me.onPitch, ...me.subbedOff]), result);
     state.activeMatch = undefined;
     state.pending = undefined;
     // 3 年生の引退でキャプテンがいなくなったら、新しいキャプテンを指名する
@@ -1380,11 +1550,155 @@ function learnLog(l: LearnEvent): string {
 export function confirmCaptain(state: GameState, playerId: string): string | null {
   if (state.pending?.type !== "captain") return "キャプテンを選ぶ時期ではありません";
   const school = playerSchool(state);
+  const before = school.captainId;
   if (!appointCaptain(school, playerId)) return "在籍している部員から選んでください";
   const p = captainOf(school)!;
+  // キャプテンに指名されると、監督への信頼度が上がる（R2）
+  if (before !== p.id || state.calendar.position === 0) addTrust(p, CAPTAIN_TRUST);
   addLog(state, `${p.name}（${p.grade}年）をキャプテンに指名した。`, "info");
   state.pending = undefined;
+  // 年度の初め（4/1）：キャプテンの指名の後に、月初の指示
+  resumeDay(state);
   return null;
+}
+
+// ================= 月初の指示・選択肢のあるイベント（R2。UI から呼ぶ） =================
+
+/** キャプテンに指名されたときの信頼度の上がり方 */
+const CAPTAIN_TRUST = 10;
+
+/** 待っている操作が無くなったとき、その日にまだ残っている予定（月初の指示・同じ日の大マス）を出す */
+function resumeDay(state: GameState) {
+  if (state.pending || state.activeMatch) return;
+  const day = state.calendar.position;
+  const after = state.monthly?.after;
+  if (state.monthly) delete state.monthly.after;
+  if (monthlyDue(state, day)) {
+    withRng(state, (rng) => beginMonthly(state, rng, day));
+    return;
+  }
+  if (after === "major") {
+    const sq = state.calendar.squares[day];
+    if (sq.major && isStopSquare(state, sq)) return withRng(state, (rng) => setPendingForMajor(state, rng, sq)) ?? undefined;
+  }
+}
+
+/** 月初の指示を決めて閉じる。同じ日に大マス（試合など）があれば、続けてそれを出す。行事の結果があれば返す */
+export function confirmMonthly(state: GameState): EventOutcome | null {
+  if (!finishMonthly(state)) return null;
+  const day = state.calendar.position;
+  const after = state.monthly?.after;
+  if (state.monthly) delete state.monthly.after;
+  if (after !== "major") return null;
+  const sq = state.calendar.squares[day];
+  if (!sq.major || !isStopSquare(state, sq)) return null;
+  return withRng(state, (rng) => setPendingForMajor(state, rng, sq));
+}
+
+/** 1 人の重点を決める（null でおまかせ） */
+export function setPlayerFocus(state: GameState, playerId: string, stats: StatKey[] | null): string | null {
+  const p = playerSchool(state).players.find((x) => x.id === playerId && x.status === "active");
+  if (!p) return "在籍している部員ではありません";
+  if (!setFocus(p, stats)) return "重点は1〜2個まで選べます";
+  if (stats === null && state.pending?.type === "monthly") withRng(state, (rng) => (p.autoFocus = chooseAutoFocus(rng, p, headFocusQuality(state))));
+  return null;
+}
+
+/** 今の選択肢の場面（地の文・最初のせりふ・選択肢） */
+export function pendingChoice(state: GameState): ChoiceView | null {
+  const p = state.pending;
+  return p?.type === "choice" ? choiceView(state, p.eventId, p.cast) : null;
+}
+
+/** 選択肢を選ぶ。効果を適用し、結果の場面（地の文・反応のせりふ・結果の札）を返す */
+export function confirmChoice(state: GameState, index: number): EventOutcome | null {
+  const p = state.pending;
+  if (p?.type !== "choice") return null;
+  const def = choiceDef(p.eventId);
+  if (!def) {
+    state.pending = undefined;
+    return null;
+  }
+  return withRng(state, (rng) => {
+    const cast = decodeCast(state, p.cast);
+    const sq = state.calendar.squares[state.calendar.position];
+    const relay = { done: false, won: false };
+    const env = {
+      state,
+      rng,
+      cast,
+      addReputation: (d: number) => void changeReputation(state, d),
+      setTestPrep: (policy: Parameters<typeof setTestPrep>[2]) => setTestPrep(state, sq.major?.round ?? 0, policy),
+    };
+    const out = resolveChoice(env, def, index, (e) => {
+      if (e.t !== "relay") return null;
+      const r = runRelay(state, rng, env.addReputation);
+      relay.done = true;
+      relay.won = r.won;
+      return r.badges;
+    });
+    if (!out) return null;
+    if (relay.done && cast.lead && out.lines && out.lines.length > 1) {
+      out.lines[0] = { speaker: null, text: relay.won ? "サッカー部が、陸上部をかわして1着でゴールした！" : "最後の直線で抜かれ、サッカー部は2着に終わった。" };
+      out.lines[1] = { speaker: out.lines[1].speaker, text: relayLine(cast.lead, relay.won) };
+      out.text = out.lines[0].text;
+      out.tone = relay.won ? "good" : "info";
+    }
+    state.pending = undefined;
+    addLog(state, `${out.title}：${out.text}`, out.tone);
+    if (def.id === "testPrep") runDeferredPrepPractice(state, rng);
+    updatePlayerRank(state);
+    resumeDay(state);
+    return out;
+  });
+}
+
+/** テスト前の初日の練習を、方針を決めた後で行う */
+function runDeferredPrepPractice(state: GameState, rng: Rng) {
+  const dp = state.school?.prepDayPractice;
+  if (!dp) return;
+  delete state.school!.prepDayPractice;
+  if (dp.day !== state.calendar.position) return;
+  const school = playerSchool(state);
+  const opts = practiceOptions(state, school, () => dp.practice);
+  const hurt = school.players.filter((p) => p.injuryDays > 0).map((p) => p.id);
+  if (noPracticeDay(state, dp.day)) idleDay(rng, school.players, NON_TARGET_FITNESS + DAILY_RECOVERY * opts.recoveryMult, opts);
+  else {
+    const pm = prepPracticeMults(state, dp.day);
+    const r = runPractice(rng, school.players, dp.practice, 1, 1, { ...opts, playerExpMult: () => pm.exp, playerFitnessCostMult: () => pm.fitness });
+    state.calendar.lastGain = { practice: dp.practice, perPlayer: r.gains };
+    for (const p of r.injured) {
+      addLog(state, `${p.name}が練習中にケガをした（全治${p.injuryDays}日）`, "bad");
+      state.staff.season.injuryDays += p.injuryDays;
+    }
+  }
+  markHealed(state, hurt, dp.day);
+}
+
+/** 約束（「次の公式戦で使う」「次の公式戦で結果を出す」）を、公式戦の後に確かめる */
+function resolvePromises(state: GameState, played: Set<string>, result: "win" | "draw" | "loss") {
+  const list = state.promises;
+  if (!list || list.length === 0) return;
+  const school = playerSchool(state);
+  const keep: typeof list = [];
+  for (const pr of list) {
+    if (pr.kind === "playNextOfficial") {
+      const p = school.players.find((x) => x.id === pr.playerId && x.status === "active");
+      if (!p) continue;
+      if (played.has(p.id)) {
+        addTrust(p, CHOICE.promiseKept);
+        addLog(state, `約束どおり、${p.name}を公式戦で使った。`, "good");
+      } else if (p.injuryDays > 0) keep.push(pr);
+      else {
+        addTrust(p, CHOICE.promiseBroken);
+        addLog(state, `${p.name}を公式戦で使う約束を守れなかった。信頼を失ったようだ。`, "bad");
+      }
+    } else if (result !== "draw") {
+      for (const p of school.players) if (p.status === "active") addTrust(p, result === "win" ? CHOICE.winPromiseWin : CHOICE.winPromiseLoss);
+      addLog(state, result === "win" ? "公式戦で結果を出し、部員たちの信頼を取り戻した。" : "公式戦で結果を出せず、部員たちの不満が強まった。", result === "win" ? "good" : "bad");
+    } else keep.push(pr);
+  }
+  state.promises = keep;
 }
 
 // ================= プレースタイル（UI から呼ぶ） =================
@@ -1407,6 +1721,8 @@ export function confirmGraduation(state: GameState): Alumnus[] {
   addLog(state, `${MAJOR_NAMES.graduation}。${alumni.length}人の3年生が巣立っていった。`, "info");
   state.pending = undefined;
   updatePlayerRank(state);
+  // 3/1：卒業式の後に月初の指示（卒業した 3 年生は出ない）
+  resumeDay(state);
   return alumni;
 }
 
@@ -1565,6 +1881,7 @@ const MAJOR_LABELS: Record<MajorKind, string> = {
   scoutReply: "スカウト",
   graduation: "卒業式",
   yearEnd: "年度末",
+  school: "行事",
 };
 
 /** カレンダーの表示用：マスの見た目（大会の大マスは、まだ勝ち残っていれば表示する） */
@@ -1592,6 +1909,7 @@ export function squareDisplay(state: GameState, sq: Square): { type: Square["bas
     if (!shown) return { type: sq.baseType };
     return { type: "major", label: MAJOR_LABELS[kind] };
   }
+  if (kind === "school") return { type: "major", label: m.event ? SCHOOL_EVENT_LABELS[m.event] : MAJOR_LABELS.school };
   if (kind === "scoutReply" && !state.scout) return { type: sq.baseType };
   if (kind === "league" && !(state.league?.active && fixtureOn(state.league, me, sq.day))) return { type: sq.baseType };
   return { type: "major", label: MAJOR_LABELS[kind] };

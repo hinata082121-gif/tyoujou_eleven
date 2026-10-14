@@ -27,7 +27,9 @@ import { packLook, unpackLook } from "@/engine/look";
  * look（[背番号（無ければ -1）, 見た目の要素…]）はスキーマ v7 で追加（v6 以前はマイグレーションで差し込む）。
  * 見た目の要素は config/look.ts の LOOK_PARTS の順で、要素が増えたら後ろに足す（足りない分は 0 として読む）。
  * suspended と記録はスキーマ v3 で追加（記録が空なら省く）。
- * 最後の scholarship（特待生なら 1）はスキーマ v5 で追加（一般入部なら省く）
+ * scholarship（特待生なら 1）はスキーマ v5 で追加（一般入部なら省く）。
+ * 最後の life（学校生活。自校の部員だけ）はスキーマ v8 で追加：
+ * [学力, 前回のテストの点（無ければ -1）, 信頼度, 重点（能力の番号）, おまかせの重点, 補習の残り日数, 練習に出ない残り日数, 進路の希望（0 なし・1 プロ・2 大学）]
  */
 export type PackedPlayer = [
   string,
@@ -51,7 +53,41 @@ export type PackedPlayer = [
   number?,
   number[]?,
   (0 | 1)?,
+  PackedLife?,
 ];
+
+export type PackedLife = [number, number, number, number[], number[], number, number, number];
+
+const CAREER_HINTS = [undefined, "pro", "university"] as const;
+
+function packLife(p: Player): PackedLife | undefined {
+  if (p.academic === undefined && p.trust === undefined) return undefined;
+  return [
+    p.academic ?? -1,
+    p.lastTestScore ?? -1,
+    p.trust ?? -1,
+    (p.focus ?? []).map((k) => ALL_STATS.indexOf(k)),
+    (p.autoFocus ?? []).map((k) => ALL_STATS.indexOf(k)),
+    p.remedialDays ?? 0,
+    p.awayDays ?? 0,
+    CAREER_HINTS.indexOf(p.careerHint),
+  ];
+}
+
+function unpackLife(l: PackedLife | undefined): Partial<Player> {
+  if (!l) return {};
+  const [academic, test, trust, focus, auto, remedial, away, career] = l;
+  const out: Partial<Player> = {};
+  if (academic >= 0) out.academic = academic;
+  if (test >= 0) out.lastTestScore = test;
+  if (trust >= 0) out.trust = trust;
+  if (focus.length > 0) out.focus = focus.map((i) => ALL_STATS[i]);
+  if (auto.length > 0) out.autoFocus = auto.map((i) => ALL_STATS[i]);
+  if (remedial > 0) out.remedialDays = remedial;
+  if (away > 0) out.awayDays = away;
+  if (career > 0) out.careerHint = CAREER_HINTS[career];
+  return out;
+}
 
 /** [性格, スタイル, 熟練度, 特殊能力, 得意な練習（無ければ -1）, 成果（無ければ省く）]。どれも番号で持つ */
 export type PackedTraits = [number, number, number, number[], number, number[]?];
@@ -117,8 +153,10 @@ export function packPlayer(p: Player): PackedPlayer {
   ];
   // CPU 校の部員（数千人）は記録が空なので、容量のために省く
   const scholar = p.admission === "scholarship";
-  if (scholar || p.suspended || r.apps || r.goals || r.officialApps || r.officialGoals) packed.push(p.suspended, [r.apps, r.goals, r.officialApps, r.officialGoals]);
-  if (scholar) packed.push(1);
+  const life = packLife(p);
+  if (life || scholar || p.suspended || r.apps || r.goals || r.officialApps || r.officialGoals) packed.push(p.suspended, [r.apps, r.goals, r.officialApps, r.officialGoals]);
+  if (life) packed.push(scholar ? 1 : 0, life);
+  else if (scholar) packed.push(1);
   return packed;
 }
 
@@ -129,7 +167,7 @@ export function withLookSlot(a: PackedPlayer | unknown[]): PackedPlayer {
 
 export function unpackPlayer(packed: PackedPlayer): Player {
   const a = withLookSlot(packed);
-  const [id, name, grade, enrolledYear, retired, pos, height, heightLeft, foot, apt, stats, exp, potential, fitness, condition, injuryDays, traits, look, suspended, rec, scholarship] = a;
+  const [id, name, grade, enrolledYear, retired, pos, height, heightLeft, foot, apt, stats, exp, potential, fitness, condition, injuryDays, traits, look, suspended, rec, scholarship, life] = a;
   const aptitude = {} as Record<(typeof POSITIONS)[number], Aptitude>;
   POSITIONS.forEach((p, i) => (aptitude[p] = Number(apt[i]) as Aptitude));
   const s = {} as Record<StatKey, number>;
@@ -160,6 +198,7 @@ export function unpackPlayer(packed: PackedPlayer): Player {
     record: { apps: rec?.[0] ?? 0, goals: rec?.[1] ?? 0, officialApps: rec?.[2] ?? 0, officialGoals: rec?.[3] ?? 0 },
     ...unpackTraits(traits),
     ...unpackLookPack(look),
+    ...unpackLife(life),
   };
 }
 

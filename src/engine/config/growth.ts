@@ -29,3 +29,16 @@ export const CPU_GROWTH = {
   springShare: 0.5,
   autumnDate: [10, 1] as const,
 };
+
+/**
+ * 月初の指示の重点（R2。SPEC 18.1・PHASE_R2_PLAN 2.3）。
+ * 練習 1 日の経験点の合計のうち share を重点の能力に回す（2 つなら半分ずつ）。合計は変えない
+ */
+export const FOCUS = {
+  share: 0.2,
+  /** 選べる数 */
+  max: 2,
+  /** おまかせ：ポジションの重みとスタイルの伸びやすい能力の重み、伸びしろ（値が低いほど少し優先）の効き */
+  styleWeight: 0.6,
+  roomWeight: 0.004,
+};
