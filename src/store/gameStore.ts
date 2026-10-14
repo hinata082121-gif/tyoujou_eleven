@@ -136,6 +136,9 @@ interface GameStore {
 
   playCard(cardId: string): CardResult | null;
   clearLastCard(): void;
+  /** 直前のカードの出来事を、イベントの場面で見終えた（R1） */
+  scenesSeen: boolean;
+  finishScenes(): void;
   /** mode = "auto"（結果のみ）は練習試合とリーグ戦だけ。すぐに結果画面へ進む */
   startMatch(setup: TeamSetup, mode?: "watch" | "auto", noteId?: string | null): void;
   finishMatch(): void;
@@ -175,6 +178,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   view: "home",
   selectedPlayerId: null,
   lastCard: null,
+  scenesSeen: true,
   lastMatch: null,
   lastAlumni: null,
   lastFreshmen: null,
@@ -296,13 +300,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!game) return null;
     const r = playCard(game, cardId);
     if (r) {
-      set({ lastCard: r, moving: !get().settings.skipMove && r.days > 0 });
+      set({ lastCard: r, scenesSeen: false, moving: !get().settings.skipMove && r.days > 0 });
       get().touch();
     }
     return r;
   },
   clearLastCard() {
     set({ lastCard: null });
+  },
+  finishScenes() {
+    set({ scenesSeen: true });
   },
 
   startMatch(setup, mode = "watch", noteId) {
@@ -377,7 +384,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!game) return null;
     const r = advanceToNextMatch(game);
     if (r) {
-      set({ lastCard: r, moving: false });
+      set({ lastCard: r, scenesSeen: true, moving: false });
       get().touch();
     }
     return r;

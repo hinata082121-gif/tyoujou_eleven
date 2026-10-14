@@ -123,7 +123,7 @@ function baseText(state: MatchState, e: MatchEvent): string {
     case "pkSaved":
       return `GK${p0}がPKを止めた！`;
     case "sub":
-      return `${team}：選手交代 ${p1} → ${p0}`;
+      return `${team}：選手交代　${p0}が入り、${p1}が下がる`;
     case "tactics": {
       const t = state.teams[e.side].tactics;
       return `${team}：戦術を変更（${TACTICS_LABELS.attack[t.attack]}・${TACTICS_LABELS.buildUp[t.buildUp]}）`;
@@ -135,13 +135,13 @@ function baseText(state: MatchState, e: MatchEvent): string {
     case "foul":
       return `${team}：${p0}が${p1}を倒してファウル`;
     case "yellow":
-      return `🟨 ${team}：${p0}にイエローカード`;
+      return `${team}：${p0}にイエローカード`;
     case "secondYellow":
-      return `🟥 ${team}：${p0}に2枚目のイエロー、退場！`;
+      return `${team}：${p0}に2枚目のイエロー、退場！`;
     case "red":
-      return `🟥 ${team}：${p0}に一発レッド、退場！`;
+      return `${team}：${p0}に一発レッド、退場！`;
     case "injury":
-      return `✚ ${team}：${p0}が痛んでピッチの外へ${e.note === "severe" ? "（重傷か）" : ""}`;
+      return `${team}：${p0}が痛んでピッチの外へ${e.note === "severe" ? "（重傷か）" : ""}`;
     case "shortHanded":
       return `${team}：交代できず、人数が減ったまま戦う`;
     case "note":

@@ -42,6 +42,8 @@
   --color-bad: #ff8a78;
   --color-info: #7cc8ff;
   --color-warn: #ffc94a;
+  /* 明るい帯（telop）の上の良い・悪い（6:1 以上） */
+  --color-good-ink: #1d7a3a;
 
   /* すごろくのマス */
   --color-sq-blue: #3b8fd0;

@@ -43,7 +43,7 @@ export function Button({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className={`pressable inline-flex items-center justify-center gap-1.5 font-black ${small ? "min-h-9 px-3 text-xs" : "min-h-11 px-4 text-sm"} ${cut ? "cut-r pr-6" : ""} ${BUTTON[variant]} ${className}`}
+      className={`pressable inline-flex items-center justify-center gap-1.5 whitespace-nowrap font-black ${small ? "min-h-9 px-3 text-xs" : "min-h-11 px-4 text-sm"} ${cut ? "cut-r pr-6" : ""} ${BUTTON[variant]} ${className}`}
     >
       {icon && <Icon name={icon} size={small ? 14 : 16} />}
       {children}

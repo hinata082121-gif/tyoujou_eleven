@@ -2,6 +2,7 @@
 
 import { UniformScreen } from "../look/UniformScreen";
 import { useGameStore } from "@/store/gameStore";
+import { CardScenes } from "../event/EventScene";
 import { Icon } from "../icons";
 import { SideNav } from "../shell/SideNav";
 import { TopBar } from "../shell/TopBar";
@@ -38,6 +39,9 @@ export function PlayScreen() {
   const facilitiesOpen = useGameStore((s) => s.facilitiesOpen);
   const uniformOpen = useGameStore((s) => s.uniformOpen);
   const lastCamp = useGameStore((s) => s.lastCamp);
+  const lastCard = useGameStore((s) => s.lastCard);
+  const scenesSeen = useGameStore((s) => s.scenesSeen);
+  const eventView = useGameStore((s) => s.settings.eventView);
 
   if (!game) return null;
 
@@ -48,6 +52,8 @@ export function PlayScreen() {
   if (lastCamp) return <CampResultScreen />;
   if (game.activeMatch) return <MatchScreen />;
   if (notesOpen) return <NotesScreen />;
+  // カードの出来事の場面（移動の演出が終わってから。試合前などの画面より先に見せる）
+  if (!moving && lastCard && !scenesSeen && eventView === "scene") return <CardScenes key={`${lastCard.from}-${lastCard.to}`} />;
   if (!moving && game.pending?.type === "staff") return <StaffReviewScreen />;
   if (!moving && game.pending?.type === "captain")
     return (
