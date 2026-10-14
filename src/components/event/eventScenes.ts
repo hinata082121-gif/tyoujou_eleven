@@ -208,7 +208,7 @@ export function showsAsScene(o: EventOutcome, mode: "important" | "all" | "text"
 /** せりふのある出来事（R2）の、表情。結果の札にその人の名前があれば、札の良し悪しで決める（調子が下がった人は曇る） */
 function lineExpr(o: EventOutcome, speaking: boolean, name?: string): Expression {
   const surname = name?.split(" ")[0];
-  const mine = surname ? (o.effects ?? []).filter((e) => e.label === surname || e.label.startsWith(`${surname}`)) : [];
+  const mine = surname ? (o.effects ?? []).filter((e) => e.label.includes(surname)) : [];
   if (o.kind === "school:graduation") return speaking ? "sad" : "focus";
   if (o.kind === "injury" || o.kind === "practiceInjury") return "sad";
   if (mine.some((e) => e.tone === "bad")) return speaking ? "frustrated" : "sad";

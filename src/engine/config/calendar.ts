@@ -7,15 +7,15 @@ export const DAYS_IN_YEAR = 365;
 
 /** 通常マスの出やすさ */
 export const SQUARE_WEIGHTS: Record<RandomSquareType, number> = {
-  blue: 24,
-  red: 14,
+  blue: 23,
+  red: 13,
   white: 11,
-  green: 15,
+  green: 14,
   yellow: 16,
   /** 特訓マス（P2b）。止まると特殊能力の習得を判定する。白マスから回し、成長と体力に効くマスの割合は P2a のままにする */
   training: 7,
-  /** 人物マス（R2。PHASE_R2_PLAN 5.1）。止まると選択肢のあるイベント。青・赤・白・緑・黄から少しずつ回した（通常マスの約 13%） */
-  person: 13,
+  /** 人物マス（R2。PHASE_R2_PLAN 5.1）。止まると選択肢のあるイベント。青・赤・白・緑・黄から少しずつ回した（通常マスの約 16%。止まるのは 1 年に 14 回前後） */
+  person: 16,
 };
 
 /** すごろくの公開範囲（R2。SPEC 5章）：マスの中身が見えるのは今日の次の日から何日先までか */

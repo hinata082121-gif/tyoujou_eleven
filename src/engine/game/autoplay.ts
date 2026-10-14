@@ -45,6 +45,7 @@ import {
   inTournamentRun,
   visitScout,
   type MatchSummary,
+  type CardResult,
 } from ".";
 import { defaultCampPolicy, type CampResult } from "../camp";
 import { branchPreview } from "../calendar";
@@ -139,9 +140,33 @@ export interface AutoplayStats {
   choices: Record<string, number>;
   monthly: number;
   tests: { members: number; failed: number; average: number }[];
+  /** R2：判断の数（PLAN 7.1 の表の行ごと） */
+  decisions: Record<DecisionKind, number>;
+  /** R2：練習した人数 × 日数と、部員の人数 × 日数（1 人あたりの練習日の数を出す） */
+  practiceUnits: number;
+  memberDays: number;
+  days: number;
 }
 
-export const newAutoplayStats = (): AutoplayStats => ({ cards: 0, matches: [], graduations: 0, yearEnds: 0, camps: [], scholars: [], choices: {}, monthly: 0, tests: [] });
+export type DecisionKind = "card" | "monthly" | "person" | "school" | "match" | "other";
+/** 学校行事の選択（テスト前・体育祭・文化祭）。合宿の夜は「そのほか」に入れる */
+const SCHOOL_CHOICE_IDS = new Set(["testPrep", "sportsDay", "culturalFestival"]);
+
+export const newAutoplayStats = (): AutoplayStats => ({
+  cards: 0,
+  matches: [],
+  graduations: 0,
+  yearEnds: 0,
+  camps: [],
+  scholars: [],
+  choices: {},
+  monthly: 0,
+  tests: [],
+  decisions: { card: 0, monthly: 0, person: 0, school: 0, match: 0, other: 0 },
+  practiceUnits: 0,
+  memberDays: 0,
+  days: 0,
+});
 
 /** ポジションで一番大事な能力（月初の指示を「自分で決める」場合） */
 const topKeyStat = (pos: keyof typeof POSITION_RATING_WEIGHTS): StatKey =>
@@ -277,6 +302,7 @@ export function autoStep(state: GameState, stats: AutoplayStats, policy: AutoPol
   }
   const p = state.pending;
   if (p?.type === "staff") {
+    stats.decisions.other++;
     if (opts.staff === "auto") autoManageStaff(state);
     if (opts.staff === "best") {
       installBestStaff(state);
@@ -299,21 +325,25 @@ export function autoStep(state: GameState, stats: AutoplayStats, policy: AutoPol
       if (opts.focus !== "auto") delete x.autoFocus;
     }
     stats.monthly++;
+    stats.decisions.monthly++;
     collectOutcome(state, stats, confirmMonthly(state));
     return;
   }
   if (p?.type === "choice") {
     stats.choices[p.eventId] = (stats.choices[p.eventId] ?? 0) + 1;
+    stats.decisions[SCHOOL_CHOICE_IDS.has(p.eventId) ? "school" : p.eventId === "campNight" ? "other" : "person"]++;
     confirmChoice(state, autoChoice(state, p.eventId));
     return;
   }
   if (p?.type === "captain") {
+    stats.decisions.other++;
     // おすすめ順の 1 位（年度初めと引退後に自動で初期選択されている）
     const school = state.schools[state.playerSchoolId];
     confirmCaptain(state, school.captainId ?? captainCandidates(school)[0].id);
     return;
   }
   if (p?.type === "match") {
+    stats.decisions.match++;
     let noteId: string | null = null;
     if (opts.notes) {
       if (state.notes.length === 0) state.notes.push(templateNote(Rng.fromSeed(`${state.seed}:note`)));
@@ -324,25 +354,33 @@ export function autoStep(state: GameState, stats: AutoplayStats, policy: AutoPol
     return;
   }
   if (p?.type === "camp") {
+    stats.decisions.other++;
     const r = confirmCamp(state, defaultCampPolicy(state.campPolicy));
     if (r) stats.camps.push(r);
     return;
   }
   if (p?.type === "branch") {
+    stats.decisions.other++;
     chooseBranch(state, chooseBranchIndex(state, policy, p.day));
     return;
   }
   if (p?.type === "scoutReply") {
+    stats.decisions.other++;
     confirmScoutReply(state);
     return;
   }
   if (inTournamentRun(state)) {
-    advanceToNextMatch(state);
+    countDays(state, stats, advanceToNextMatch(state));
     return;
   }
   if (opts.scout && state.scout && !state.scout.replied && state.scout.cards > 0) {
     const id = chooseScoutTarget(state, policy);
-    if (id && visitScout(state, id)) return;
+    const v = id ? visitScout(state, id) : null;
+    if (v) {
+      stats.decisions.other++;
+      countDays(state, stats, v.card);
+      return;
+    }
   }
   if (p?.type === "graduation") {
     confirmGraduation(state);
@@ -357,8 +395,18 @@ export function autoStep(state: GameState, stats: AutoplayStats, policy: AutoPol
     return;
   }
   const r = playCard(state, chooseCard(state, policy).id);
-  for (const o of r?.outcomes ?? []) collectOutcome(state, stats, o);
   stats.cards++;
+  stats.decisions.card++;
+  countDays(state, stats, r);
+}
+
+/** 練習日の数（検証用） */
+function countDays(state: GameState, stats: AutoplayStats, r: CardResult | null) {
+  if (!r) return;
+  for (const o of r.outcomes) collectOutcome(state, stats, o);
+  stats.practiceUnits += r.practiceUnits ?? 0;
+  stats.memberDays += r.days * playerSchool(state).players.filter((x) => x.status === "active").length;
+  stats.days += r.days;
 }
 
 function collectOutcome(state: GameState, stats: AutoplayStats, o: { kind?: string } | null) {

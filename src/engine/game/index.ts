@@ -557,6 +557,8 @@ export interface CardResult {
   injured: string[];
   /** 表示用（R1）：練習中にケガをした選手の ID（injured と同じ順） */
   injuredIds?: string[];
+  /** 検証用（R2）：練習した人数 × 日数（テスト前の短い練習は 0.5 日で数える） */
+  practiceUnits?: number;
 }
 
 /** 自校の回復の倍率（フィジカルコーチ＋ケアルーム＋寮。上限あり） */
@@ -616,6 +618,7 @@ function moveDays(state: GameState, rng: Rng, value: number, practice: PracticeK
   let to = from;
   const opts = practiceOptions(state, school, () => practice ?? "rest");
   const news: EventOutcome[] = [];
+  let practiceUnits = 0;
   for (let d = from + 1; d <= last; d++) {
     startSchoolDay(state, d);
     const hurt = school.players.filter((p) => p.injuryDays > 0).map((p) => p.id);
@@ -627,6 +630,7 @@ function moveDays(state: GameState, rng: Rng, value: number, practice: PracticeK
       const pm = prepPracticeMults(state, d);
       const dayOpts = pm.exp === 1 && pm.fitness === 1 ? opts : { ...opts, playerExpMult: () => pm.exp, playerFitnessCostMult: () => pm.fitness };
       const r = runPractice(rng, school.players, practice, 1, mult, dayOpts);
+      practiceUnits += Object.keys(r.gains).length * pm.exp;
       for (const [id, g] of Object.entries(r.gains)) {
         const acc = (gainsAll[id] ??= {});
         for (const [k, v] of Object.entries(g)) acc[k as keyof typeof acc] = (acc[k as keyof typeof acc] ?? 0) + (v ?? 0);
@@ -673,7 +677,7 @@ function moveDays(state: GameState, rng: Rng, value: number, practice: PracticeK
   }
   updatePlayerRank(state);
   grantFacilitiesForReputation(state);
-  return { from, to, days, practice: practice ? PRACTICE_NAMES[practice] : "練習なし", outcomes, stoppedAt, injured: injured.map((p) => p.name), injuredIds: injured.map((p) => p.id) };
+  return { from, to, days, practice: practice ? PRACTICE_NAMES[practice] : "練習なし", outcomes, stoppedAt, injured: injured.map((p) => p.name), injuredIds: injured.map((p) => p.id), practiceUnits };
 }
 
 /** OB からの寄付（青マス。年 1 回まで） */

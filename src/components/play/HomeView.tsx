@@ -225,6 +225,13 @@ export function HomeView() {
           )}
           <IconButton name="calendar" label="予定表" onClick={openSchedule} className="!min-h-8 !min-w-8 border-0 bg-panel" />
         </div>
+        {/* 初めのうちだけ：すごろくでは試合の日が分からないので、予定表の場所を知らせる（PLAN 14章） */}
+        {game.year === 1 && cal.position < HINT_UNTIL_DAY && (
+          <button type="button" onClick={openSchedule} className="pressable -mt-0.5 flex shrink-0 items-center gap-1 bg-telop px-2 py-0.5 text-left text-[0.6875rem] font-black text-ink">
+            <Icon name="calendar" size={12} />
+            試合の日は、すごろくでは見えません。予定表で確かめられます
+          </button>
+        )}
         {showResult ? (
           <div className="flex min-h-0 flex-1 flex-col">
             <Band sub={`${lastCard.days}日間`} right={<IconButton name="close" label="閉じる" onClick={clearLastCard} className="!min-h-7 !min-w-7 border-0 bg-panel/80" />}>
@@ -304,6 +311,9 @@ export function HomeView() {
     </div>
   );
 }
+
+/** 予定表のお知らせを出す期間（1 年目の 6 月末まで） */
+const HINT_UNTIL_DAY = 91;
 
 /** 速報の帯。出来事が複数あれば、1 つずつ短く出す（タップで全文） */
 function NewsTicker({ items, onOpen }: { items: { text: string; tone: "good" | "bad" | "info" }[]; onOpen: () => void }) {

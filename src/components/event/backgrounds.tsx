@@ -649,7 +649,6 @@ export function GymBg() {
       {/* 舞台 */}
       <rect x={200} y={160} width={560} height={150} fill="#5b3c2a" />
       <rect x={220} y={172} width={520} height={128} fill="#6e2a2a" />
-      <rect x={430} y={196} width={100} height={40} fill="#f3e6b8" />
       <rect x={200} y={300} width={560} height={30} fill="#8b6b4a" />
       {/* 紅白の幕（舞台の下と左右の壁） */}
       <g>
