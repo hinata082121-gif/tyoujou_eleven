@@ -14,6 +14,7 @@ import { Icon, type IconName } from "../icons";
 import { PlayerFace } from "../look/Figure";
 import { usePortrait } from "../shell/usePortrait";
 import { Band, Button, Chip, IconButton, Sheet, fitnessColor } from "../ui";
+import { shortNames } from "@/lib/names";
 
 /** マスの種類 → 下の線の色（DESIGN.md 2.4） */
 const SQUARE_LINE: Record<string, string> = {
@@ -112,6 +113,8 @@ export function HomeView() {
   const active = school.players.filter((p) => p.status === "active");
   const avgFit = active.reduce((s, p) => s + p.fitness, 0) / Math.max(1, active.length);
   // コンディション：ケガ → 体力の低い順
+  // 同じ名字の部員は「石井 龍」のように名前の頭も出す
+  const short = shortNames(active);
   const watch = [...active].sort((a, b) => (b.injuryDays > 0 ? 1 : 0) - (a.injuryDays > 0 ? 1 : 0) || a.fitness - b.fitness);
   const run = inTournamentRun(game);
   const nextDay = run ? nextTournamentMatchDay(game) : null;
@@ -256,7 +259,7 @@ export function HomeView() {
               {watch.map((p) => (
                 <button key={p.id} type="button" onClick={() => selectPlayer(p.id)} className="pressable grid h-9 w-full grid-cols-[1.75rem_4.5rem_1fr_2.75rem] items-center gap-1.5 border-b border-line text-left text-[0.75rem]">
                   <PlayerFace look={p.look} size={28} expr={p.injuryDays > 0 ? "sad" : p.fitness < 45 ? "sad" : "normal"} kit={school.kits?.first} />
-                  <span className="truncate font-bold">{p.name.split(" ")[0]}</span>
+                  <span className="truncate font-bold">{short.get(p.id)}</span>
                   <span className="h-1.5 -skew-x-[20deg] bg-panel-3">
                     <i className={`block h-full ${p.injuryDays > 0 ? "bg-fit-low" : fitnessColor(p.fitness)}`} style={{ width: `${p.fitness}%` }} />
                   </span>
