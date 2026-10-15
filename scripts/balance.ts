@@ -1,6 +1,7 @@
 /**
  * npm run balance:quick … 普段使う軽い版（数十秒）。試合数・年数を減らした参考値
  * npm run balance:full  … すべての検証（4 並列で 20 分ほど）。PR の前に実行する
+ * npm run balance:national … 全国優勝の到達率だけ（区分ごとに 40 校 × 20 年。4 並列で 1 時間ほど）。到達率はこの結果で判断する
  * 大量の試合をシミュレーションして、SPEC 14章のバランス目標と比べる。
  * 試合数などは環境変数で上書きできる（BALANCE_N など）。
  */
@@ -15,22 +16,25 @@ import { rankFromStrength, rankIndex, teamStrength } from "../src/engine/school/
 import { SCHOOL_RANKS, type Player, type SchoolRank } from "../src/engine/types";
 import { execFile } from "node:child_process";
 import { join } from "node:path";
-import { collectFocus, collectSeasons, mergeSeasons, reportFocus, reportSeasons, type FocusData, type SeasonData } from "./seasonSim";
+import { collectFocus, collectSeasons, mergeSeasons, reportFocus, reportNational, reportSeasons, type FocusData, type SeasonData } from "./seasonSim";
 import { scholarQualityTable, tournamentFatigueTable } from "./phase2c";
 import { tacticsMatrix } from "./tacticsMatrix";
 import { underdogTable } from "./underdog";
 import { cardTable, notesTable, pkTable, scenarioTable, staffGrowthTable } from "./phase2a";
 import { captainTable, goldTable, graduateSkillTable, styleContributionTable, styleWinTable } from "./phase2b";
 
-const MODE = process.argv[2] === "full" ? "full" : "quick";
+const MODE = process.argv[2] === "full" || process.argv[2] === "national" ? process.argv[2] : "quick";
 const PRESETS = {
   quick: { n: 2000, tactics: 200, combos: false, underdog: 300, seasonGames: 8, seasonYears: 8, focusGames: 3, focusYears: 6, focusChunks: 1, cards: 1000, pk: 2000, notes: 500, scenes: 800, growthGames: 3, growthYears: 6, p2bMatches: 600, p2bStyle: 200, p2bTeam: 400, p2cScout: 20, p2cFatigue: 200 },
   full: { n: 10000, tactics: 600, combos: true, underdog: 1500, seasonGames: 72, seasonYears: 20, focusGames: 12, focusYears: 10, focusChunks: 2, cards: 5000, pk: 10000, notes: 3000, scenes: 4000, growthGames: 12, growthYears: 10, p2bMatches: 3000, p2bStyle: 1000, p2bTeam: 2000, p2cScout: 100, p2cFatigue: 1000 },
+  /** 全国優勝の到達率だけを測る（評判の推移の学校の数だけを使う） */
+  national: { n: 0, tactics: 0, combos: false, underdog: 0, seasonGames: 120, seasonYears: 20, focusGames: 0, focusYears: 0, focusChunks: 1, cards: 0, pk: 0, notes: 0, scenes: 0, growthGames: 0, growthYears: 0, p2bMatches: 0, p2bStyle: 0, p2bTeam: 0, p2cScout: 0, p2cFatigue: 0 },
 }[MODE];
 const env = (key: string, fallback: number) => Number(process.env[key] ?? fallback);
 const SEASON_MARK = "@@SEASON@@";
 const N = env("BALANCE_N", PRESETS.n);
-if (!process.env.BALANCE_JOB) console.log(`npm run balance:${MODE}${MODE === "quick" ? "（軽い版。数値は参考。PR の前は balance:full を実行する）" : "（すべての検証）"}`);
+const MODE_NOTE = { quick: "（軽い版。数値は参考。PR の前は balance:full を実行する）", full: "（すべての検証）", national: "（全国優勝の到達率。区分ごとに同数の学校）" }[MODE];
+if (!process.env.BALANCE_JOB) console.log(`npm run balance:${MODE}${MODE_NOTE}`);
 const rng = Rng.fromSeed(process.env.BALANCE_SEED ?? "balance");
 
 interface Team {
@@ -236,7 +240,7 @@ async function orchestrate() {
   // 重いもの（評判の推移の分割）から先に並べる
   const jobs = [...Array.from({ length: SEASON_CHUNKS }, (_, i) => `season:${i}`), ...focusJobs, "staffGrowth", "tactics", "scenes", "pk", "notes", "underdog", "core", "cards", "styleContribution", "styleWin", "captain", "gold", "scholarQuality", "tournamentFatigue"];
   // 調整用：BALANCE_ONLY=season,focus のように、名前の頭で仕事を絞れる
-  const only = process.env.BALANCE_ONLY?.split(",");
+  const only = process.env.BALANCE_ONLY?.split(",") ?? (MODE === "national" ? ["season"] : undefined);
   if (only) jobs.splice(0, jobs.length, ...jobs.filter((j) => only.some((o) => j.startsWith(o))));
   const out = new Map<string, string>();
   let next = 0;
@@ -257,6 +261,10 @@ async function orchestrate() {
     for (let i = 0; i < SEASON_CHUNKS; i++) {
       const txt = out.get(`season:${i}`) ?? "";
       parts.push(JSON.parse(txt.slice(txt.indexOf(SEASON_MARK) + SEASON_MARK.length)));
+    }
+    if (MODE === "national") {
+      reportNational(mergeSeasons(parts));
+      continue;
     }
     const graduates = reportSeasons(mergeSeasons(parts));
     graduateSkillTable(graduates.filter((a) => !a.scholarship));
