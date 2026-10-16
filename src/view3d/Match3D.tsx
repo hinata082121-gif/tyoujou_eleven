@@ -4,7 +4,7 @@
  * 3D 観戦（P4。SPEC 10.8）の入口。観戦画面から動的に読み込む（ほかの画面からは import しない）。
  * 試合の時計は観戦画面が持ち、ここは表示の時刻を受け取って描くだけ（試合の結果には関わらない）
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import * as THREE from "three";
 import { KIT_PALETTE } from "@/engine/config/look";
 import type { MatchState, Side } from "@/engine/match/types";
@@ -38,7 +38,14 @@ export interface Match3DProps {
   onError: () => void;
   /** ナイター（R1 は空の色と光を変えるだけ。3D 観戦のデモで選ぶ） */
   night?: boolean;
+  /**
+   * 速報の枠（R3 の修正 5）：ボールや選手がこの枠の下に来たら、data-near="1" を付ける（速報を薄く・1 行にする）
+   */
+  avoid?: RefObject<HTMLElement | null>;
 }
+
+/** 速報の枠の近くを見る間隔（ms）と、枠の周りの余白（px） */
+const AVOID = { everyMs: 150, pad: 12 };
 
 const FALLBACK_KITS = [
   { template: 0, main: 12, sub: 0, shorts: 12, socks: 12 },
@@ -48,6 +55,7 @@ const FALLBACK_KITS = [
 export default function Match3D(props: Match3DProps) {
   const host = useRef<HTMLDivElement>(null);
   const perfBox = useRef<HTMLPreElement>(null);
+  const fadeBox = useRef<HTMLDivElement>(null);
   const live = useRef(props);
   const clock = useRef({ display: props.display, at: 0, t: props.display, wake: 0 });
 
@@ -85,7 +93,9 @@ export default function Match3D(props: Match3DProps) {
     const kits = view?.kits ?? [FALLBACK_KITS[0], FALLBACK_KITS[1]];
     const home = view?.home ?? 0;
     const scene = new THREE.Scene();
-    const stage = buildStage(view?.venue ?? 3, KIT_PALETTE[kits[home].main], KIT_PALETTE[kits[home].sub], q);
+    // 自校が画面の右へ攻める向きの中継のカメラ（side 0 は z が小さい方へ攻める）。観客席・応援はカメラの向かい側
+    const cam = new FollowCamera(1, p.userSide === 0 ? -1 : 1);
+    const stage = buildStage(view?.venue ?? 3, KIT_PALETTE[kits[home].main], KIT_PALETTE[kits[home].sub], q, cam.sideX);
     const light = p.night ? LIGHTING.night : LIGHTING.day;
     const sky = p.night ? new THREE.Color(LIGHTING.night.sky) : stage.sky;
     scene.background = sky;
@@ -97,8 +107,6 @@ export default function Match3D(props: Match3DProps) {
     scene.add(sun);
     const anim = new Animator({ ms, kits: [kits[0], kits[1]], gk: view?.gk ?? [9, 11], shadows: q.shadows });
     scene.add(anim.group);
-    // 自校が下から上へ攻める向き（side 0 は z が小さい方へ攻める）
-    const cam = new FollowCamera(1, p.userSide === 0 ? -1 : 1);
 
     const resize = () => {
       const w = el.clientWidth || 1,
@@ -123,6 +131,35 @@ export default function Match3D(props: Match3DProps) {
     let raf = 0;
     let last = performance.now();
     let ready = false;
+    let lastAvoid = 0;
+    let lastFade = -1;
+    const scr = new THREE.Vector3();
+    /** 速報の枠の下に、ボールか選手が来ているか */
+    const checkAvoid = () => {
+      const box = live.current.avoid?.current;
+      if (!box) return;
+      const a = el.getBoundingClientRect(),
+        b = box.getBoundingClientRect();
+      const W = a.width || 1,
+        H = a.height || 1;
+      const l = b.left - a.left - AVOID.pad,
+        r = b.right - a.left + AVOID.pad,
+        t = b.top - a.top - AVOID.pad * 2,
+        bt = b.bottom - a.top;
+      const inside = (v: THREE.Vector3) => {
+        cam.project(v, scr);
+        const x = scr.x * W,
+          y = scr.y * H;
+        return scr.z < 1 && x >= l && x <= r && y >= t && y <= bt;
+      };
+      let near = inside(anim.ballWorld);
+      if (!near) for (const pos of anim.playerPositions()) if (inside(pos)) {
+        near = true;
+        break;
+      }
+      const v = near ? "1" : "0";
+      if (box.dataset.near !== v) box.dataset.near = v;
+    };
     const loop = (now: number) => {
       raf = requestAnimationFrame(loop);
       const lp = live.current;
@@ -144,6 +181,16 @@ export default function Match3D(props: Match3DProps) {
       else cam.update(dt, anim.ballWorld, shot);
       const j1 = performance.now();
       renderer.render(scene, cam.camera);
+      if (now - lastAvoid > AVOID.everyMs) {
+        lastAvoid = now;
+        checkAvoid();
+      }
+      // 場面の切り替え（セットプレーの並び直し）は、短く暗くしてつなぐ
+      const fade = anim.cutFade(c.t);
+      if (fadeBox.current && Math.abs(fade - lastFade) > 0.01) {
+        lastFade = fade;
+        fadeBox.current.style.opacity = (0.85 * fade).toFixed(3);
+      }
       if (lp.perf) {
         jsMs.push(j1 - j0);
         drawMs.push(performance.now() - j1);
@@ -203,6 +250,7 @@ export default function Match3D(props: Match3DProps) {
 
   return (
     <div ref={host} className="absolute inset-0 overflow-hidden">
+      <div ref={fadeBox} aria-hidden className="pointer-events-none absolute inset-0 z-[1] bg-night" style={{ opacity: 0 }} />
       {props.perf && <pre ref={perfBox} className="pointer-events-none absolute left-1 top-1 z-10 whitespace-pre bg-panel/80 px-1.5 py-1 font-mono text-[0.5625rem] leading-tight text-text" />}
     </div>
   );

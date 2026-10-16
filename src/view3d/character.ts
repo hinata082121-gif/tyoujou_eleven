@@ -10,8 +10,11 @@ import type { Kit, Look } from "@/engine/types";
 import type { Pose } from "./poses";
 import { bandTexture, col, faceTexture, shirtTexture, skinHex } from "./textures";
 
-/** 見やすさのため、選手は実寸の約 1.6 倍で描く（ピッチは実寸） */
-export const PLAYER_SCALE = 1.6;
+/**
+ * 見やすさのため、選手は実寸より大きく描く（ピッチは実寸）。R3 で 1.6 倍から 1.3 倍に（承認のときの修正 3）：
+ * 味方どうしは 3.6m 以上離れて動くので、この大きさなら体どうしの間にすき間が見える
+ */
+export const PLAYER_SCALE = 1.3;
 const R = 0.5;
 
 /** 顔のテクスチャの上の帯（頭のてっぺん。髪に隠れる）に、髪の色を塗っておく所 */

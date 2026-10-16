@@ -40,6 +40,8 @@ export interface SimKey {
   t: number;
   /** ボールが来る場所（m。動きの中で、選手が間に合う所へ寄せることがある） */
   ball: Pt;
+  /** 割り付けたときの場所（動きの中では変えない。時刻の割り付けはこれだけを使う。観戦しながら作っても同じ時刻になるように） */
+  readonly at: Pt;
   actors: string[];
   air?: boolean;
   /** 前半・後半などの始めの合図 */
@@ -52,7 +54,7 @@ const dist = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y);
 function gapBetween(a: SimKey, b: SimKey): number {
   const G = MOVE.gap;
   if (a.start) return G.afterPhaseStart;
-  const d = dist(a.ball, b.ball);
+  const d = dist(a.at, b.at);
   let g = G.base + d / mps(G.travel);
   // 同じ選手が運ぶ（カウンター・ドリブル）
   if (a.actors[0] && a.actors[0] === b.actors[0]) g = Math.max(g, 0.08 + d / mps(G.carry));
@@ -118,7 +120,7 @@ export class EventSchedule {
       const start = PHASE_START.has(e.type);
       const ball = start ? { x: PW / 2, y: PL / 2 } : ballSpot(e, i, this.lastBall);
       this.lastBall = ball;
-      fresh.push({ index: i, type: e.type, side: e.side, minute: e.minute, seg, t: e.minute, ball: { ...ball }, actors: e.players ?? [], air: AIR[e.type], start: start || undefined });
+      fresh.push({ index: i, type: e.type, side: e.side, minute: e.minute, seg, t: e.minute, ball: { ...ball }, at: { ...ball }, actors: e.players ?? [], air: AIR[e.type], start: start || undefined });
     }
     // 分ごとにまとめて、窓 (m − 1 + lead, m − tail] の中に置く。前のイベントからの間隔をできるだけ守り、
     // 入りきらなければ、その分の中の間隔を縮めて窓いっぱいに並べる

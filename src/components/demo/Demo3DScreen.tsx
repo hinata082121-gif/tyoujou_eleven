@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * 3D 観戦のデモ（R1。開発用。`?demo3d=1` のときだけ page.tsx から動的に読み込む）。
+ * 3D 観戦のデモ（R1。開発用。`?demo3d=1` のときだけ page.tsx から動的に読み込む）。R3 で `?demo2d=1`（同じ試合を 2D で）を足した。
  * 設定の画面で大会・会場・ナイター・強さ・ユニフォームを選び、決まったシードの学校どうしの試合を 3D で観る。
  * 試合は最初に最後まで計算してあり、ここは表示の時刻を進めるだけ。セーブ・ストアには触れない（デモの試合は保存しない）
  */
@@ -10,13 +10,13 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { VenueStage } from "@/engine/config/look";
 import { MATCH_KIND_NAMES, VENUE_NAMES } from "@/engine/config/names";
 import { buildDemoMatch, DEMO_KINDS, demoKindName, demoRounds, demoWorld, type DemoKind, type DemoKits, type DemoMatch } from "@/engine/demo";
-import { isMinorEvent } from "@/engine/match/text";
 import { SCHOOL_RANKS, type SchoolRank } from "@/engine/types";
 import type { LoadTimes } from "@/view3d/Match3D";
 import type { Quality } from "@/view3d/quality";
 import { webglSupported } from "@/view3d/webgl";
 import { Icon } from "../icons";
-import { EventLine, Scoreboard, TeamStatus, visibleScore } from "../match/broadcast";
+import { EventLine, Scoreboard, shownEvents, TeamStatus, visibleScore } from "../match/broadcast";
+import { Pitch2D } from "../match/Pitch2D";
 import { usePortrait } from "../shell/usePortrait";
 import { Band, Button, IconButton, Label, Panel, Screen, Segmented, Toggle } from "../ui";
 
@@ -42,6 +42,8 @@ const SPEEDS: readonly Speed[] = [1, 2, 4];
 const SPEED_LABEL: Record<Speed, string> = { 1: "等速", 2: "2倍", 4: "4倍" };
 
 interface DemoConfig {
+  /** 3D で観るか 2D で観るか（R3） */
+  view: "3d" | "2d";
   kind: DemoKind;
   /** 決勝から数えて何試合前か（0 = 決勝） */
   fromEnd: number;
@@ -56,6 +58,7 @@ interface DemoConfig {
 }
 
 const initialConfig = (): DemoConfig => ({
+  view: typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo2d") === "1" ? "2d" : "3d",
   kind: "national",
   fromEnd: 0,
   venue: "auto",
@@ -67,9 +70,12 @@ const initialConfig = (): DemoConfig => ({
   kits: "auto",
 });
 
+/** 開発用の URL：&go=1 ですぐ観戦を始め、&t=分 でその時刻から、&pause=1 で止めて（画面の撮影・計測用） */
+const urlParam = (k: string) => (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get(k) : null);
+
 export function Demo3DScreen() {
   const [config, setConfig] = useState<DemoConfig>(initialConfig);
-  const [demo, setDemo] = useState<DemoMatch | null>(null);
+  const [demo, setDemo] = useState<DemoMatch | null>(() => (urlParam("go") === "1" ? buildDemoMatch({ kind: "national", fromEnd: 0, venue: "auto", ranks: ["A", "B"], kits: "auto" }) : null));
   const set = (patch: Partial<DemoConfig>) => setConfig((c) => ({ ...c, ...patch }));
 
   const start = () => {
@@ -102,7 +108,7 @@ function DemoSetup({ config, set, onStart }: { config: DemoConfig; set: (patch: 
 
   return (
     <Screen
-      title="3D 観戦のデモ"
+      title={config.view === "2d" ? "2D 観戦のデモ" : "3D 観戦のデモ"}
       sub="開発用"
       onBack={leave}
       right={
@@ -164,6 +170,9 @@ function DemoSetup({ config, set, onStart }: { config: DemoConfig; set: (patch: 
 
         <Panel title="会場と表示" className="min-w-0 flex-1">
           <div className="scroll-y flex h-full flex-col gap-2.5 pr-0.5">
+            <Field label="表示">
+              <Segmented options={["3d", "2d"] as const} value={config.view} labels={{ "3d": "3D", "2d": "2D" }} onChange={(view) => set({ view })} />
+            </Field>
             <Field label="会場の段階" note={config.venue === "auto" ? `自動：${autoVenue ? VENUE_NAMES[autoVenue] : `${VENUE_NAMES[3]}（指定なし）`}` : VENUE_NAMES[config.venue]}>
               <Segmented
                 options={["auto", "1", "2", "3", "4"] as const}
@@ -244,25 +253,27 @@ function StadiumLoading() {
 function DemoWatch({ demo, config, onSpeed, onBack }: { demo: DemoMatch; config: DemoConfig; onSpeed: (s: Speed) => void; onBack: () => void }) {
   const ms = demo.ms;
   const end = ms.minute;
-  const [display, setDisplay] = useState(0);
-  const displayRef = useRef(0);
-  const [paused, setPaused] = useState(false);
+  const [display, setDisplay] = useState(() => Math.min(end, Math.max(0, Number(urlParam("t") ?? 0) || 0)));
+  const displayRef = useRef(display);
+  const [paused, setPaused] = useState(() => urlParam("pause") === "1");
   const [ready, setReady] = useState(false);
   const [lost, setLost] = useState(false);
   const [webgl] = useState(() => webglSupported());
+  const telopRef = useRef<HTMLOListElement>(null);
+  const use2d = config.view === "2d";
   const portrait = usePortrait();
   const speed = config.speed;
   const ended = display >= end;
 
   // 試合の時計（3D の読み込み中・一時停止・縦持ちの間は進めない）
   useEffect(() => {
-    if (paused || ended || !ready || portrait) return;
+    if (paused || ended || (!ready && !use2d) || portrait) return;
     const id = setInterval(() => {
       displayRef.current = Math.min(end, displayRef.current + (GAME_MINUTES_PER_SECOND * speed * TICK_MS) / 1000);
       setDisplay(displayRef.current);
     }, TICK_MS);
     return () => clearInterval(id);
-  }, [paused, ended, ready, portrait, speed, end]);
+  }, [paused, ended, ready, portrait, speed, end, use2d]);
 
   const again = () => {
     displayRef.current = 0;
@@ -271,11 +282,11 @@ function DemoWatch({ demo, config, onSpeed, onBack }: { demo: DemoMatch; config:
   };
   const nextSpeed = () => onSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]);
 
-  const telop = ms.events.filter((e) => e.minute <= display && !isMinorEvent(e)).slice(-TELOP_LINES);
+  const telop = shownEvents(ms, display, TELOP_LINES).reverse();
   const label = `${MATCH_KIND_NAMES[config.kind]}${demo.labels.round ? ` ${demo.labels.round}` : ""}`;
   const venue = config.venue === "auto" ? (ms.view?.venue ?? 3) : config.venue;
   const score = visibleScore(ms, display);
-  const can3d = webgl && !lost;
+  const can3d = webgl && !lost && !use2d;
 
   return (
     <main className="fixed inset-0 overflow-hidden bg-night">
@@ -290,14 +301,27 @@ function DemoWatch({ demo, config, onSpeed, onBack }: { demo: DemoMatch; config:
           perf={config.perf}
           load={loadTimes}
           night={config.night}
+          avoid={telopRef}
           onReady={() => setReady(true)}
           onError={() => setLost(true)}
         />
       )}
       {can3d && !ready && <StadiumLoading />}
+      {use2d && (
+        <Pitch2D
+          ms={ms}
+          display={Math.min(display, end)}
+          playing={!paused && !ended && !portrait}
+          speed={speed}
+          userSide={0}
+          perf={config.perf}
+          tactical={paused}
+          areaClass="top-[calc(max(0.5rem,var(--safe-t))+2.375rem)] bottom-[calc(max(0.5rem,var(--safe-b))+2rem)] left-[max(0.25rem,var(--safe-l))] right-[calc(max(0.5rem,var(--safe-r))+3.75rem)]"
+        />
+      )}
 
       {/* 左上：スコアボード（計測の表示があるときは、その下にずらす） */}
-      <div className={`pointer-events-none absolute left-[max(0.5rem,var(--safe-l))] right-[calc(max(0.5rem,var(--safe-r))+3.5rem)] flex flex-col items-start gap-1 ${config.perf ? "top-[max(5rem,var(--safe-t))]" : "top-[max(0.5rem,var(--safe-t))]"}`}>
+      <div className={`pointer-events-none absolute left-[max(0.5rem,var(--safe-l))] right-[calc(max(0.5rem,var(--safe-r))+3.5rem)] flex flex-col items-start gap-1 ${config.perf && !use2d ? "top-[max(5rem,var(--safe-t))]" : "top-[max(0.5rem,var(--safe-t))]"}`}>
         <div className="anim-band-in max-w-full shadow-hard">
           <Scoreboard ms={ms} display={display} label={label} compact />
         </div>
@@ -310,9 +334,19 @@ function DemoWatch({ demo, config, onSpeed, onBack }: { demo: DemoMatch; config:
       </div>
 
       {/* 左下：速報のテロップ（直近の数件。行は観戦画面と共通の EventLine） */}
-      <ol className="pointer-events-none absolute bottom-[max(0.5rem,var(--safe-b))] left-[max(0.5rem,var(--safe-l))] right-[calc(max(0.5rem,var(--safe-r))+3.5rem)] max-w-[30rem] bg-panel/90 shadow-hard">
-        {telop.map((e, i) => (
-          <EventLine key={`${e.minute}-${ms.events.indexOf(e)}`} ms={ms} e={e} userSide={0} className={`[&>span:last-child]:truncate ${i === telop.length - 1 ? "anim-fade-up" : ""}`} />
+      {/* 3D では、ボールや選手が手前に来たら薄くして 1 行にする（R3 の修正 5）。2D は 1 行だけ */}
+      <ol
+        ref={telopRef}
+        className="group pointer-events-none absolute bottom-[max(0.5rem,var(--safe-b))] left-[max(0.5rem,var(--safe-l))] right-[calc(max(0.5rem,var(--safe-r))+3.5rem)] max-w-[30rem] bg-panel/90 shadow-hard transition-opacity duration-300 data-[near=1]:opacity-60"
+      >
+        {(use2d ? telop.slice(-1) : telop).map((e, i, arr) => (
+          <EventLine
+            key={`${e.minute}-${ms.events.indexOf(e)}`}
+            ms={ms}
+            e={e}
+            userSide={0}
+            className={`[&>span:last-child]:truncate ${i === arr.length - 1 ? "anim-fade-up" : "group-data-[near=1]:hidden"} ${use2d ? "!border-0 !py-0.5" : ""}`}
+          />
         ))}
       </ol>
 
@@ -332,7 +366,7 @@ function DemoWatch({ demo, config, onSpeed, onBack }: { demo: DemoMatch; config:
         <IconButton name="gear" label="設定に戻る" onClick={onBack} />
       </div>
 
-      {!can3d && (
+      {!can3d && !use2d && (
         <div className="absolute inset-0 flex items-center justify-center p-6">
           <div className="anim-pop flex max-w-[24rem] flex-col gap-3 bg-panel p-4 shadow-hard-lg">
             <Band tone="red">3D を表示できません</Band>
@@ -344,7 +378,7 @@ function DemoWatch({ demo, config, onSpeed, onBack }: { demo: DemoMatch; config:
         </div>
       )}
 
-      {ended && can3d && (
+      {ended && (can3d || use2d) && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center pr-16">
           <div className="anim-pop pointer-events-auto flex flex-col items-stretch gap-2 bg-panel p-3 shadow-hard-lg">
             <Band tone="yellow" sub={demo.labels.title}>

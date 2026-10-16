@@ -211,6 +211,25 @@ describe("選手とボールが常に動く（R3。計画 1 章）", () => {
     expect(checked).toBeGreaterThan(5);
   });
 
+  it("コーナーキックを蹴るときは、攻める側の 4 人以上と守る側の 4 人以上がペナルティエリアの中にいる（間に合わなければ場面を切り替えて並べる）", () => {
+    let n = 0;
+    for (const sim of SIMS)
+      for (const f of sim.fired) {
+        if (f.key.type !== "corner" || f.skipped) continue;
+        const fr = sim.frame(f.t, 0);
+        const atkSide = sim.players.find((p) => p.id === f.key.actors[0])!.side;
+        const inBox = (side: number) =>
+          fr.dots.filter((d) => {
+            const p = sim.players[d.idx];
+            return !d.gk && p.side === side && p.id !== f.key.actors[0] && d.x > PW / 2 - 20.16 && d.x < PW / 2 + 20.16 && (d.y < 16.5 || d.y > PL - 16.5);
+          }).length;
+        expect(inBox(atkSide), `${f.key.type} ${f.t.toFixed(2)}`).toBeGreaterThanOrEqual(4);
+        expect(inBox(1 - atkSide), `${f.key.type} ${f.t.toFixed(2)}`).toBeGreaterThanOrEqual(4);
+        n++;
+      }
+    expect(n).toBeGreaterThan(5);
+  });
+
   it("切り替え（承認のときの修正 1）：カウンターでは、奪った側の 2 人以上が前へ走り、奪われた側の近くの選手は自陣へ戻る", () => {
     let n = 0,
       ok = 0;

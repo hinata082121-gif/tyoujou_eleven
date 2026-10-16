@@ -17,7 +17,7 @@
 import { FORMATIONS, type Slot } from "../config/formations";
 import { MOVE } from "../config/replay";
 import { effectiveMovement } from "../match/lanes";
-import type { MatchEventType, MatchState, MatchTeamState, Side } from "../match/types";
+import type { MatchEventType, MatchState, Side } from "../match/types";
 import { Rng } from "../rng";
 import type { PlayStyle, Tactics } from "../types";
 import { shapeBefore, type Pt } from ".";
@@ -188,8 +188,8 @@ interface Transition {
 export interface SimFrame {
   t: number;
   ball: { x: number; y: number; h: number };
-  /** 見えている選手（players の添字・位置・速さ m/分） */
-  dots: { idx: number; x: number; y: number; vx: number; vy: number }[];
+  /** 見えている選手（players の添字・位置・速さ m/分・GK か） */
+  dots: { idx: number; x: number; y: number; vx: number; vy: number; gk: boolean }[];
   /** ボールを持っている選手（players の添字。-1 はなし） */
   owner: number;
   /** 今のボールの動き（つなぎのプレーを含む） */
@@ -219,6 +219,9 @@ export class ReplaySim {
   readonly stepMinutes = STEP;
 
   private byId = new Map<string, Pl>();
+  /** イベントの番号 → 動きの中で起きた時刻（ボールが関わるイベントだけ） */
+  private firedAt: number[] = [];
+  private keyOf = new Set<number>();
   private chunks: Float32Array[] = [];
   private onChunks: Uint8Array[] = [];
   private ballChunks: Float32Array[] = [];
@@ -246,6 +249,10 @@ export class ReplaySim {
   /** 約束：選手 → 場所と時刻 */
   private appts = new Map<number, { t: number; at: V; set?: boolean }>();
   private trans: Transition | null = null;
+  /** 場面を切り替えて並べ直したセットプレー（keys の添字。2 度は切り替えない） */
+  private cutFor = -1;
+  /** セットプレーを蹴った直後（ボールが飛んでいる間も、ゴール前の並びを保つ） */
+  private setHold: { k: SimKey; kicker: string; t1: number } | null = null;
   /** 喜び：得点者と、終わりの時刻 */
   private joy: { idx: number; side: Side; t1: number } | null = null;
   /** 退場・ケガ（時刻と選手）。予定表から足していく */
@@ -311,6 +318,7 @@ export class ReplaySim {
   /** 計算が済んだ区間を取り込む */
   sync() {
     this.schedule.sync();
+    for (let i = this.keyOf.size; i < this.schedule.keys.length; i++) this.keyOf.add(this.schedule.keys[i].index);
     const ms = this.ms;
     const times = this.schedule.times;
     for (; this.outScan < times.length; this.outScan++) {
@@ -318,6 +326,34 @@ export class ReplaySim {
       if (e.type === "halfTime" || e.type === "fullTime" || e.type === "pkShootout") this.phaseEnds.add(Math.max(0, Math.ceil(e.minute / 5 - 1e-9) - 1));
       if (e.type === "injury" || e.type === "red" || e.type === "secondYellow") this.outs.push({ t: times[this.outScan], id: e.players![0], seg: Math.max(0, Math.ceil(e.minute / 5 - 1e-9) - 1) });
     }
+  }
+
+  /**
+   * イベント（ms.events の番号）を、速報・スコア・人数の表示に出す時刻（計画 1.2）。
+   * ボールが関わるイベントは動きの中で起きた時刻（ボールがゴールに入ってから点が入る）。ほかは予定の時刻。
+   * まだ起きていなければ undefined。ハーフタイム・試合終了などで時計が追いついたときは、起きていないキーも予定の時刻で出す
+   */
+  shownAt(index: number, display: number): number | undefined {
+    this.advance(display);
+    const f = this.firedAt[index];
+    if (f !== undefined) return f;
+    const st = this.schedule.times[index];
+    if (st === undefined) return undefined;
+    if (!this.keyOf.has(index)) return st;
+    const ms = this.ms;
+    const settled = display >= ms.minute - 1e-9 && ms.phase !== "H1" && ms.phase !== "H2" && ms.phase !== "ET1" && ms.phase !== "ET2";
+    return settled ? st : undefined;
+  }
+
+  /** 時刻 display までに出すイベントか */
+  isShown(index: number, display: number): boolean {
+    const t = this.shownAt(index, display);
+    return t !== undefined && t <= display + 1e-9;
+  }
+
+  private markFired(f: Fired) {
+    this.fired.push(f);
+    this.firedAt[f.key.index] = f.t;
   }
 
   /** 時刻 t まで動かす（計算が済んだ区間の中で） */
@@ -362,7 +398,7 @@ export class ReplaySim {
       }
       if ((u < 0.5 ? onA : onB) === 0) continue;
       const dt = s1 > s ? STEP : 1;
-      dots.push({ idx: i, x: ax + (bx - ax) * u, y: ay + (by - ay) * u, vx: (bx - ax) / dt, vy: (by - ay) / dt });
+      dots.push({ idx: i, x: ax + (bx - ax) * u, y: ay + (by - ay) * u, vx: (bx - ax) / dt, vy: (by - ay) / dt, gk: this.players[i].gk });
     }
     const ba = this.ballChunk(s),
       bb = this.ballChunk(s1);
@@ -649,13 +685,20 @@ export class ReplaySim {
       if (SET_PIECES.has(pk.type) && leg.kind === "dead") {
         const kicker = this.actorIdx(pk, "main");
         const W = MOVE.setWait;
-        if (kicker >= 0 && len(this.players[kicker].x - this.ball.x, this.players[kicker].y - this.ball.y) > W.near) {
-          if (t - pk.t < W.max && !(this.phaseEnds.has(pk.seg) && t > (pk.seg + 1) * 5 - W.phaseEnd)) {
+        const kd = kicker >= 0 ? len(this.players[kicker].x - this.ball.x, this.players[kicker].y - this.ball.y) : 0;
+        if (this.cutFor !== this.pending && (kd > W.near || !this.gathered(pk, kicker, 0, t))) {
+          // 待てる時間のうちに間に合いそうなら、来るまで待つ（遅れは少しだけ）
+          const left = Math.min(W.max - (t - pk.t), this.phaseEnds.has(pk.seg) ? (pk.seg + 1) * 5 - W.phaseEnd - t : 99);
+          const reach = kicker >= 0 ? kd - this.vmax(this.players[kicker], t) * Math.max(0, left) <= W.near : true;
+          if (left > 0 && reach && this.gathered(pk, kicker, left, t)) {
             this.leg = { ...leg, t1: t + STEP };
             return;
           }
-          // 待ちきれない（蹴る人が遠い）：中継の場面の切り替えのように、セットプレーの並びへ置き直す
+          // 間に合わない：中継の場面の切り替えのように、セットプレーの並びへ置き直し、少し間を置いて蹴る
           this.cutTo(pk, t);
+          this.cutFor = this.pending;
+          this.leg = { ...leg, t1: t + W.afterCut };
+          return;
         }
       }
       this.fire(this.pending, t);
@@ -682,8 +725,11 @@ export class ReplaySim {
     else this.ball = { ...this.leg.to };
     const main = this.actorIdx(k, atActor(k.type));
     const d = main >= 0 ? len(this.players[main].x - this.ball.x, this.players[main].y - this.ball.y) : -1;
-    this.fired.push({ t, key: k, d, late: Math.max(0, t - k.t) });
+    this.markFired({ t, key: k, d, late: Math.max(0, t - k.t) });
     this.ki = ki + 1;
+    if (SET_PIECES.has(k.type)) this.setHold = { k, kicker: k.actors[0] ?? "", t1: t + MOVE.lookahead.setHold };
+    else if (this.setHold && t < this.setHold.t1 && k.actors[0] === this.setHold.kicker) this.setHold.t1 = t + MOVE.lookahead.setHold;
+    else this.setHold = null;
     this.pending = -1;
     const em = EVENT_MOTIONS[k.type];
     const h = em.holder === "none" ? -1 : this.actorIdx(k, em.holder);
@@ -702,7 +748,7 @@ export class ReplaySim {
     }
   }
 
-  private decide2(t: number) {
+  private decide2(t: number): void {
     const keys = this.schedule.keys;
     const k = this.ki < this.keyLimit ? keys[this.ki] : undefined;
     const slack = k ? k.t - t : 99;
@@ -924,6 +970,21 @@ export class ReplaySim {
   }
 
   /** 場面の切り替え：両チームをセットプレーの並びに置き直す（その歩は並び直しとして記録し、2D・3D は切り替えて見せる） */
+  /** セットプレーの並び（ゴール前に集まる）が、within 分のうちにおおよそできるか（0 は今できているか） */
+  private gathered(k: SimKey, kicker: number, within: number, t: number): boolean {
+    const W = MOVE.setWait;
+    let miss = 0;
+    for (const side of [0, 1] as Side[])
+      for (const x of this.rosters[side].ids) {
+        const p = this.players[x.idx];
+        if (p.gk || p.idx === kicker) continue;
+        const a = this.setPieceSpot(p, k);
+        const reach = within > 0 ? this.vmax(p, t) * within * 0.8 : 0;
+        if (len(p.x - a.x, p.y - a.y) - reach > W.gatherFar) miss++;
+      }
+    return miss <= W.gatherMiss;
+  }
+
   private cutTo(k: SimKey, t: number) {
     for (const side of [0, 1] as Side[])
       for (const x of this.rosters[side].ids) {
@@ -1147,18 +1208,19 @@ export class ReplaySim {
     for (let j = this.ki; j < this.keyLimit; j++) {
       if (!keys[j].start) continue;
       if (keys[j].t <= t + 1e-9)
-        for (; this.ki < j; this.ki++) this.fired.push({ t, key: keys[this.ki], d: -1, late: Math.max(0, t - keys[this.ki].t), skipped: true });
+        for (; this.ki < j; this.ki++) this.markFired({ t, key: keys[this.ki], d: -1, late: Math.max(0, t - keys[this.ki].t), skipped: true });
       break;
     }
     while (this.ki < this.keyLimit && keys[this.ki].start && keys[this.ki].t <= t + 1e-9) {
       const k = keys[this.ki];
-      this.fired.push({ t, key: k, d: -1, late: Math.max(0, t - k.t) });
+      this.markFired({ t, key: k, d: -1, late: Math.max(0, t - k.t) });
       this.ki++;
       if (this.pending >= 0 && this.pending < this.ki) this.pending = -1;
       reset = true;
       this.owner = -1;
       this.trans = null;
       this.joy = null;
+      this.setHold = null;
       this.appts.clear();
       this.ball = { x: PW / 2, y: PL / 2 };
       this.restart = { type: "kickoff", side: k.side, at: this.ball };
@@ -1256,11 +1318,13 @@ export class ReplaySim {
     let setSoon: SimKey | undefined;
     for (let j = cur; j < Math.min(this.keyLimit, cur + 3); j++) {
       const nk = keys[j];
-      if (SET_PIECES.has(nk.type) && nk.t - t < MOVE.lookahead.cornerGather && nk.t > t - 0.05) {
+      // まだ起きていないセットプレー（蹴る人を待っている間も）
+      if (SET_PIECES.has(nk.type) && nk.t - t < MOVE.lookahead.cornerGather) {
         setSoon = nk;
         break;
       }
     }
+    if (!setSoon && this.setHold && t < this.setHold.t1) setSoon = this.setHold.k;
     const kickoffSetup = this.restart?.type === "kickoff" || this.restart?.type === "kickoffGo" || (this.joy !== null && t >= this.joy.t1);
     const tr = this.trans && t < this.trans.t1 && possSide === this.trans.side ? this.trans : null;
     if (this.trans && !tr) this.trans = null;

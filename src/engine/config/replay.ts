@@ -139,8 +139,8 @@ export const MOVE = {
   gap: { base: 0.1, travel: 14, carry: 6.5, afterGoal: 0.9, afterMiss: 0.35, beforeSetPiece: 1.0, afterFoul: 0.25, afterPhaseStart: 0.3 },
   /** 速報に出るイベントの時刻：その分の (m − 1 + lead, m − tail] に入れる。区間の始めの分は segmentLead から */
   window: { lead: 0.04, tail: 0.02, segmentLead: 0.3 },
-  /** 先読み：次のイベントの選手が動き出すのは何分前から（セットプレーは長め） */
-  lookahead: { play: 1.2, setPiece: 3.5, cornerGather: 1.6, keys: 3 },
+  /** 先読み：次のイベントの選手が動き出すのは何分前から（セットプレーは長め）。setHold：セットプレーを蹴った後もゴール前の並びを保つ長さ */
+  lookahead: { play: 1.2, setPiece: 3.5, cornerGather: 1.6, keys: 3, setHold: 0.4 },
   /** 約束（次のキーに間に合う）：速さの上限 × go × 残り時間より遠ければまっすぐ向かう。近ければ keep の範囲でふだんの動き */
   appointment: { play: { go: 0.8, keep: 0.7 }, setPiece: { go: 0.6, keep: 0.5 } },
   /** 切り替え（計画 1.6・承認のときの修正 1）：奪われた側は近くの選手が全力で戻り、奪った側は 2〜3 人が前へ走る */
@@ -169,8 +169,12 @@ export const MOVE = {
   height: { ground: 0.11, hands: 2, head: 2.0, gkHigh: 2.45, shot: { min: 0.25, max: 1.9, overMiss: 0.5 } },
   /** ドリブル：ボールは運ぶ人の足もと（前へ m） */
   carry: { ahead: 0.7 },
-  /** セットプレー：蹴る人がボールのそばに来るまで待つ（m・最大の分。前半・後半などの終わりの何分前まで）。待ちきれなければ、場面を切り替えて並びに置き直す */
-  setWait: { near: 1.6, max: 0.45, phaseEnd: 0.4 },
+  /**
+   * セットプレー：蹴る人がボールのそばに来て、両チームがおおよそ並ぶまで待つ（m・最大の分。前半・後半などの終わりの何分前まで）。
+   * 並べたかは、自分の位置から gatherFar m より離れている選手が gatherMiss 人以下か。待っても間に合わなければ、
+   * 場面を切り替えて並びに置き直し、afterCut 分の後に蹴る
+   */
+  setWait: { near: 1.6, max: 0.45, phaseEnd: 0.4, gatherFar: 12, gatherMiss: 4, afterCut: 0.12 },
   /** ヘディングの後、同じ選手のシュートがこの分より近ければ、頭で触れたその場で打つ */
   headShot: 0.5,
   /** 減速・向きを変えるときの加速の上限（走り出すときの何倍か） */
