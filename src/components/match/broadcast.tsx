@@ -9,6 +9,7 @@ import { isOut, isPlayingPhase, playersShort } from "@/engine/match/engine";
 import { describeEvent, isHighlight, isIncident } from "@/engine/match/text";
 import type { MatchEvent, MatchState, Side } from "@/engine/match/types";
 import { Icon, type IconName } from "../icons";
+import { shortNames } from "@/lib/names";
 
 /** 表示している時間までの得点 */
 export function visibleScore(ms: MatchState, display: number): [number, number] {
@@ -153,7 +154,7 @@ export function TeamStatus({ ms, display }: { ms: MatchState; display: number })
     const t = ms.teams[side];
     const shown = new Set(ms.events.filter((e) => e.side === side && e.minute <= display && (e.type === "red" || e.type === "secondYellow" || e.type === "injury")).map((e) => e.players![0]));
     const out = t.onPitch.filter((id) => isOut(t.players[id]) && shown.has(id));
-    return { short: out.length > 0 ? playersShort(t) : 0, out: out.map((id) => ({ id, red: !!t.players[id].sentOff, name: t.players[id].name.split(" ")[0] })) };
+    return { short: out.length > 0 ? playersShort(t) : 0, out: out.map((id) => ({ id, red: !!t.players[id].sentOff, name: shortNames(Object.values(t.players)).get(id)! })) };
   };
   const rows = ([0, 1] as Side[]).map((s) => ({ s, ...info(s) })).filter((r) => r.short > 0 || r.out.length > 0);
   if (rows.length === 0) return null;

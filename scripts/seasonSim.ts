@@ -488,37 +488,9 @@ export function simulateSeasons(games: number, years: number): Alumnus[] {
 function reportPhase3(d: SeasonData) {
   const { games, years } = d;
   console.log(`\n=== Phase 3：全国大会に初めて届いた年（${games}校 × ${years}年） ===`);
-  console.log("| 項目 | 届いた割合 | 初めて届いた年（届いた学校の中央値） | 目標 |");
-  console.log("|---|---|---|---|");
-  const labels: [string, string, string][] = [
-    ["winterBest4", "冬の全国 ベスト4", "—"],
-    ["winterWin", "冬の全国 優勝", "—"],
-    ["summerBest4", "夏の全国 ベスト4", "—"],
-    ["summerWin", "夏の全国 優勝", "—"],
-    ["anyBest4", "全国 ベスト4（夏か冬）", "—"],
-    ["anyWin", "全国 優勝（夏か冬）", "—（区分ごと。下の表）"],
-  ];
-  for (const [k, label, target] of labels) {
-    const all = d.firstNational[k] ?? [];
-    const xs = all.filter((x): x is number => x !== null).sort((a, b) => a - b);
-    const share = xs.length / Math.max(1, games);
-    const ok = target === "—" ? "" : share >= 0.45 && share <= 0.55 ? " OK" : " NG";
-    console.log(`| ${label} | ${pct(share)} | ${xs.length ? `${xs[Math.floor((xs.length - 1) / 2)]}年目（最短 ${xs[0]}年目）` : "—"} | ${target}${ok} |`);
-  }
+  firstNationalTable(d);
   reportByTier(d);
-  for (const key of ["winter", "summer"]) {
-    const rec = d.championRanks[key];
-    const total = Object.values(rec).reduce((s, x) => s + x, 0);
-    console.log(`${key === "winter" ? "冬" : "夏"}の全国大会の優勝校のランク（全年度 ${total}回）：${SCHOOL_RANKS.filter((r) => rec[r])
-      .reverse()
-      .map((r) => `${r} ${pct(rec[r] / total)}`)
-      .join("・")}`);
-  }
-  if (d.eliteRanks.length > 0) {
-    const avg = d.eliteRanks.reduce((s, x) => s + x, 0) / d.eliteRanks.length;
-    const dist = SCHOOL_RANKS.map((r, i) => [r, d.eliteRanks.filter((x) => x === i).length] as const).filter(([, n]) => n > 0);
-    console.log(`評判が名門の年の自校のランク：平均 ${SCHOOL_RANKS[Math.round(avg)]}（${avg.toFixed(2)}）・${dist.map(([r, n]) => `${r} ${pct(n / d.eliteRanks.length)}`).join("・")}`);
-  }
+  nationalRanks(d);
 
   const L = d.league;
   if (L.length === 0) return;
@@ -542,6 +514,59 @@ function reportPhase3(d: SeasonData) {
   );
 }
 
+/** P3：全国ベスト4・優勝に初めて届いた年と、届いた学校の割合（全区分） */
+function firstNationalTable(d: SeasonData) {
+  const { games } = d;
+  console.log("| 項目 | 届いた割合 | 初めて届いた年（届いた学校の中央値） | 目標 |");
+  console.log("|---|---|---|---|");
+  const labels: [string, string, string][] = [
+    ["winterBest4", "冬の全国 ベスト4", "—"],
+    ["winterWin", "冬の全国 優勝", "—"],
+    ["summerBest4", "夏の全国 ベスト4", "—"],
+    ["summerWin", "夏の全国 優勝", "—"],
+    ["anyBest4", "全国 ベスト4（夏か冬）", "—"],
+    ["anyWin", "全国 優勝（夏か冬）", "—（区分ごと。区分の表）"],
+  ];
+  for (const [k, label, target] of labels) {
+    const all = d.firstNational[k] ?? [];
+    const xs = all.filter((x): x is number => x !== null).sort((a, b) => a - b);
+    const share = xs.length / Math.max(1, games);
+    console.log(`| ${label} | ${pct(share)} | ${xs.length ? `${xs[Math.floor((xs.length - 1) / 2)]}年目（最短 ${xs[0]}年目）` : "—"} | ${target} |`);
+  }
+}
+
+/** P3：全国大会の優勝校のランクと、評判が名門の年の自校のランク */
+function nationalRanks(d: SeasonData) {
+  for (const key of ["winter", "summer"]) {
+    const rec = d.championRanks[key];
+    const total = Object.values(rec).reduce((s, x) => s + x, 0);
+    console.log(`${key === "winter" ? "冬" : "夏"}の全国大会の優勝校のランク（全年度 ${total}回）：${SCHOOL_RANKS.filter((r) => rec[r])
+      .reverse()
+      .map((r) => `${r} ${pct(rec[r] / total)}`)
+      .join("・")}`);
+  }
+  if (d.eliteRanks.length > 0) {
+    const avg = d.eliteRanks.reduce((s, x) => s + x, 0) / d.eliteRanks.length;
+    const dist = SCHOOL_RANKS.map((r, i) => [r, d.eliteRanks.filter((x) => x === i).length] as const).filter(([, n]) => n > 0);
+    console.log(`評判が名門の年の自校のランク：平均 ${SCHOOL_RANKS[Math.round(avg)]}（${avg.toFixed(2)}）・${dist.map(([r, n]) => `${r} ${pct(n / d.eliteRanks.length)}`).join("・")}`);
+  }
+}
+
+/**
+ * npm run balance:national：全国優勝の到達率だけを、区分ごとに多めの学校で測る（R2 の後。報告書 7章 Q1）。
+ * 全国優勝の到達率は、この結果で判断する（SPEC 14章）
+ */
+export function reportNational(d: SeasonData) {
+  const { games, years } = d;
+  console.log(`\n=== 全国優勝の到達率（うまい采配の自動プレイ ${games}校 × ${years}年。区分ごとに同数） ===`);
+  reportByTier(d);
+  console.log("");
+  firstNationalTable(d);
+  nationalRanks(d);
+  const elite = d.firstReach[3].filter((x): x is number => x !== null).sort((a, b) => a - b);
+  console.log(`名門に初めて届いた年：中央値 ${elite.length ? `${elite[Math.floor((elite.length - 1) / 2)]}年目` : "—"}（届いた割合 ${pct(elite.length / Math.max(1, games))}。目標 10年前後）`);
+}
+
 /** P3：全国優勝の経験の目標（20 年で一度でも夏か冬に優勝した学校の割合。区分ごと） */
 export const NATIONAL_WIN_TARGETS: Record<PrefTier, [number, number]> = { competitive: [0.3, 0.4], normal: [0.45, 0.55], small: [0.55, 0.65] };
 
@@ -549,8 +574,8 @@ export const NATIONAL_WIN_TARGETS: Record<PrefTier, [number, number]> = { compet
 function reportByTier(d: SeasonData) {
   const median = (xs: number[]) => (xs.length ? xs[Math.floor((xs.length - 1) / 2)] : null);
   console.log(`\n=== Phase 3：県の区分ごと（全国優勝の経験の目標：激戦区 30〜40%・普通 45〜55%・少数 60%前後） ===`);
-  console.log("| 区分 | 学校 | 全国優勝の経験 | 目標 | 全国ベスト4の経験 | 初めて優勝した年（中央値） | 名門に初めて届いた年（中央値。届いた割合） |");
-  console.log("|---|---|---|---|---|---|---|");
+  console.log("| 区分 | 学校 | 全国優勝の経験 | ぶれの目安（95%） | 目標 | 全国ベスト4の経験 | 初めて優勝した年（中央値） | 名門に初めて届いた年（中央値。届いた割合） |");
+  console.log("|---|---|---|---|---|---|---|---|");
   for (const tier of TIERS) {
     const idx = d.tiers.map((t, i) => (t === tier ? i : -1)).filter((i) => i >= 0);
     if (idx.length === 0) continue;
@@ -563,7 +588,7 @@ function reportByTier(d: SeasonData) {
     const share = win.length / idx.length;
     const m = median(eliteAll);
     console.log(
-      `| ${PREF_TIER_NAMES[tier]} | ${idx.length} | ${pct(share)} | ${pct(lo)}〜${pct(hi)}${share >= lo && share <= hi ? " OK" : " NG"} | ${pct(best4.length / idx.length)} | ${median(win) ?? "—"}年目 | ${m === 999 ? "届かない" : `${m}年目`}（${pct(elite.length / idx.length)}） |`,
+      `| ${PREF_TIER_NAMES[tier]} | ${idx.length} | ${pct(share)} | ±${pct(1.96 * Math.sqrt((share * (1 - share)) / idx.length))} | ${pct(lo)}〜${pct(hi)}${share >= lo && share <= hi ? " OK" : " NG"} | ${pct(best4.length / idx.length)} | ${median(win) ?? "—"}年目 | ${m === 999 ? "届かない" : `${m}年目`}（${pct(elite.length / idx.length)}） |`,
     );
   }
   console.log("評判が名門の年の全国大会（区分ごと。出場した割合・出場したときの優勝の割合）：");

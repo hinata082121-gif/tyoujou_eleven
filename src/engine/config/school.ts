@@ -68,8 +68,8 @@ export const TIER_SETTINGS: Record<
   },
   small: {
     playerPrefSchools: { min: 16, max: 19 },
-    /** P3 で自県の格 4・5 を減らした（同上） */
-    playerPrefPrestige: [40, 32, 19, 8, 1, 0],
+    /** P3 で自県の格 4・5 を減らした（同上）。R2 でさらに格 3〜5 を減らした（全国優勝の経験 48% → 56%。2026-10-15） */
+    playerPrefPrestige: [42, 33, 19, 6, 0, 0],
     /** P2c で 2 → 3（開催県になったときに夏の予選の意味がなくならないように） */
     otherPrefSchools: 3,
     otherPrefPrestige: [10, 26, 36, 20, 8, 0],

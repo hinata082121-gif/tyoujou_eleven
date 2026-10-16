@@ -15,6 +15,7 @@ import { Icon } from "../icons";
 import { PlayerFace } from "../look/Figure";
 import { Band, Button, Label, Screen } from "../ui";
 import { SkillChip, skillAffinity, skillHint, skillText } from "./traits";
+import { shortNames } from "@/lib/names";
 
 type Tab = "legend" | SkillCategory | "minus";
 const CATEGORIES: SkillCategory[] = ["shoot", "dribble", "pass", "setPiece", "defense", "gk", "mental", "body"];
@@ -66,6 +67,7 @@ export function SkillBook() {
   const sel = row ? (picked && row.ids.includes(picked) ? picked : row.ids[0]) : null;
   const def = sel ? SKILL_DEFS[sel] : null;
   const aff = sel ? skillAffinity(sel) : null;
+  const short = shortNames(players);
   const holders = sel ? players.filter((p) => p.skills.includes(sel)) : [];
   const rowCount = row ? players.filter((p) => hasSkillForFilter(p, row.ids[0])).length : 0;
   return (
@@ -153,7 +155,7 @@ export function SkillBook() {
                     {holders.map((p) => (
                       <li key={p.id} className="flex min-w-0 flex-col items-center bg-panel-2 py-0.5">
                         <PlayerFace look={p.look} size={36} kit={school.kits?.first} />
-                        <span className="w-full truncate px-0.5 text-center text-[0.6875rem] font-bold">{p.name.split(" ")[0]}</span>
+                        <span className="w-full truncate px-0.5 text-center text-[0.6875rem] font-bold">{short.get(p.id)}</span>
                       </li>
                     ))}
                   </ul>

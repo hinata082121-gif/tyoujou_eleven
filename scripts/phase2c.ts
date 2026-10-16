@@ -61,10 +61,12 @@ export function scholarQualityTable(seasons: number) {
     const all = mean([...normal, ...tops]);
     const step = SCOUT.levelStep[level];
     const [base, up] = step === 0 ? [strong, elite] : step === 1 ? [elite, top] : [top, { avg: top.avg + SCOUT.beyondTopBase }];
-    const okAll = Math.abs(mean(normal) - base.avg) <= 2;
-    const okTop = Math.abs(mean(tops) - up.avg) <= 2.5;
+    // 評判ごとの上乗せ（SCOUT.levelBonus。R2 で強豪 +1・名門 +3）も目標に足す
+    const bonus = SCOUT.levelBonus[level] ?? 0;
+    const okAll = Math.abs(mean(normal) - (base.avg + bonus)) <= 2;
+    const okTop = Math.abs(mean(tops) - (up.avg + bonus)) <= 2.5;
     console.log(
-      `| ${REPUTATION_NAMES[level]} | ${(count / seasons).toFixed(0)}人 | ${all.toFixed(1)}（ふつうの候補 ${mean(normal).toFixed(1)}） | ${mean(tops).toFixed(1)} | ${pct(tops.length / count)} | ${(rivals / Math.max(1, tops.length)).toFixed(1)} | ${step === 0 ? "強豪の新入生並み・最上位は 1 段上" : step === 1 ? "格 4 並み・最上位は格 5" : "格 5 並み・最上位はその上"} ${okAll && okTop ? "OK" : "NG"} |`,
+      `| ${REPUTATION_NAMES[level]} | ${(count / seasons).toFixed(0)}人 | ${all.toFixed(1)}（ふつうの候補 ${mean(normal).toFixed(1)}） | ${mean(tops).toFixed(1)} | ${pct(tops.length / count)} | ${(rivals / Math.max(1, tops.length)).toFixed(1)} | ${step === 0 ? "強豪の新入生並み・最上位は 1 段上" : step === 1 ? "格 4 並み・最上位は格 5" : "格 5 並み・最上位はその上"}${bonus ? `（+${bonus}）` : ""} ${okAll && okTop ? "OK" : "NG"} |`,
     );
   }
   console.log(`(計算時間 ${((Date.now() - t0) / 1000).toFixed(1)} 秒)`);
