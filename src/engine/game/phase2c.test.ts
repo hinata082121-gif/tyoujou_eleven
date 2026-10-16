@@ -88,7 +88,8 @@ describe("合宿（P2c）", () => {
     expect(r).not.toBeNull();
     expect(r.days).toBe(5);
     expect(s.calendar.position).toBe(pos + 5);
-    expect(s.pending).toBeUndefined();
+    // 合宿の最後の夜は選択肢のあるイベント（R2）
+    expect(s.pending).toMatchObject({ type: "choice", eventId: "campNight" });
     expect(school.players.reduce((a, p) => a + p.fitness, 0)).toBeLessThan(before);
     expect(r.growth.some((g) => g.overallGain > 0)).toBe(true);
     expect(CAMP.expMult).toBeGreaterThan(1);

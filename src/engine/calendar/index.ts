@@ -1,4 +1,5 @@
 import { BRANCH, CAMP_DATES, CARD_PRACTICE_WEIGHTS, CARD_VALUE_WEIGHTS, DAYS_IN_YEAR, FIXED_DATES, MONTH_DAYS, MONTH_NUMBERS, PRACTICE_MATCH, SQUARE_WEIGHTS } from "../config/calendar";
+import { SCHOOL_DATES, TESTS } from "../config/schoolEvents";
 import { NATIONAL_DATES, PREF_QUALIFIER_DATES, ROOKIE_PREF_DATES, ROOKIE_REGION_DATES, SUMMER_NATIONAL_DATES, SUMMER_QUALIFIER_DATES } from "../config/competitions";
 import type { Rng } from "../rng";
 import {
@@ -7,6 +8,7 @@ import {
   type BranchTheme,
   type Calendar,
   type CompetitionKind,
+  type MajorKind,
   type MoveCard,
   type PracticeKind,
   type RandomSquareType,
@@ -85,6 +87,36 @@ export interface CalendarPlan {
   branches: boolean;
   /** P3：自校の県リーグの節の日（大マス。round = 節） */
   leagueDays?: number[];
+  /** R2：学校行事（テスト前・テスト・体育祭・文化祭・修学旅行）を入れる */
+  school?: boolean;
+}
+
+/** 学校行事のマス（R2。PHASE_R2_PLAN 3.1）。round はテストの番号（TESTS の何番目か） */
+export function schoolEventDays(): { day: number; event: NonNullable<NonNullable<Square["major"]>["event"]>; round?: number }[] {
+  const out: ReturnType<typeof schoolEventDays> = [];
+  TESTS.forEach((t, i) => {
+    out.push({ day: dateToDay(t.prep[0], t.prep[1]), event: "testPrep", round: i });
+    out.push({ day: dateToDay(t.test[0], t.test[1]), event: "test", round: i });
+  });
+  out.push({ day: dateToDay(...SCHOOL_DATES.sportsDay), event: "sportsDay" });
+  out.push({ day: dateToDay(...SCHOOL_DATES.culturalFestival), event: "culturalFestival" });
+  out.push({ day: dateToDay(...SCHOOL_DATES.schoolTrip), event: "schoolTrip" });
+  return out.sort((a, b) => a.day - b.day);
+}
+
+/** 月の初めの日（R2：月初の指示で必ず止まる日）か */
+export function isMonthStart(day: number): boolean {
+  return dayToDate(day)[1] === 1;
+}
+
+/** その日が年度の何か月目か（4 月 = 0） */
+export function monthIndex(day: number): number {
+  let d = day;
+  for (let i = 0; i < MONTH_DAYS.length; i++) {
+    if (d < MONTH_DAYS[i]) return i;
+    d -= MONTH_DAYS[i];
+  }
+  return MONTH_DAYS.length - 1;
 }
 
 /** 1 年分（365 マス）のカレンダーを作る。plan を省くと Phase 2b までの日程 */
@@ -119,6 +151,7 @@ export function buildCalendarParts(rng: Rng, prefRounds: number, nationalRounds:
     plan.leagueDays?.forEach((day, r) => {
       if (!squares[day].major) setMajor(day, "league", r);
     });
+    if (plan.school) placeSchoolEvents(squares);
   }
 
   // 練習試合：年に 6〜8 回。月をランダムに選び、1 か月に 1 回まで
@@ -142,19 +175,43 @@ export function buildCalendarParts(rng: Rng, prefRounds: number, nationalRounds:
       }
     }
   }
-  const branches = plan?.branches ? placeBranches(rng, squares, blocked) : [];
+  const branches = plan?.branches ? placeBranches(rng, squares, blocked, !!plan.school) : [];
   return { squares, branches };
 }
 
 // ================= 分岐マス（SPEC 5.1。P2c） =================
 
-/** 分岐マスを置く。分岐の先（BRANCH.length 日）に大マスがない場所を選ぶ */
-function placeBranches(rng: Rng, squares: Square[], blocked: Set<number>): Branch[] {
+/**
+ * 学校行事のマスを置く（R2）。すでに大マスがある日（大会など）とぶつかったら、その行事は飛ばす。
+ * テスト前の 2〜3 日目は大マスではないが、ほかの大マス（練習試合）を置かないよう、テスト前の初日とテストの日の大マスで間隔をとる
+ */
+export function placeSchoolEvents(squares: Square[], fromDay = 0) {
+  for (const e of schoolEventDays()) {
+    if (e.day < fromDay || !squares[e.day] || squares[e.day].major) continue;
+    squares[e.day].major = e.round === undefined ? { kind: "school", event: e.event } : { kind: "school", event: e.event, round: e.round };
+  }
+}
+
+/** 試合の大マス（R2：すごろく上では隠す） */
+export const MATCH_MAJOR_KINDS: readonly MajorKind[] = ["practiceMatch", "prefQualifier", "national", "summerQualifier", "summerNational", "rookiePref", "rookieRegion", "league"];
+export const isMatchKind = (k: MajorKind) => MATCH_MAJOR_KINDS.includes(k);
+
+/**
+ * 分岐マスを置く。分岐の先（BRANCH.length 日）に大マスがない場所を選ぶ。
+ * R2：分岐マスそのものは月の 1 日を避け、道の中の試合の日（すごろく上では隠す日）は許す
+ */
+function placeBranches(rng: Rng, squares: Square[], blocked: Set<number>, avoidMonthStart = false): Branch[] {
+  const matchesInPath = avoidMonthStart;
   const L = BRANCH.length;
   const ok = (d: number) => {
     if (d + L >= squares.length) return false;
     if (BRANCH.excludeMonths.includes(dayToDate(d)[0])) return false;
-    for (let x = d; x <= d + L; x++) if (squares[x].major || blocked.has(x) || squares[x].baseType === "branch") return false;
+    if (squares[d].major || blocked.has(d) || (avoidMonthStart && isMonthStart(d))) return false;
+    for (let x = d; x <= d + L; x++) {
+      const m = squares[x].major;
+      // R2：試合の大マス（すごろく上では隠す日）は道の中にあってよい。行事などほかの大マスは置かない
+      if ((m && !(matchesInPath && isMatchKind(m.kind))) || blocked.has(x) || squares[x].baseType === "branch") return false;
+    }
     return true;
   };
   const cands = squares.map((s) => s.day).filter(ok);
@@ -186,7 +243,8 @@ export function chooseBranchPath(cal: Calendar, day: number, index: number): boo
   b.chosen = index;
   b.paths[index].squares.forEach((t, i) => {
     const sq = cal.squares[day + 1 + i];
-    if (sq && !sq.major) sq.baseType = t;
+    // 試合の日（R2 で道の中に入りうる）も、負けた後や試合のない日に使うマスの種類を道に合わせる
+    if (sq && (!sq.major || isMatchKind(sq.major.kind))) sq.baseType = t;
   });
   return true;
 }

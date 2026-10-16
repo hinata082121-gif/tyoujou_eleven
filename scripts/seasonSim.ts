@@ -2,12 +2,14 @@ import { FACILITY_NAMES, PREF_TIER_NAMES, PREFECTURES, REPUTATION_NAMES } from "
 import { prefTier, type PrefTier } from "../src/engine/config/school";
 import { newGame } from "../src/engine/game";
 import { autoStep, newAutoplayStats } from "../src/engine/game/autoplay";
+import { POSITION_RATING_WEIGHTS } from "../src/engine/config/player";
 import { statRank } from "../src/engine/player/rank";
 import { rankIndex } from "../src/engine/school/strength";
 import { FACILITY_IDS, SCHOOL_RANKS, type Alumnus, type ReputationLevel } from "../src/engine/types";
 import { staffAge } from "../src/engine/staff";
 import { STAFF_LIFE } from "../src/engine/config/staff";
 import { isGold } from "../src/engine/skills";
+import { academicBand, trustBand } from "../src/engine/school/life";
 
 /**
  * 何年分も自動で遊んで、評判の推移と成長を測る（SPEC 14章）。
@@ -50,6 +52,33 @@ export interface SeasonData {
   tiers: PrefTier[];
   /** P3：評判が名門の年の、県の区分ごとの全国大会の出場と優勝（[年数, 冬の出場, 冬の優勝, 夏の出場, 夏の優勝]） */
   eliteNational: Record<string, number[]>;
+  /** R2：学校生活（練習日・テスト・選択肢のイベント・判断の数・年度末の学力と信頼度の帯） */
+  r2: R2Data;
+}
+
+export interface R2Data {
+  schoolYears: number;
+  practiceUnits: number;
+  memberDays: number;
+  days: number;
+  /** 年の何回目のテストか（0〜4）ごとの [回数, 受けた人数, 赤点の人数, 平均点の合計] */
+  tests: number[][];
+  choices: Record<string, number>;
+  decisions: Record<string, number>;
+  /** 年度末（卒業の前）の、学力・信頼度の 5 段階の人数 */
+  academic: number[];
+  trust: number[];
+}
+
+const emptyR2 = (): R2Data => ({ schoolYears: 0, practiceUnits: 0, memberDays: 0, days: 0, tests: [0, 1, 2, 3, 4].map(() => [0, 0, 0, 0]), choices: {}, decisions: {}, academic: [0, 0, 0, 0, 0], trust: [0, 0, 0, 0, 0] });
+
+function mergeR2(a: R2Data, b: R2Data) {
+  for (const k of ["schoolYears", "practiceUnits", "memberDays", "days"] as const) a[k] += b[k];
+  b.tests.forEach((t, i) => t.forEach((x, j) => (a.tests[i][j] += x)));
+  for (const [k, v] of Object.entries(b.choices)) a.choices[k] = (a.choices[k] ?? 0) + v;
+  for (const [k, v] of Object.entries(b.decisions)) a.decisions[k] = (a.decisions[k] ?? 0) + v;
+  b.academic.forEach((x, i) => (a.academic[i] += x));
+  b.trust.forEach((x, i) => (a.trust[i] += x));
 }
 
 const emptyData = (games: number, years: number): SeasonData => ({
@@ -76,6 +105,7 @@ const emptyData = (games: number, years: number): SeasonData => ({
   league: [],
   tiers: [],
   eliteNational: {},
+  r2: emptyR2(),
 });
 
 /** 全国大会のベスト4（準決勝・決勝で負けた、または優勝） */
@@ -113,7 +143,18 @@ export function collectSeasons(from: number, to: number, years: number): SeasonD
       const stats = newAutoplayStats();
       const target = state.year + 1;
       let captured = false;
+      let lifeCounted = false;
       for (let i = 0; i < 4000 && state.year < target; i++) {
+        if (!captured && (state.pending?.type === "yearEnd" || state.pending?.type === "graduation")) {
+          // 卒業式の前に、学力・信頼度の帯を数える
+          if (state.pending.type === "graduation" && !lifeCounted) {
+            lifeCounted = true;
+            for (const p of state.schools[state.playerSchoolId].players.filter((x) => x.status === "active")) {
+              d.r2.academic[academicBand(p)]++;
+              d.r2.trust[trustBand(p)]++;
+            }
+          }
+        }
         if (!captured && state.pending?.type === "yearEnd") {
           captured = true;
           for (const [k, key] of [["national", "winter"], ["summerNational", "summer"]] as const) {
@@ -123,6 +164,20 @@ export function collectSeasons(from: number, to: number, years: number): SeasonD
         }
         autoStep(state, stats, "skilled");
       }
+      const r2 = d.r2;
+      r2.schoolYears++;
+      r2.practiceUnits += stats.practiceUnits;
+      r2.memberDays += stats.memberDays;
+      r2.days += stats.days;
+      stats.tests.forEach((t, i) => {
+        const e = r2.tests[Math.min(4, i)];
+        e[0]++;
+        e[1] += t.members;
+        e[2] += t.failed;
+        e[3] += t.average;
+      });
+      for (const [k, v] of Object.entries(stats.choices)) r2.choices[k] = (r2.choices[k] ?? 0) + v;
+      for (const [k, v] of Object.entries(stats.decisions)) r2.decisions[k] = (r2.decisions[k] ?? 0) + v;
       const after = new Set(state.staff.members.map((m) => m.id));
       // 年度の途中に雇った人も数えるため、在任した人は記録から数える
       for (const m of state.staff.members) if (!m.temporary && m.hiredYear >= state.year - 1 && !before.has(m.id)) turnover.hired++;
@@ -236,6 +291,7 @@ export function mergeSeasons(parts: SeasonData[]): SeasonData {
     for (const [k, xs] of Object.entries(p.firstNational)) (out.firstNational[k] ??= []).push(...xs);
     for (const key of ["winter", "summer"]) for (const [r, n] of Object.entries(p.championRanks[key])) out.championRanks[key][r] = (out.championRanks[key][r] ?? 0) + n;
     out.eliteRanks.push(...p.eliteRanks);
+    mergeR2(out.r2, p.r2);
     out.league.push(...p.league);
     out.tiers.push(...p.tiers);
     for (const [k, xs] of Object.entries(p.eliteNational)) {
@@ -337,8 +393,89 @@ export function reportSeasons(d: SeasonData, seconds?: number): Alumnus[] {
   console.log("|---|---|---|---|---|");
   for (const [k, v] of Object.entries(d.camps)) console.log(`| ${k === "summer" ? "夏合宿" : "冬合宿"} | ${v.n} | ${(v.gain / v.players).toFixed(2)} | ${(v.learned / v.n).toFixed(1)}個 | ${(v.gold / v.n).toFixed(2)}個 |`);
   reportPhase3(d);
+  reportR2(d);
   if (seconds !== undefined) console.log(`(計算時間 ${seconds.toFixed(1)} 秒)`);
   return d.graduates;
+}
+
+/** R2：学校生活（練習日・テスト・選択肢のイベント・判断の数・学力と信頼度） */
+function reportR2(d: SeasonData) {
+  const r = d.r2;
+  const sy = Math.max(1, r.schoolYears);
+  console.log(`\n=== R2：学校生活（${d.games}校 × ${d.years}年。おまかせの自動プレイ） ===`);
+  const avgMembers = r.memberDays / Math.max(1, r.days);
+  console.log(`1 人あたりの練習日：1 年 ${(r.practiceUnits / avgMembers / sy).toFixed(1)}日（進んだ日 ${(r.days / sy).toFixed(0)}日。テスト前の短い練習は 0.5 日で数える）`);
+  console.log("| テスト | 回数 | 平均点 | 赤点の割合 |");
+  console.log("|---|---|---|---|");
+  const TEST_NAMES = ["1学期 中間", "1学期 期末", "2学期 中間", "2学期 期末", "学年末"];
+  r.tests.forEach((t, i) => t[0] && console.log(`| ${TEST_NAMES[i]} | ${t[0]} | ${(t[3] / t[0]).toFixed(1)} | ${pct(t[2] / Math.max(1, t[1]))} |`));
+  const band = (xs: number[]) => xs.map((x) => pct(x / Math.max(1, xs.reduce((s, y) => s + y, 0)))).join("・");
+  console.log(`年度末の学力の 5 段階（低い順）：${band(r.academic)}`);
+  console.log(`年度末の信頼度の 5 段階（低い順）：${band(r.trust)}`);
+  const school = ["testPrep", "sportsDay", "culturalFestival", "campNight"];
+  const per = (n: number) => (n / sy).toFixed(2);
+  console.log(`\n選択肢のあるイベント（1 年あたり）：人物マス ${per(Object.entries(r.choices).filter(([k]) => !school.includes(k)).reduce((s, [, v]) => s + v, 0))}回`);
+  console.log(
+    `  ${Object.entries(r.choices)
+      .filter(([k]) => !school.includes(k))
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => `${k} ${per(v)}`)
+      .join("・")}`,
+  );
+  console.log(`  行事・合宿の選択：${school.map((k) => `${k} ${per(r.choices[k] ?? 0)}`).join("・")}`);
+  const dec = r.decisions;
+  const rows: [string, string, string][] = [
+    ["card", "どのカードを使うか", "130 前後"],
+    ["monthly", "月初の育成指示", "12"],
+    ["person", "選択肢のあるイベント（人物マス）", "14 前後"],
+    ["school", "学校行事の選択", "7"],
+    ["match", "試合の準備", "25 前後"],
+    ["other", "そのほか（スタッフ・キャプテン・合宿・分かれ道・スカウト）", "15 前後"],
+  ];
+  console.log("\n| 判断（1 年あたり） | 回数 | 計画の見込み |");
+  console.log("|---|---|---|");
+  for (const [k, label, plan] of rows) console.log(`| ${label} | ${per(dec[k] ?? 0)} | ${plan} |`);
+  const nonCard = rows.filter(([k]) => k !== "card").reduce((s, [k]) => s + (dec[k] ?? 0), 0);
+  console.log(`| **カード以外の判断** | **${per(nonCard)}** | **73 前後** |`);
+}
+
+/** R2：月初の指示の 3 通り（重点なし・おまかせ・自分で決める）で、卒業生の総合と能力の偏りを比べる */
+export interface FocusData {
+  focus: string;
+  overall: number[];
+  bias: number[];
+}
+
+export function collectFocus(from: number, to: number, years: number, focus: "none" | "auto" | "manual"): FocusData {
+  const out: FocusData = { focus, overall: [], bias: [] };
+  for (let g = from; g < to; g++) {
+    const state = newGame(`focus-${g}`, "検証高校", seasonPrefecture(g));
+    const stats = newAutoplayStats();
+    const target = state.year + years;
+    for (let i = 0; i < 4000 * years && state.year < target; i++) autoStep(state, stats, "skilled", { focus });
+    for (const a of state.alumni) {
+      if (a.graduatedYear < 4 || a.fictional || a.scholarship) continue;
+      out.overall.push(a.overall);
+      const keys = Object.keys(POSITION_RATING_WEIGHTS[a.position]) as (keyof typeof a.stats)[];
+      const vs = keys.map((k) => a.stats[k]);
+      out.bias.push(Math.max(...vs) - vs.reduce((s, x) => s + x, 0) / vs.length);
+    }
+  }
+  return out;
+}
+
+export function reportFocus(parts: FocusData[], schools: number, years: number) {
+  const LABEL: Record<string, string> = { none: "重点なし", auto: "おまかせ（標準）", manual: "自分で決める（ポジションで一番大事な能力 1 つ）" };
+  console.log(`\n=== R2：月初の指示の 3 通り（${schools}校 × ${years}年。一般入部の卒業生） ===`);
+  console.log("| 指示 | 卒業生 | 総合の平均 | 総合B以上 | 能力の偏り（一番高い能力 − 平均） |");
+  console.log("|---|---|---|---|---|");
+  for (const f of ["none", "auto", "manual"]) {
+    const xs = parts.filter((p) => p.focus === f);
+    const ov = xs.flatMap((p) => p.overall);
+    const bias = xs.flatMap((p) => p.bias);
+    const mean = (a: number[]) => a.reduce((s, x) => s + x, 0) / Math.max(1, a.length);
+    console.log(`| ${LABEL[f]} | ${ov.length}人 | ${mean(ov).toFixed(1)} | ${pct(ov.filter((x) => x >= 70).length / Math.max(1, ov.length))} | ${mean(bias).toFixed(1)} |`);
+  }
 }
 
 /** 1 プロセスで全部（以前と同じ使い方） */

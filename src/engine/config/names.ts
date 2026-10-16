@@ -215,6 +215,7 @@ export const SQUARE_NAMES: Record<SquareType, string> = {
   green: "緑マス",
   yellow: "黄マス",
   training: "特訓マス",
+  person: "人物マス",
   branch: "分岐マス",
   major: "大マス",
 };
@@ -233,6 +234,7 @@ export const MAJOR_NAMES: Record<MajorKind, string> = {
   scoutReply: "スカウトの返事",
   graduation: "卒業式",
   yearEnd: "年度末",
+  school: "学校行事",
 };
 
 export const CAREER_NAMES: Record<Career, string> = {

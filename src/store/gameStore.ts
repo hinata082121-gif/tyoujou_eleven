@@ -25,14 +25,19 @@ import {
   chooseBranch,
   confirmCamp,
   confirmScoutReply,
+  confirmChoice,
+  confirmMonthly,
+  setPlayerFocus,
   setScoutPriority,
   visitScout,
   type CardResult,
   type MatchSummary,
 } from "@/engine/game";
 import type { CampResult } from "@/engine/camp";
+import { entranceOutcome } from "@/engine/school/events";
+import type { EventOutcome } from "@/engine/events";
 import type { VisitResult } from "@/engine/scout";
-import type { Alumnus, CampPolicy, GameState, Player, PlayStyle, SchoolKits, SkillId, StaffRole, TeamSetup } from "@/engine/types";
+import type { Alumnus, CampPolicy, GameState, Player, PlayStyle, SchoolKits, SkillId, StaffRole, StatKey, TeamSetup } from "@/engine/types";
 import { setPlayerKits } from "@/engine/look";
 import { SaveManager, type SlotSummary } from "@/lib/save";
 
@@ -55,16 +60,28 @@ export interface Settings {
   tournamentView: "3d" | "2d" | "text";
   /** 3D の画質（P4） */
   quality3d: "standard" | "light";
-  /** イベントの見せ方（R1）：場面で見る（立ち絵とせりふの枠）か、文章だけ（ホームの右に並べる） */
-  eventView: "scene" | "text";
+  /**
+   * イベントの見せ方（R2。PHASE_R2_PLAN 6.2）：大事な出来事だけ場面（標準）・すべて場面・文章だけ。
+   * 文章だけの出来事はホームの速報に流す。R1 の「場面で見る」（scene）は「大事な出来事だけ場面」として読む
+   */
+  eventView: EventView;
 }
 
-const defaultSettings: Settings = { skipMove: false, matchSpeed: 1, leagueMode: "manage", matchView: "2d", tournamentView: "3d", quality3d: "standard", eventView: "scene" };
+export type EventView = "important" | "all" | "text";
+
+const defaultSettings: Settings = { skipMove: false, matchSpeed: 1, leagueMode: "manage", matchView: "2d", tournamentView: "3d", quality3d: "standard", eventView: "important" };
+
+/** 保存してある設定を読む（古い値は読み替える） */
+export function normalizeSettings(raw: Record<string, unknown>): Settings {
+  const s = { ...defaultSettings, ...raw } as Settings & { eventView: string };
+  if (!["important", "all", "text"].includes(s.eventView)) s.eventView = "important";
+  return s as Settings;
+}
 
 function readSettings(): Settings {
   try {
     const raw = window.localStorage.getItem(SETTINGS_KEY);
-    return raw ? { ...defaultSettings, ...JSON.parse(raw) } : defaultSettings;
+    return raw ? normalizeSettings(JSON.parse(raw)) : defaultSettings;
   } catch {
     return defaultSettings;
   }
@@ -121,6 +138,15 @@ interface GameStore {
   lastCamp: CampResult | null;
   clearLastCamp(): void;
   lastVisit: VisitResult | null;
+  /** R2：これから見せる場面（行事・選択肢の結果・入学式など）。先頭から順に見せる */
+  sceneQueue: EventOutcome[];
+  pushScenes(o: (EventOutcome | null | undefined)[]): void;
+  shiftScene(): void;
+  /** R2：速報（文章だけの出来事。新しい順） */
+  news: EventOutcome[];
+  /** 「大会」の画面で最初に開くタブ（ホームの予定表のボタンから開くと "plan"） */
+  bracketTab: "plan" | null;
+  openSchedule(): void;
 
   init(): void;
   goto(screen: Screen): void;
@@ -168,6 +194,12 @@ interface GameStore {
   visitScout(candidateId: string): VisitResult | null;
   setScoutPriority(ids: string[]): void;
   confirmScoutReply(): void;
+
+  /** R2：月初の指示・選択肢のあるイベント */
+  confirmMonthly(): void;
+  setFocus(playerIds: string[], stats: StatKey[] | null): string | null;
+  /** 選んだ結果の場面を返す（画面がそのまま結果を見せる） */
+  confirmChoice(index: number): EventOutcome | null;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -231,6 +263,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ lastCamp: null });
   },
   lastVisit: null,
+  sceneQueue: [],
+  pushScenes(list) {
+    const add = list.filter((o): o is EventOutcome => !!o);
+    if (add.length > 0) set({ sceneQueue: [...get().sceneQueue, ...add] });
+  },
+  shiftScene() {
+    set({ sceneQueue: get().sceneQueue.slice(1) });
+  },
+  news: [],
+  bracketTab: null,
+  openSchedule() {
+    set({ view: "bracket", bracketTab: "plan", selectedPlayerId: null });
+  },
 
   init() {
     set({ settings: readSettings() });
@@ -239,7 +284,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ screen });
   },
   setView(view) {
-    set({ view, selectedPlayerId: null });
+    set({ view, selectedPlayerId: null, bracketTab: null });
   },
   selectPlayer(id) {
     set({ selectedPlayerId: id });
@@ -262,7 +307,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     } catch {
       // 無視
     }
-    set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null, notesOpen: false, skillBookOpen: false, teamOpen: false, squadSkillFilter: null, matchDraft: null, scoutOpen: false, facilitiesOpen: false, uniformOpen: false, lastCamp: null, lastVisit: null });
+    set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null, notesOpen: false, skillBookOpen: false, teamOpen: false, squadSkillFilter: null, matchDraft: null, scoutOpen: false, facilitiesOpen: false, uniformOpen: false, lastCamp: null, lastVisit: null, sceneQueue: [], news: [] });
   },
 
   async createGame(slot, schoolName, prefectureId, kits) {
@@ -271,7 +316,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const seed = `${Date.now().toString(36)}-${buf[0].toString(36)}${buf[1].toString(36)}`;
     const game = newGame(seed, schoolName, prefectureId);
     if (kits) setPlayerKits(game, kits);
-    set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null, notesOpen: false, skillBookOpen: false, teamOpen: false, squadSkillFilter: null, matchDraft: null, scoutOpen: false, facilitiesOpen: false, uniformOpen: false, lastCamp: null, lastVisit: null });
+    set({ game, slot, screen: "play", view: "home", rev: get().rev + 1, lastCard: null, lastMatch: null, lastAlumni: null, lastFreshmen: null, notesOpen: false, skillBookOpen: false, teamOpen: false, squadSkillFilter: null, matchDraft: null, scoutOpen: false, facilitiesOpen: false, uniformOpen: false, lastCamp: null, lastVisit: null, sceneQueue: [entranceOutcome(game)], news: [] });
     try {
       window.localStorage.setItem(LAST_SLOT_KEY, String(slot));
     } catch {
@@ -351,6 +396,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const game = get().game;
     if (!game) return;
     set({ lastFreshmen: confirmYearEnd(game) });
+    // 入学式の場面（新入部員の一覧の前に見せる）
+    get().pushScenes([entranceOutcome(game)]);
     get().touch();
   },
   clearFreshmen() {
@@ -421,6 +468,30 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!game) return;
     confirmScoutReply(game);
     get().touch();
+  },
+
+  confirmMonthly() {
+    const game = get().game;
+    if (!game) return;
+    const o = confirmMonthly(game);
+    get().pushScenes([o]);
+    get().touch();
+  },
+  setFocus(playerIds, stats) {
+    return withGame(get, (g) => {
+      for (const id of playerIds) {
+        const err = setPlayerFocus(g, id, stats);
+        if (err) return err;
+      }
+      return null;
+    });
+  },
+  confirmChoice(index) {
+    const game = get().game;
+    if (!game) return null;
+    const o = confirmChoice(game, index);
+    get().touch();
+    return o;
   },
 }));
 

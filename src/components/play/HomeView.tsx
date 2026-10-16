@@ -4,9 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { dayToDate, formatDay } from "@/engine/calendar";
 import { COMPETITION_NAMES, PRACTICE_NAMES } from "@/engine/config/names";
 import { PRACTICES } from "@/engine/config/practice";
-import { inTournamentRun, nextTournamentMatchDay, squareDisplay } from "@/engine/game";
+import { inTournamentRun, nextTournamentMatchDay } from "@/engine/game";
+import { boardSquare, nextNonMatchPlan, type BoardSquare } from "@/engine/game/board";
+import { isTextOnly } from "../event/eventScenes";
 import { playerSchool } from "@/engine/season";
-import type { GameState, Square } from "@/engine/types";
+import type { Square } from "@/engine/types";
 import { useGameStore } from "@/store/gameStore";
 import { Icon, type IconName } from "../icons";
 import { PlayerFace } from "../look/Figure";
@@ -21,8 +23,10 @@ const SQUARE_LINE: Record<string, string> = {
   green: "border-sq-green",
   yellow: "border-sq-yellow",
   training: "border-sq-training",
+  person: "border-sq-person",
   major: "border-sq-major",
   branch: "border-sq-branch",
+  hidden: "border-line-2",
 };
 const SQUARE_SWATCH: Record<string, string> = {
   blue: "bg-sq-blue",
@@ -31,8 +35,10 @@ const SQUARE_SWATCH: Record<string, string> = {
   green: "bg-sq-green",
   yellow: "bg-sq-yellow",
   training: "bg-sq-training",
+  person: "bg-sq-person",
   major: "bg-red",
   branch: "bg-sq-branch",
+  hidden: "bg-line-2",
 };
 const LEGEND: [string, string][] = [
   ["blue", "良いことが起きやすい"],
@@ -41,25 +47,16 @@ const LEGEND: [string, string][] = [
   ["green", "体力回復"],
   ["yellow", "練習効率アップ"],
   ["training", "特訓"],
+  ["person", "人物（選択肢のある出来事）"],
   ["branch", "分かれ道"],
-  ["major", "必ず止まる（大会・行事）"],
+  ["major", "必ず止まる（行事・合宿など）"],
+  ["hidden", "？＝まだ見えない（10日より先）"],
 ];
 
 const TARGET_LABEL = { all: "全員", field: "フィールド", gk: "GKのみ" } as const;
 
 /** 練習の種類 → アイコン（練習の名前の文字から探す。CardResult は名前で持っているため） */
 export const PRACTICE_ICON = Object.fromEntries(Object.keys(PRACTICES).map((k) => [k, k as IconName])) as Record<keyof typeof PRACTICES, IconName>;
-
-/** 次の「必ず止まるマス」 */
-function nextMajor(game: GameState) {
-  const cal = game.calendar;
-  for (let i = cal.position + 1; i < cal.squares.length; i++) {
-    const sq = cal.squares[i];
-    const d = squareDisplay(game, sq);
-    if (d.type === "major") return { day: sq.day, label: d.label ?? "", dist: sq.day - cal.position };
-  }
-  return null;
-}
 
 export function HomeView() {
   const game = useGameStore((s) => s.game)!;
@@ -71,6 +68,7 @@ export function HomeView() {
   const moving = useGameStore((s) => s.moving);
   const setMoving = useGameStore((s) => s.setMoving);
   const eventView = useGameStore((s) => s.settings.eventView);
+  const openSchedule = useGameStore((s) => s.openSchedule);
   const selectPlayer = useGameStore((s) => s.selectPlayer);
   const portrait = usePortrait();
   const cal = game.calendar;
@@ -117,23 +115,29 @@ export function HomeView() {
   const watch = [...active].sort((a, b) => (b.injuryDays > 0 ? 1 : 0) - (a.injuryDays > 0 ? 1 : 0) || a.fitness - b.fitness);
   const run = inTournamentRun(game);
   const nextDay = run ? nextTournamentMatchDay(game) : null;
-  const major = nextMajor(game);
+  const plan = nextNonMatchPlan(game);
   const sc = game.scout;
   const host = game.prefectures.find((p) => p.id === game.competitions.summerHostPrefId);
   const recent = game.log.slice(-12).reverse();
   const showResult = !moving && lastCard && eventView === "text";
+  // 速報：直前のカードの、文章だけの出来事（無ければ最新の記録）
+  const ticker = !moving && lastCard && eventView === "important" ? lastCard.outcomes.filter(isTextOnly) : [];
+  const newsItems = ticker.length > 0 ? ticker.map((o) => ({ text: `${o.title}：${o.text}`, tone: o.tone })) : recent.slice(0, 1).map((l) => ({ text: l.text, tone: l.tone ?? ("info" as const) }));
   const [mm] = dayToDate(cal.position);
+  // テスト前の 3 日（マスの上に細い帯）
+  const prepDays = new Set<number>();
+  for (const sq of squares) if (sq.major?.kind === "school" && sq.major.event === "test") for (let d = sq.day - 3; d < sq.day; d++) prepDays.add(d);
 
   return (
     <div className="flex min-h-0 flex-1 gap-2.5">
       {/* 日程と手札 */}
       <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <Band sub={`${mm}月`} right={<IconButton name="info" label="マスの見方" onClick={() => setLegend(true)} className="!min-h-8 !min-w-8 border-0 bg-panel/80" />}>
+        <Band sub={`${mm}月　見えるのは10日先まで`} right={<IconButton name="info" label="マスの見方" onClick={() => setLegend(true)} className="!min-h-8 !min-w-8 border-0 bg-panel/80" />}>
           日程
         </Band>
         <div className="mt-1 grid grid-cols-14 gap-[3px] pl-1">
           {squares.map((sq) => (
-            <SquareCell key={sq.day} sq={sq} display={squareDisplay(game, sq)} current={sq.day === position} passed={sq.day < position} />
+            <SquareCell key={sq.day} sq={sq} view={boardSquare(game, sq)} current={sq.day === position} passed={sq.day < position} prep={prepDays.has(sq.day) && sq.day - cal.position <= 10} />
           ))}
         </div>
 
@@ -194,7 +198,7 @@ export function HomeView() {
                     <span className="relative mt-auto mb-auto text-ink">
                       <Icon name={PRACTICE_ICON[c.practice]} size={24} stroke={2.6} />
                     </span>
-                    <span className="relative whitespace-nowrap text-center text-[0.75rem] font-black leading-tight tracking-tight">{PRACTICE_NAMES[c.practice]}</span>
+                    <span className={`relative whitespace-nowrap text-center font-black leading-tight tracking-tight ${PRACTICE_NAMES[c.practice].length >= 6 ? "text-[0.6875rem] tracking-tighter" : "text-[0.75rem]"}`}>{PRACTICE_NAMES[c.practice]}</span>
                     <span className="relative whitespace-nowrap text-[0.6875rem] font-bold tracking-tight text-text-2">{TARGET_LABEL[PRACTICES[c.practice].target]}</span>
                   </button>
                 ))}
@@ -206,15 +210,27 @@ export function HomeView() {
 
       {/* 右：次の大会・コンディション・速報 */}
       <aside className="flex min-h-0 w-[14.5rem] shrink-0 flex-col gap-1.5">
-        {major && (
-          <div className="cut-r anim-band-in flex shrink-0 items-center gap-2 bg-red py-1 pl-2 pr-6 text-white">
-            <span className="bg-ink px-1.5 text-[0.6875rem] font-black">次</span>
-            <b className="font-num text-[1.25rem] leading-none">{dayToDate(major.day).join(".")}</b>
-            <span className="font-head min-w-0 truncate text-[0.875rem]">{major.label}</span>
-            <span className="ml-auto shrink-0 text-[0.75rem] font-bold">
-              あと<span className="font-num text-[0.9375rem]">{major.dist}</span>日
-            </span>
-          </div>
+        <div className="flex shrink-0 items-stretch gap-1">
+          {plan ? (
+            <div className="cut-r anim-band-in flex min-w-0 flex-1 items-center gap-1.5 bg-red py-1 pl-2 pr-4 text-white">
+              <span className="bg-ink px-1 text-[0.6875rem] font-black">次</span>
+              <b className="font-num text-[1.125rem] leading-none">{dayToDate(plan.day).join(".")}</b>
+              <span className="font-head min-w-0 truncate text-[0.8125rem]">{plan.label}</span>
+              <span className="ml-auto shrink-0 text-[0.6875rem] font-bold">
+                あと<span className="font-num text-[0.875rem]">{plan.day - cal.position}</span>日
+              </span>
+            </div>
+          ) : (
+            <div className="flex-1" />
+          )}
+          <IconButton name="calendar" label="予定表" onClick={openSchedule} className="!min-h-8 !min-w-8 border-0 bg-panel" />
+        </div>
+        {/* 初めのうちだけ：すごろくでは試合の日が分からないので、予定表の場所を知らせる（PLAN 14章） */}
+        {game.year === 1 && cal.position < HINT_UNTIL_DAY && (
+          <button type="button" onClick={openSchedule} className="pressable -mt-0.5 flex shrink-0 items-center gap-1 bg-telop px-2 py-0.5 text-left text-[0.6875rem] font-black text-ink">
+            <Icon name="calendar" size={12} />
+            試合の日は、すごろくでは見えません。予定表で確かめられます
+          </button>
         )}
         {showResult ? (
           <div className="flex min-h-0 flex-1 flex-col">
@@ -248,6 +264,10 @@ export function HomeView() {
                     <span className="flex items-center justify-end text-[0.6875rem] font-black text-bad">
                       ケガ{p.injuryDays}日
                     </span>
+                  ) : (p.remedialDays ?? 0) > 0 || (p.awayDays ?? 0) > 0 ? (
+                    <span className="flex items-center justify-end whitespace-nowrap text-[0.6875rem] font-black text-warn">
+                      {(p.remedialDays ?? 0) > 0 ? `補習${p.remedialDays}日` : `不在${p.awayDays}日`}
+                    </span>
                   ) : (
                     <span className="font-num text-right text-[0.9375rem]">{Math.round(p.fitness)}</span>
                   )}
@@ -256,10 +276,7 @@ export function HomeView() {
             </div>
           </div>
         )}
-        <button type="button" onClick={() => setLogOpen(true)} className="pressable flex h-7 shrink-0 items-stretch bg-panel text-left text-[0.75rem]" aria-label="速報をすべて見る">
-          <span className="flex shrink-0 items-center bg-yellow px-2 font-black text-ink">速報</span>
-          <span className={`min-w-0 flex-1 self-center truncate px-2 ${recent[0]?.tone === "good" ? "text-good" : recent[0]?.tone === "bad" ? "text-bad" : "text-text"}`}>{recent[0]?.text ?? "まだ出来事はない"}</span>
-        </button>
+        <NewsTicker key={newsItems.map((x) => x.text).join("|")} items={newsItems} onOpen={() => setLogOpen(true)} />
       </aside>
 
       {legend && (
@@ -295,15 +312,46 @@ export function HomeView() {
   );
 }
 
-function SquareCell({ sq, display, current, passed }: { sq: Square; display: ReturnType<typeof squareDisplay>; current: boolean; passed: boolean }) {
-  const [m, d] = dayToDate(sq.day);
-  const bg = current ? "bg-yellow text-ink outline-2 outline-white" : display.type === "major" ? "bg-red text-white" : "bg-panel/90 text-text";
+/** 予定表のお知らせを出す期間（1 年目の 6 月末まで） */
+const HINT_UNTIL_DAY = 91;
+
+/** 速報の帯。出来事が複数あれば、1 つずつ短く出す（タップで全文） */
+function NewsTicker({ items, onOpen }: { items: { text: string; tone: "good" | "bad" | "info" }[]; onOpen: () => void }) {
+  const [i, setI] = useState(0);
+  const key = items.map((x) => x.text).join("|");
+  // 中身が変わったときは、呼ぶ側が key を変えて最初から
+  useEffect(() => {
+    if (items.length <= 1) return;
+    const t = setInterval(() => setI((x) => (x + 1) % items.length), 2600);
+    return () => clearInterval(t);
+  }, [items.length]);
+  const cur = items[i] ?? items[0];
   return (
-    <div className={`relative h-[2.375rem] -skew-x-[8deg] border-b-4 ${SQUARE_LINE[display.type]} ${bg} ${passed ? "opacity-35" : ""}`}>
+    <button type="button" onClick={onOpen} className="pressable flex h-7 shrink-0 items-stretch bg-panel text-left text-[0.75rem]" aria-label="速報をすべて見る">
+      <span className="flex shrink-0 items-center bg-yellow px-2 font-black text-ink">速報</span>
+      <span key={`${key}-${i}`} className={`anim-fade-up min-w-0 flex-1 self-center truncate px-2 ${cur?.tone === "good" ? "text-good" : cur?.tone === "bad" ? "text-bad" : "text-text"}`}>
+        {cur?.text ?? "まだ出来事はない"}
+      </span>
+      {items.length > 1 && <span className="font-num flex shrink-0 items-center px-1.5 text-[0.6875rem] text-text-3">{i + 1}/{items.length}</span>}
+    </button>
+  );
+}
+
+/** すごろくのマス（R2：10 日より先は「？」、試合の日は通常マスに見える、1 日は「指示」の札、テスト前は上に細い帯） */
+function SquareCell({ sq, view, current, passed, prep }: { sq: Square; view: BoardSquare; current: boolean; passed: boolean; prep: boolean }) {
+  const [m, d] = dayToDate(sq.day);
+  const hidden = view.type === "hidden";
+  const bg = current ? "bg-yellow text-ink outline-2 outline-white" : view.type === "major" ? "bg-red text-white" : hidden ? "bg-panel/70 text-text-3" : "bg-panel/90 text-text";
+  return (
+    <div className={`relative h-[2.375rem] -skew-x-[8deg] border-b-4 ${SQUARE_LINE[view.type]} ${bg} ${passed ? "opacity-35" : ""}`}>
       <div className="h-full skew-x-[8deg]">
-        <span className="font-num block px-1 text-[0.8125rem] leading-[1.1rem]">{d === 1 ? `${m}/1` : d}</span>
-        {display.label && <span className="absolute inset-x-0 bottom-px block truncate text-center text-[0.625rem] font-black leading-[0.6875rem] tracking-tighter">{display.label}</span>}
+        <span className={`font-num block whitespace-nowrap px-1 leading-[1.1rem] ${d === 1 ? "text-[0.6875rem] tracking-tighter" : "text-[0.8125rem]"}`}>{d === 1 ? `${m}/1` : d}</span>
+        {view.monthly && !current && <span className="absolute inset-x-0.5 bottom-0.5 overflow-hidden whitespace-nowrap bg-telop tracking-tighter text-center text-[0.5625rem] font-black leading-[0.75rem] text-ink">指示</span>}
+        {hidden && !view.monthly && <span className="font-head absolute inset-x-0 bottom-0.5 text-center text-[0.875rem] leading-none text-text-3">？</span>}
+        {view.type === "person" && !view.monthly && <span className="absolute inset-x-0 bottom-px overflow-hidden whitespace-nowrap text-center text-[0.625rem] font-black leading-[0.6875rem] tracking-tighter text-sq-person">人物</span>}
+        {view.label && !(view.monthly && !current) && <span className="absolute inset-x-0 bottom-px block truncate text-center text-[0.625rem] font-black leading-[0.6875rem] tracking-tighter">{view.label}</span>}
       </div>
+      {prep && !current && <span className="absolute -top-1.5 left-0 right-0 h-1 bg-telop" />}
       {current && <Icon name="ball" size={14} className="absolute -right-1 -top-2 text-white" />}
     </div>
   );

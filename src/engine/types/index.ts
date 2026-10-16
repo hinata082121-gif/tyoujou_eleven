@@ -80,6 +80,23 @@ export interface Player {
   look?: Look;
   /** 背番号（P4。年度の初めに自動で付け直す。P5 で手動で変えられるようにする予定） */
   shirtNumber?: number;
+  // ---- 学校生活（R2。自校の部員だけが持つ。CPU 校の選手は持たない）----
+  /** 学力 0〜100（SPEC 18.2） */
+  academic?: number;
+  /** 前回のテストの点（表示用） */
+  lastTestScore?: number;
+  /** 監督への信頼度 0〜100（SPEC 7.2・18.4） */
+  trust?: number;
+  /** 月初の指示：重点の能力（1〜2 個）。無ければおまかせ（SPEC 18.1） */
+  focus?: StatKey[];
+  /** おまかせで今月決まった重点（練習で使う・表示用） */
+  autoFocus?: StatKey[];
+  /** 補習の残り日数（練習に出られない。試合には出られる） */
+  remedialDays?: number;
+  /** 修学旅行などで練習に出られない残り日数 */
+  awayDays?: number;
+  /** 進路の相談で決めた進路（卒業のときに出やすくなる） */
+  careerHint?: "pro" | "university";
 }
 
 /**
@@ -188,7 +205,8 @@ export interface Prefecture {
 // ================= カレンダー =================
 
 /** ランダムに並ぶ通常マス */
-export type RandomSquareType = "blue" | "red" | "white" | "green" | "yellow" | "training";
+/** person = 人物マス（R2。止まると選択肢のあるイベント） */
+export type RandomSquareType = "blue" | "red" | "white" | "green" | "yellow" | "training" | "person";
 /** branch = 分岐マス（P2c。止まると道を選べる） */
 export type BaseSquareType = RandomSquareType | "branch";
 export type SquareType = BaseSquareType | "major";
@@ -196,13 +214,21 @@ export type SquareType = BaseSquareType | "major";
 export const COMPETITION_KINDS = ["prefQualifier", "national", "summerQualifier", "summerNational", "rookiePref", "rookieRegion"] as const;
 export type CompetitionKind = (typeof COMPETITION_KINDS)[number];
 /** camp：合宿の出発（round 0 = 夏、1 = 冬）。scoutReply：特待生スカウトの返事 */
-export type MajorKind = "entrance" | "practiceMatch" | CompetitionKind | "league" | "camp" | "scoutReply" | "graduation" | "yearEnd";
+/** school：学校行事（R2。event で種類） */
+export type MajorKind = "entrance" | "practiceMatch" | CompetitionKind | "league" | "camp" | "scoutReply" | "graduation" | "yearEnd" | "school";
+
+/** 学校行事（R2。入学式・卒業式は entrance・graduation） */
+export const SCHOOL_EVENT_IDS = ["testPrep", "test", "sportsDay", "culturalFestival", "schoolTrip"] as const;
+export type SchoolEventId = (typeof SCHOOL_EVENT_IDS)[number];
+/** テスト前の方針：休んで勉強・練習を短く・いつもどおり */
+export type TestPrepPolicy = "study" | "short" | "normal";
 
 export interface Square {
   day: number;
   /** 大マスが無効（大会で敗退済みなど）のときに使う通常マスの種類 */
   baseType: BaseSquareType;
-  major?: { kind: MajorKind; round?: number };
+  /** event は学校行事のときだけ（R2）。round はテストの通し番号など */
+  major?: { kind: MajorKind; round?: number; event?: SchoolEventId };
 }
 
 /** 分岐マス（SPEC 5.1。P2c） */
@@ -510,8 +536,52 @@ export interface GameState {
   notes: TacticsNote[];
   /** 前回の試合前に選んだノート */
   selectedNoteId?: string;
+  /** 月初の指示（R2） */
+  monthly?: MonthlyState;
+  /** 学校行事の進み具合（R2） */
+  school?: SchoolLifeState;
+  /** 選択肢のあるイベントの間隔の記録（イベント ID か「ID:選手 ID」→ 最後に起きた通しの日） */
+  eventMemory?: Record<string, number>;
+  /** 結果が後で決まる選択（「次の公式戦に勝てば」など。R2） */
+  promises?: ChoicePromise[];
   history: SeasonRecord[];
   log: LogEntry[];
+}
+
+/** 月初の指示の記録（R2） */
+export interface MonthlyState {
+  /** 指示を出し終えた月（年度の何か月目か。4 月 = 0。年度が替わったら -1） */
+  doneMonth: number;
+  /** 前回の指示のときの能力（選手 ID → ALL_STATS の順の能力。振り返り用） */
+  snap?: Record<string, number[]>;
+  /** snap を取った月（4 月 = 0）。年度をまたいだら -1 */
+  snapMonth?: number;
+  /** 4 月 1 日の能力（4 月の振り返りに 1 年分の伸びを出すため） */
+  yearSnap?: Record<string, number[]>;
+  /** 同じ日に、指示の後に残っているもの（8/1・2/1 は試合、3/1 は卒業式の後に指示） */
+  after?: "major" | "monthly";
+}
+
+/** 学校行事の進み具合（R2） */
+export interface SchoolLifeState {
+  /** 今のテスト前の方針（テストの日まで） */
+  testPrep?: { testDay: number; policy: TestPrepPolicy };
+  /** テスト前の初日（止まった日）の練習を、方針を決めた後で行うための記録 */
+  prepDayPractice?: { day: number; practice: PracticeKind };
+  /** 直前のテストの結果（表示用） */
+  lastTest?: { day: number; label: string; average: number; top?: { id: string; score: number }; failed: string[] };
+  /** 練習試合の申し込み（試合の日 → 相手校の ID。試合の 10 日前に届く） */
+  offers?: Record<number, string>;
+}
+
+/** 結果が後で決まる選択（R2） */
+export interface ChoicePromise {
+  kind: "playNextOfficial" | "winNextOfficial";
+  /** 対象の選手（無ければ全員） */
+  playerId?: string;
+  /** 約束した日（通しの日。年をまたいだら消す） */
+  year: number;
+  day: number;
 }
 
 export type PendingAction =
@@ -527,4 +597,8 @@ export type PendingAction =
   | { type: "branch"; day: number }
   /** 特待生スカウトの返事（P2c） */
   | { type: "scoutReply" }
-  | { type: "yearEnd" };
+  | { type: "yearEnd" }
+  /** 月初の育成指示（R2） */
+  | { type: "monthly"; month: number }
+  /** 選択肢のあるイベント（人物マス・学校行事の選択・合宿の夜。R2）。cast は "lead:ID" などの形 */
+  | { type: "choice"; eventId: string; cast: string[] };

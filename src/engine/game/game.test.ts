@@ -6,7 +6,7 @@ import { dateToDay, nationalDays } from "../calendar";
 import { createBracket } from "../competition/bracket";
 import { Rng } from "../rng";
 import { autoplayYears, autoStep, newAutoplayStats } from "./autoplay";
-import { canSkipWatching, confirmCaptain, defaultSetup, finishStaff, startPlayerMatch } from ".";
+import { canSkipWatching, confirmCaptain, confirmMonthly, defaultSetup, finishStaff, startPlayerMatch } from ".";
 
 describe("ゲームの進行", () => {
   it("学校を作ると、自県 16〜32 校・1〜3 年生がそろった部員・弱小から始まる", () => {
@@ -44,6 +44,11 @@ describe("ゲームの進行", () => {
     expect(s.pending?.type).toBe("captain");
     expect(playCard(s, s.calendar.hand[0].id)).toBeNull();
     expect(confirmCaptain(s, s.schools[s.playerSchoolId].captainId!)).toBeNull();
+    // 4/1 は続けて月初の指示（R2）
+    expect(s.pending).toMatchObject({ type: "monthly", month: 0 });
+    expect(playCard(s, s.calendar.hand[0].id)).toBeNull();
+    confirmMonthly(s);
+    expect(s.pending).toBeUndefined();
     const cal = s.calendar;
     // 直近の必ず止まるマスを探す
     const stop = cal.squares.find((sq) => sq.day > 0 && isStopSquare(s, sq))!;
@@ -105,6 +110,7 @@ describe("ゲームの進行", () => {
     const s = newGame("bye", "D高校");
     finishStaff(s);
     confirmCaptain(s, s.schools[s.playerSchoolId].captainId!);
+    confirmMonthly(s);
     const others = Object.keys(s.schools).filter((id) => id !== s.playerSchoolId).slice(0, 47);
     // 自校を 1 番シード（1 回戦は不戦勝）にした全国大会
     s.competitions.national = createBracket("national", [s.playerSchoolId, ...others], nationalDays(6), Rng.fromSeed("b"));

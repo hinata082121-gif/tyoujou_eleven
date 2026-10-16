@@ -57,6 +57,7 @@ const SQUARE_SWATCH: Record<RandomSquareType, string> = {
   green: "bg-sq-green",
   yellow: "bg-sq-yellow",
   training: "bg-sq-training",
+  person: "bg-sq-person",
 };
 const SQUARE_LINE: Record<RandomSquareType, string> = {
   blue: "border-sq-blue",
@@ -65,8 +66,9 @@ const SQUARE_LINE: Record<RandomSquareType, string> = {
   green: "border-sq-green",
   yellow: "border-sq-yellow",
   training: "border-sq-training",
+  person: "border-sq-person",
 };
-const SQUARE_SHORT: Record<RandomSquareType, string> = { blue: "青", red: "赤", white: "白", green: "緑", yellow: "黄", training: "特訓" };
+const SQUARE_SHORT: Record<RandomSquareType, string> = { blue: "青", red: "赤", white: "白", green: "緑", yellow: "黄", training: "特訓", person: "人" };
 
 // ================= 合宿 =================
 

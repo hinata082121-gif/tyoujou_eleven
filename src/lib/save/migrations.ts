@@ -14,9 +14,9 @@ import { catchUpSkills, initialSkills } from "@/engine/skills/learn";
 import { emptyStaffState, generateCpuStaff, generateFictionalAlumni, makeStaffProfile, makeTemporaryCoach } from "@/engine/staff";
 import { PERSONALITIES, type Alumnus, type Career, type LogEntry, type Personality, type Player, type Position, type School, type SeasonRecord, type Stats } from "@/engine/types";
 import { packGame, packTraits, unpackGame, unpackPlayer, withLookSlot, type PackedPlayer, type PackedTraits } from "./codec";
-import { upgradeToPhase2c, upgradeToPhase3, upgradeToPhase4 } from "@/engine/game";
+import { upgradeToPhase2c, upgradeToPhase3, upgradeToPhase4, upgradeToPhaseR2 } from "@/engine/game";
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type RawSave = { schemaVersion: number; [key: string]: any };
@@ -178,6 +178,16 @@ export function migrateV6toV7(data: RawSave): RawSave {
   return { ...data, schemaVersion: 7, game: packGame(state) };
 }
 
+/**
+ * v7（Phase 4a・R1）→ v8（R2）：部員の圧縮形式の 22 番目（添字 21）に学校生活の欄（学力・信頼度・指示など）を足す。
+ * 自校の部員に学力・信頼度、これから先の日程に学校行事と人物マスを足し、月初の指示は次の 1 日から始める
+ */
+export function migrateV7toV8(data: RawSave): RawSave {
+  const state = unpackGame(structuredClone(data.game));
+  upgradeToPhaseR2(state);
+  return { ...data, schemaVersion: 8, game: packGame(state) };
+}
+
 /** MIGRATIONS[n] は バージョン n → n+1 の変換 */
 export const MIGRATIONS: Record<number, Migration> = {
   2: migrateV2toV3,
@@ -185,6 +195,7 @@ export const MIGRATIONS: Record<number, Migration> = {
   4: migrateV4toV5,
   5: migrateV5toV6,
   6: migrateV6toV7,
+  7: migrateV7toV8,
 };
 
 export const OLD_FORMAT_MESSAGE = "このセーブは古い形式のため読み込めません";

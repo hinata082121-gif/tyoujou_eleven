@@ -24,9 +24,9 @@ describe("カレンダー", () => {
     // 練習試合は年に 4〜6 回（P3 でリーグ戦が入ったため減らした）
     expect(kinds("practiceMatch").length).toBeGreaterThanOrEqual(4);
     expect(kinds("practiceMatch").length).toBeLessThanOrEqual(6);
-    // 通常マスの種類は 5 種類
+    // 通常マスの種類は 7 種類（R2 で人物マスを足した）
     const types = new Set(squares.map((s) => s.baseType));
-    expect([...types].sort()).toEqual(["blue", "green", "red", "training", "white", "yellow"]);
+    expect([...types].sort()).toEqual(["blue", "green", "person", "red", "training", "white", "yellow"]);
   });
 
   it("必ず止まるマスがあれば、その手前で大きな数字を使ってもそこで止まる", () => {

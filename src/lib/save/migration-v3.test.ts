@@ -65,6 +65,9 @@ describe("部員の圧縮形式（v3 で増えた項目）", () => {
     const plain = s.schools[s.playerSchoolId].players[1];
     plain.suspended = 0;
     plain.record = { apps: 0, goals: 0, officialApps: 0, officialGoals: 0 };
+    // 学校生活の値（R2。自校の部員だけ）が無い部員（CPU 校の部員と同じ）
+    delete plain.academic;
+    delete plain.trust;
     const packed = packPlayer(plain);
     // 記録が空なら末尾の 2 つ（出場停止・記録）を省く（17 番目は v4 の traits、18 番目は v7 の見た目）
     expect(packed.length).toBeLessThanOrEqual(18);

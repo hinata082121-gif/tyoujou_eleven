@@ -120,8 +120,8 @@ export function MenuView() {
           {section === "settings" && (
             <div className="flex flex-col gap-2">
               <Toggle checked={settings.skipMove} onChange={(v) => updateSettings({ skipMove: v })} label="すごろくの移動演出をスキップ" />
-              <Setting label="イベントの場面" note="場面で見る：出来事ごとに、立ち絵とせりふの枠で見せる。文章だけ：ホームの右に出来事の文章を並べる">
-                <Segmented options={["scene", "text"] as const} value={settings.eventView} onChange={(v) => updateSettings({ eventView: v })} labels={{ scene: "場面で見る", text: "文章だけ" }} />
+              <Setting label="イベントの場面" note="大事な出来事だけ：選択肢・行事・特殊能力・ケガなどは場面で、ほかは速報に流す。すべて場面：どの出来事も立ち絵とせりふで見せる。文章だけ：場面を出さず、選択肢は小さな枠で選ぶ">
+                <Segmented options={["important", "all", "text"] as const} value={settings.eventView} onChange={(v) => updateSettings({ eventView: v })} labels={{ important: "大事なものだけ", all: "すべて場面", text: "文章だけ" }} />
               </Setting>
               <Setting label="リーグ戦・練習試合の試合（試合前に初めに選ばれる方）">
                 <Segmented options={["manage", "auto"] as const} value={settings.leagueMode} onChange={(v) => updateSettings({ leagueMode: v })} labels={{ manage: "采配あり", auto: "結果のみ" }} />

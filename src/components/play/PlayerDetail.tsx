@@ -1,5 +1,8 @@
 "use client";
 
+import { academicBand, trustBand } from "@/engine/school/life";
+import { LifeBars } from "./LifeBars";
+
 import { useState } from "react";
 import {
   APTITUDE_MARKS,
@@ -46,6 +49,7 @@ export function PlayerDetail() {
   const isCaptain = school.captainId === p.id;
   const skills = [...p.skills].sort((a, b) => TIER_ORDER[SKILL_DEFS[a].tier] - TIER_ORDER[SKILL_DEFS[b].tier]);
   const ovr = overallValue(p);
+  const focusSet = new Set(p.focus ?? p.autoFocus ?? []);
   const expr = p.injuryDays > 0 ? "sad" : p.condition >= 1 ? "joy" : p.condition <= -1 ? "frustrated" : "focus";
 
   return (
@@ -107,13 +111,39 @@ export function PlayerDetail() {
             </div>
           </div>
         </div>
+        {p.academic !== undefined && (
+          <div className="mt-1 grid shrink-0 grid-cols-3 gap-1">
+            <div className="bg-panel px-2 py-1">
+              <div className="flex items-center justify-between whitespace-nowrap text-[0.6875rem] font-bold text-text-3">
+                学力
+                {(p.remedialDays ?? 0) > 0 ? <span className="bg-red px-1 font-black text-white">補習{p.remedialDays}日</span> : p.lastTestScore !== undefined && <span className="text-text-2">前回{p.lastTestScore}点</span>}
+              </div>
+              <div className="mt-1">
+                <LifeBars value={academicBand(p)} label="学力" tone="telop" />
+              </div>
+            </div>
+            <div className="bg-panel px-2 py-1">
+              <div className="whitespace-nowrap text-[0.6875rem] font-bold text-text-3">監督への信頼</div>
+              <div className="mt-1">
+                <LifeBars value={trustBand(p)} label="信頼度" />
+              </div>
+            </div>
+            <div className="bg-panel px-2 py-1">
+              <div className="whitespace-nowrap text-[0.6875rem] font-bold text-text-3">今月の重点</div>
+              <div className="mt-0.5 whitespace-nowrap text-[0.8125rem] font-black">{p.focus ? "監督の指示" : "おまかせ"}</div>
+            </div>
+          </div>
+        )}
         <ul className="scroll-y mt-1 min-h-0 flex-1 bg-panel/90 px-2">
           {visibleStats(p).map((k) => {
             const v = p.stats[k];
             const r = statRank(v);
             return (
-              <li key={k} className="grid h-7 grid-cols-[5.5rem_1.75rem_2rem_1fr] items-center gap-2 border-b border-line text-[0.8125rem]">
-                <span className="truncate font-bold">{statLabel(k)}</span>
+              <li key={k} className="grid h-7 grid-cols-[6.25rem_1.75rem_2rem_1fr] items-center gap-2 border-b border-line text-[0.8125rem]">
+                <span className="flex min-w-0 items-center gap-1 font-bold">
+                  <span className="truncate">{statLabel(k)}</span>
+                  {focusSet.has(k) && <span className="shrink-0 bg-telop px-0.5 text-[0.5625rem] font-black leading-[0.875rem] text-ink">重点</span>}
+                </span>
                 <span className={`font-num flex h-[1.125rem] -skew-x-12 items-center justify-center text-[0.8125rem] font-bold text-ink ${RANK_BG[r]}`}>{r}</span>
                 <span className="font-num text-right text-[1rem]">{v}</span>
                 <span className="h-[0.4375rem] -skew-x-[20deg] bg-panel-3">

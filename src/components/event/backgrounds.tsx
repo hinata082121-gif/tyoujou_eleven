@@ -5,7 +5,7 @@
  */
 import type { ReactNode } from "react";
 
-export type SceneBg = "ground" | "groundDusk" | "groundNight" | "rain" | "clubroom" | "classroom" | "gate" | "infirmary" | "meeting";
+export type SceneBg = "ground" | "groundDusk" | "groundNight" | "rain" | "clubroom" | "classroom" | "gate" | "infirmary" | "meeting" | "sportsDay" | "festival" | "exam" | "entrance" | "gym" | "trip";
 
 export const SCENE_BG_NAMES: Record<SceneBg, string> = {
   ground: "グラウンド",
@@ -17,6 +17,12 @@ export const SCENE_BG_NAMES: Record<SceneBg, string> = {
   gate: "校門",
   infirmary: "保健室",
   meeting: "ミーティングルーム",
+  sportsDay: "体育祭のグラウンド",
+  festival: "文化祭の教室",
+  exam: "試験の教室",
+  entrance: "桜の校門",
+  gym: "体育館（式典）",
+  trip: "旅先の町並み",
 };
 
 function Frame({ children, label }: { children: ReactNode; label: string }) {
@@ -398,6 +404,348 @@ export function MeetingBg() {
   );
 }
 
+const PENNANT = ["#d6372b", "#f2c21b", "#3b8fd0", "#f3f0e6", "#55b865"];
+
+// ---------- 学校行事（R2） ----------
+
+/** 体育祭：校舎・テント・三角の小旗・白線のトラック */
+export function SportsDayBg() {
+  return (
+    <Frame label="体育祭のグラウンド">
+      <defs>
+        <linearGradient id="sd-sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#6fb6e6" />
+          <stop offset="1" stopColor="#d3ebf6" />
+        </linearGradient>
+      </defs>
+      <rect width={960} height={540} fill="url(#sd-sky)" />
+      <g fill="#ffffff" opacity={0.85}>
+        <ellipse cx={180} cy={60} rx={70} ry={16} />
+        <ellipse cx={700} cy={46} rx={80} ry={18} />
+      </g>
+      {/* 校舎 */}
+      <rect x={120} y={110} width={720} height={150} fill="#e8e2d2" />
+      {Array.from({ length: 3 }, (_, r) =>
+        Array.from({ length: 15 }, (_, c) => <rect key={`${r}-${c}`} x={136 + c * 47} y={124 + r * 42} width={28} height={22} fill="#93b7ca" />),
+      )}
+      <circle cx={480} cy={96} r={17} fill="#e8e2d2" />
+      <circle cx={480} cy={96} r={11} fill="#f6f4ec" />
+      {/* 地面（土のグラウンド） */}
+      <rect y={260} width={960} height={280} fill="#c9a777" />
+      <rect y={260} width={960} height={14} fill="#b8946a" />
+      {/* トラックの白線 */}
+      <g fill="none" stroke="#f6f4ec" strokeWidth={4} opacity={0.9}>
+        <path d="M-20,540 Q480,300 980,540" />
+        <path d="M60,540 Q480,340 900,540" />
+        <path d="M140,540 Q480,380 820,540" />
+      </g>
+      {/* テント（左右） */}
+      {[40, 700].map((x, i) => (
+        <g key={i}>
+          <path d={`M${x},250 L${x + 110},214 L${x + 220},250 Z`} fill={i ? "#3b8fd0" : "#d6372b"} />
+          <rect x={x} y={250} width={220} height={10} fill="#f3f0e6" />
+          <rect x={x + 6} y={260} width={6} height={60} fill="#7d8681" />
+          <rect x={x + 208} y={260} width={6} height={60} fill="#7d8681" />
+          <rect x={x + 30} y={300} width={160} height={14} fill="#a8b2ad" />
+        </g>
+      ))}
+      {/* 三角の小旗 */}
+      {[
+        [0, 150, 480, 196],
+        [480, 196, 960, 150],
+      ].map(([x1, y1, x2, y2], j) => (
+        <g key={j}>
+          <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#5a625e" strokeWidth={2} />
+          {Array.from({ length: 12 }, (_, i) => {
+            const t = (i + 0.5) / 12;
+            const x = x1 + (x2 - x1) * t;
+            const y = y1 + (y2 - y1) * t;
+            return <path key={i} d={`M${x - 12},${y} L${x + 12},${y} L${x},${y + 26} Z`} fill={PENNANT[(i + j * 2) % PENNANT.length]} />;
+          })}
+        </g>
+      ))}
+    </Frame>
+  );
+}
+
+/** 試験の教室：黒板・机の列・答案 */
+export function ExamRoomBg() {
+  return (
+    <Frame label="試験の教室">
+      <rect width={960} height={540} fill="#e6dcc4" />
+      <rect width={960} height={28} fill="#d3c8ad" />
+      <rect x={210} y={52} width={540} height={200} fill="#7a5a3a" />
+      <rect x={222} y={64} width={516} height={176} fill="#2f5a45" />
+      <g stroke="#f0eee2" strokeWidth={3} opacity={0.85} fill="none">
+        <path d="M262,104 h170 M262,140 h120 M262,176 h200" />
+        <rect x={560} y={96} width={130} height={110} />
+        <path d="M580,130 h90 M580,160 h70 M580,186 h80" />
+      </g>
+      <rect x={222} y={240} width={516} height={10} fill="#8b6b4a" />
+      {/* 時計 */}
+      <circle cx={850} cy={90} r={30} fill="#f6f4ec" stroke="#5a5048" strokeWidth={5} />
+      <path d="M850,90 v-18 M850,90 h14" stroke="#2a2f2c" strokeWidth={3} />
+      {/* 床と机（答案を載せた机の列） */}
+      <rect y={300} width={960} height={240} fill="#b48f68" />
+      {Array.from({ length: 6 }, (_, i) => (
+        <rect key={i} y={300 + i * 40} width={960} height={2} fill="#a07c57" />
+      ))}
+      {[0, 1, 2].map((r) =>
+        Array.from({ length: 7 }, (_, i) => {
+          const x = 20 + i * 135 + (r % 2) * 40;
+          const y = 320 + r * 70;
+          return (
+            <g key={`${r}-${i}`}>
+              <rect x={x} y={y} width={100} height={14} fill="#c99c60" />
+              <rect x={x + 30} y={y - 6} width={40} height={10} fill="#f8f6ee" />
+              <rect x={x + 6} y={y + 14} width={7} height={36} fill="#6f7a76" />
+              <rect x={x + 87} y={y + 14} width={7} height={36} fill="#6f7a76" />
+            </g>
+          );
+        }),
+      )}
+    </Frame>
+  );
+}
+
+/** 文化祭：飾り付けた教室（輪飾り・紙の花・模造紙の看板・模擬店の台） */
+export function FestivalBg() {
+  return (
+    <Frame label="文化祭の教室">
+      <rect width={960} height={540} fill="#ece2c8" />
+      <rect y={0} width={960} height={30} fill="#d6ccb1" />
+      {/* 黒板に模造紙の看板（文字は書かない） */}
+      <rect x={250} y={60} width={460} height={190} fill="#7a5a3a" />
+      <rect x={262} y={72} width={436} height={166} fill="#2f5a45" />
+      <rect x={300} y={92} width={360} height={120} fill="#f8f3e2" />
+      <g fill="#d6372b">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <rect key={i} x={326 + i * 64} y={118} width={44} height={44} transform={`rotate(${i % 2 ? 6 : -6} ${348 + i * 64} 140)`} fill={["#d6372b", "#f2c21b", "#3b8fd0", "#55b865", "#e07a2e"][i]} />
+        ))}
+      </g>
+      <rect x={330} y={178} width={300} height={10} fill="#c9bf9f" />
+      <Window x={30} y={70} w={180} h={200} sky="#b9def0" />
+      <Window x={750} y={70} w={180} h={200} sky="#b9def0" />
+      {/* 輪飾り（天井から垂れる） */}
+      {[
+        [0, 40, 480, 70],
+        [480, 70, 960, 40],
+      ].map(([x1, y1, x2, y2], j) => (
+        <g key={j}>
+          {Array.from({ length: 16 }, (_, i) => {
+            const t = (i + 0.5) / 16;
+            const x = x1 + (x2 - x1) * t;
+            const y = y1 + (y2 - y1) * t + Math.sin(t * Math.PI) * 26;
+            return <ellipse key={i} cx={x} cy={y} rx={13} ry={8} fill="none" stroke={["#d6372b", "#f2c21b", "#3b8fd0", "#55b865"][(i + j) % 4]} strokeWidth={5} />;
+          })}
+        </g>
+      ))}
+      {/* 紙の花 */}
+      {[
+        [232, 110],
+        [728, 110],
+        [232, 230],
+        [728, 230],
+      ].map(([x, y], i) => (
+        <g key={i}>
+          <circle cx={x} cy={y} r={20} fill={i % 2 ? "#f2c4cf" : "#f6e08a"} />
+          <circle cx={x} cy={y} r={7} fill="#f8f6ee" />
+        </g>
+      ))}
+      <Floor y={330} a="#b89570" b="#a5845f" />
+      {/* 模擬店の台（布をかけた机を寄せたもの） */}
+      <rect x={120} y={360} width={720} height={70} fill="#d6372b" />
+      <g fill="#f3f0e6">
+        {Array.from({ length: 12 }, (_, i) => (
+          <rect key={i} x={120 + i * 60} y={360} width={30} height={70} />
+        ))}
+      </g>
+      <rect x={110} y={350} width={740} height={14} fill="#c99c60" />
+      {[220, 400, 580, 740].map((x) => (
+        <g key={x}>
+          <rect x={x} y={318} width={46} height={32} fill="#f8f6ee" />
+          <rect x={x + 6} y={310} width={34} height={10} fill="#e07a2e" />
+        </g>
+      ))}
+    </Frame>
+  );
+}
+
+/** 散る桜の花びら */
+function Petals({ n, seed }: { n: number; seed: number }) {
+  return (
+    <g fill="#f6cdd6">
+      {Array.from({ length: n }, (_, i) => {
+        const x = (i * 131 + seed * 17) % 960;
+        const y = (i * 71 + seed * 29) % 500;
+        return <ellipse key={i} cx={x} cy={y} rx={6} ry={3.5} transform={`rotate(${(i * 47) % 180} ${x} ${y})`} />;
+      })}
+    </g>
+  );
+}
+
+/** 入学式：満開の桜の校門と、式の立て看板（文字は書かず、紅白の縁取りだけ） */
+export function EntranceBg() {
+  return (
+    <Frame label="桜の校門">
+      <defs>
+        <linearGradient id="bg-ent-sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#9fd0ee" />
+          <stop offset="1" stopColor="#eef5f2" />
+        </linearGradient>
+      </defs>
+      <rect width={960} height={540} fill="url(#bg-ent-sky)" />
+      <SchoolBuilding x={220} y={100} w={520} h={200} wall="#ebe6d8" win="#86a9bd" />
+      {/* 桜並木 */}
+      {[40, 170, 790, 920].map((x, i) => (
+        <g key={x}>
+          <rect x={x - 9} y={170} width={18} height={170} fill="#6b4a35" />
+          <circle cx={x} cy={160} r={78} fill={i % 2 ? "#f6d3dc" : "#f2c4cf"} />
+          <circle cx={x - 52} cy={196} r={50} fill="#f6d3dc" />
+          <circle cx={x + 50} cy={190} r={52} fill="#eebac7" />
+        </g>
+      ))}
+      <rect x={0} y={300} width={960} height={56} fill="#c9c3b3" />
+      <rect x={0} y={296} width={960} height={8} fill="#b3ad9d" />
+      <rect x={300} y={236} width={56} height={150} fill="#a9a393" />
+      <rect x={604} y={236} width={56} height={150} fill="#a9a393" />
+      <rect x={292} y={228} width={72} height={14} fill="#8f8a7b" />
+      <rect x={596} y={228} width={72} height={14} fill="#8f8a7b" />
+      {/* 立て看板（紅白の縁） */}
+      <rect x={650} y={250} width={70} height={140} fill="#f8f6ee" />
+      <rect x={650} y={250} width={70} height={10} fill="#d6372b" />
+      <rect x={650} y={380} width={70} height={10} fill="#d6372b" />
+      <g stroke="#3a3f3c" strokeWidth={4}>
+        {[280, 304, 328, 352].map((y) => (
+          <line key={y} x1={676} y1={y} x2={694} y2={y} />
+        ))}
+      </g>
+      <rect x={656} y={390} width={8} height={30} fill="#7d8681" />
+      <rect x={706} y={390} width={8} height={30} fill="#7d8681" />
+      <path d="M356,386 L604,386 L760,540 L200,540 Z" fill="#b8b1a2" />
+      <rect x={0} y={386} width={960} height={154} fill="#a7a08f" opacity={0.6} />
+      <Petals n={46} seed={3} />
+    </Frame>
+  );
+}
+
+/** 卒業式：体育館の舞台・紅白の幕・並べたいす */
+export function GymBg() {
+  return (
+    <Frame label="体育館（式典）">
+      <rect width={960} height={540} fill="#d9cdb2" />
+      {/* 天井の梁と照明 */}
+      <rect width={960} height={40} fill="#b9ab8c" />
+      {[120, 360, 600, 840].map((x) => (
+        <g key={x}>
+          <rect x={x - 3} y={40} width={6} height={30} fill="#7d7464" />
+          <rect x={x - 22} y={70} width={44} height={12} fill="#f8f3dc" />
+        </g>
+      ))}
+      {/* 窓（高い位置） */}
+      {Array.from({ length: 8 }, (_, i) => (
+        <rect key={i} x={20 + i * 120} y={96} width={80} height={46} fill="#b9def0" stroke="#e9e6dc" strokeWidth={6} />
+      ))}
+      {/* 舞台 */}
+      <rect x={200} y={160} width={560} height={150} fill="#5b3c2a" />
+      <rect x={220} y={172} width={520} height={128} fill="#6e2a2a" />
+      <rect x={200} y={300} width={560} height={30} fill="#8b6b4a" />
+      {/* 紅白の幕（舞台の下と左右の壁） */}
+      <g>
+        {Array.from({ length: 24 }, (_, i) => (
+          <rect key={i} x={i * 40} y={330} width={20} height={44} fill="#d6372b" />
+        ))}
+        {Array.from({ length: 24 }, (_, i) => (
+          <rect key={i} x={i * 40 + 20} y={330} width={20} height={44} fill="#f6f4ec" />
+        ))}
+      </g>
+      {/* 鉢植えの花 */}
+      {[180, 780].map((x) => (
+        <g key={x}>
+          <rect x={x - 26} y={280} width={52} height={50} fill="#7a5a3a" />
+          <circle cx={x - 16} cy={270} r={20} fill="#f2c4cf" />
+          <circle cx={x + 14} cy={266} r={22} fill="#f6e08a" />
+          <circle cx={x} cy={252} r={18} fill="#eebac7" />
+        </g>
+      ))}
+      {/* 床といすの列 */}
+      <rect y={374} width={960} height={166} fill="#c99c60" />
+      {Array.from({ length: 5 }, (_, i) => (
+        <rect key={i} y={374 + i * 34} width={960} height={2} fill="#b0864f" />
+      ))}
+      {[0, 1].map((r) =>
+        Array.from({ length: 16 }, (_, i) => (
+          <g key={`${r}-${i}`}>
+            <rect x={14 + i * 60 + r * 20} y={392 + r * 64} width={36} height={28} fill="#5c6670" />
+            <rect x={14 + i * 60 + r * 20} y={420 + r * 64} width={36} height={8} fill="#48525b" />
+          </g>
+        )),
+      )}
+    </Frame>
+  );
+}
+
+/** 修学旅行：架空の古い町並み（瓦屋根の木造の家・のれん・提灯・石畳・遠くの山） */
+export function TripBg() {
+  return (
+    <Frame label="旅先の町並み">
+      <defs>
+        <linearGradient id="bg-trip-sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#f1b46e" />
+          <stop offset="1" stopColor="#f8e2b8" />
+        </linearGradient>
+      </defs>
+      <rect width={960} height={540} fill="url(#bg-trip-sky)" />
+      {/* 遠くの山と塔 */}
+      <path d="M0,230 L160,130 L300,200 L470,110 L640,210 L800,140 L960,220 V300 H0 Z" fill="#a07a62" opacity={0.55} />
+      <g fill="#6e4a3a" opacity={0.7}>
+        <rect x={472} y={92} width={6} height={30} />
+        {[0, 1, 2, 3].map((i) => (
+          <rect key={i} x={446 - i * 3 + 0} y={118 + i * 26} width={58 + i * 6} height={8} />
+        ))}
+        <rect x={460} y={118} width={30} height={110} />
+      </g>
+      {/* 両側の家並み（手前ほど大きく） */}
+      {[
+        { x: 0, w: 300, y: 170, dir: 1 },
+        { x: 660, w: 300, y: 170, dir: -1 },
+      ].map((h, k) => (
+        <g key={k}>
+          <path
+            d={
+              h.dir > 0
+                ? `M${h.x - 20},${h.y} L${h.x + h.w + 20},${h.y + 30} L${h.x + h.w + 20},${h.y + 60} L${h.x - 20},${h.y + 50} Z`
+                : `M${h.x - 20},${h.y + 30} L${h.x + h.w + 20},${h.y} L${h.x + h.w + 20},${h.y + 50} L${h.x - 20},${h.y + 60} Z`
+            }
+            fill="#4f5458"
+          />
+          <rect x={h.x} y={h.y + 46} width={h.w} height={230} fill="#7a5038" />
+          {Array.from({ length: 5 }, (_, i) => (
+            <rect key={i} x={h.x + 16 + i * 56} y={h.y + 70} width={42} height={70} fill="#c99c60" />
+          ))}
+          {Array.from({ length: 5 }, (_, i) =>
+            Array.from({ length: 4 }, (_, j) => <rect key={`${i}-${j}`} x={h.x + 18 + i * 56 + j * 10} y={h.y + 72} width={3} height={66} fill="#7a5038" />),
+          )}
+          {/* のれん */}
+          <rect x={h.x + (h.dir > 0 ? 190 : 40)} y={h.y + 160} width={70} height={46} fill="#2e4a7a" />
+          <rect x={h.x + (h.dir > 0 ? 224 : 74)} y={h.y + 160} width={3} height={46} fill="#ece2c8" />
+          {/* 提灯 */}
+          <ellipse cx={h.x + (h.dir > 0 ? 160 : 140)} cy={h.y + 176} rx={16} ry={22} fill="#e8573a" />
+          <rect x={h.x + (h.dir > 0 ? 152 : 132)} y={h.y + 152} width={16} height={6} fill="#2a2f2c" />
+        </g>
+      ))}
+      {/* 石畳 */}
+      <path d="M300,300 L660,300 L900,540 L60,540 Z" fill="#b5ad9c" />
+      <g stroke="#9a927f" strokeWidth={3}>
+        {[330, 370, 420, 480, 550].map((y, i) => (
+          <line key={y} x1={300 - i * 50} y1={y} x2={660 + i * 50} y2={y} />
+        ))}
+      </g>
+      <rect y={276} width={960} height={24} fill="#8f8a7b" opacity={0.5} />
+    </Frame>
+  );
+}
+
 export const SCENE_BACKGROUNDS: Record<SceneBg, () => React.JSX.Element> = {
   ground: GroundBg,
   groundDusk: GroundDuskBg,
@@ -408,4 +756,10 @@ export const SCENE_BACKGROUNDS: Record<SceneBg, () => React.JSX.Element> = {
   gate: GateBg,
   infirmary: InfirmaryBg,
   meeting: MeetingBg,
+  sportsDay: SportsDayBg,
+  festival: FestivalBg,
+  exam: ExamRoomBg,
+  entrance: EntranceBg,
+  gym: GymBg,
+  trip: TripBg,
 };

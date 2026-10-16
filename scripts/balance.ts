@@ -15,7 +15,7 @@ import { rankFromStrength, rankIndex, teamStrength } from "../src/engine/school/
 import { SCHOOL_RANKS, type Player, type SchoolRank } from "../src/engine/types";
 import { execFile } from "node:child_process";
 import { join } from "node:path";
-import { collectSeasons, mergeSeasons, reportSeasons, type SeasonData } from "./seasonSim";
+import { collectFocus, collectSeasons, mergeSeasons, reportFocus, reportSeasons, type FocusData, type SeasonData } from "./seasonSim";
 import { scholarQualityTable, tournamentFatigueTable } from "./phase2c";
 import { tacticsMatrix } from "./tacticsMatrix";
 import { underdogTable } from "./underdog";
@@ -24,8 +24,8 @@ import { captainTable, goldTable, graduateSkillTable, styleContributionTable, st
 
 const MODE = process.argv[2] === "full" ? "full" : "quick";
 const PRESETS = {
-  quick: { n: 2000, tactics: 200, combos: false, underdog: 300, seasonGames: 8, seasonYears: 8, cards: 1000, pk: 2000, notes: 500, scenes: 800, growthGames: 3, growthYears: 6, p2bMatches: 600, p2bStyle: 200, p2bTeam: 400, p2cScout: 20, p2cFatigue: 200 },
-  full: { n: 10000, tactics: 600, combos: true, underdog: 1500, seasonGames: 72, seasonYears: 20, cards: 5000, pk: 10000, notes: 3000, scenes: 4000, growthGames: 12, growthYears: 10, p2bMatches: 3000, p2bStyle: 1000, p2bTeam: 2000, p2cScout: 100, p2cFatigue: 1000 },
+  quick: { n: 2000, tactics: 200, combos: false, underdog: 300, seasonGames: 8, seasonYears: 8, focusGames: 3, focusYears: 6, focusChunks: 1, cards: 1000, pk: 2000, notes: 500, scenes: 800, growthGames: 3, growthYears: 6, p2bMatches: 600, p2bStyle: 200, p2bTeam: 400, p2cScout: 20, p2cFatigue: 200 },
+  full: { n: 10000, tactics: 600, combos: true, underdog: 1500, seasonGames: 72, seasonYears: 20, focusGames: 12, focusYears: 10, focusChunks: 2, cards: 5000, pk: 10000, notes: 3000, scenes: 4000, growthGames: 12, growthYears: 10, p2bMatches: 3000, p2bStyle: 1000, p2bTeam: 2000, p2cScout: 100, p2cFatigue: 1000 },
 }[MODE];
 const env = (key: string, fallback: number) => Number(process.env[key] ?? fallback);
 const SEASON_MARK = "@@SEASON@@";
@@ -169,6 +169,12 @@ function coreTable() {
 const WORKERS = env("BALANCE_WORKERS", 4);
 const SEASON_GAMES = env("BALANCE_SEASON_GAMES", PRESETS.seasonGames);
 const SEASON_YEARS = env("BALANCE_SEASON_YEARS", PRESETS.seasonYears);
+/** R2：月初の指示の 3 通りの比べ方（学校の数・年数・分け方） */
+const FOCUS_GAMES = env("BALANCE_FOCUS_GAMES", PRESETS.focusGames);
+const FOCUS_YEARS = env("BALANCE_FOCUS_YEARS", PRESETS.focusYears);
+const FOCUS_CHUNKS = Math.min(FOCUS_GAMES, env("BALANCE_FOCUS_CHUNKS", PRESETS.focusChunks));
+const FOCUS_KINDS = ["none", "auto", "manual"] as const;
+const focusJobs = FOCUS_KINDS.flatMap((f) => Array.from({ length: FOCUS_CHUNKS }, (_, i) => `focus:${f}:${i}`));
 /** 評判の推移を何個に分けるか（学校の数を割る） */
 const SEASON_CHUNKS = Math.min(SEASON_GAMES, Math.max(1, env("BALANCE_SEASON_CHUNKS", WORKERS * 2)));
 
@@ -203,6 +209,11 @@ if (job) {
   if (job.startsWith("season:")) {
     const [from, to] = seasonChunk(Number(job.slice(7)));
     process.stdout.write(`${SEASON_MARK}${JSON.stringify(collectSeasons(from, to, SEASON_YEARS))}`);
+  } else if (job.startsWith("focus:")) {
+    const [, f, i] = job.split(":");
+    const per = Math.ceil(FOCUS_GAMES / FOCUS_CHUNKS);
+    const from = Number(i) * per;
+    process.stdout.write(`${SEASON_MARK}${JSON.stringify(collectFocus(from, Math.min(FOCUS_GAMES, from + per), FOCUS_YEARS, f as (typeof FOCUS_KINDS)[number]))}`);
   } else SECTIONS[job]();
 } else
   orchestrate().catch((e) => {
@@ -223,7 +234,10 @@ async function runJob(name: string): Promise<string> {
 async function orchestrate() {
   const t0 = Date.now();
   // 重いもの（評判の推移の分割）から先に並べる
-  const jobs = [...Array.from({ length: SEASON_CHUNKS }, (_, i) => `season:${i}`), "staffGrowth", "tactics", "scenes", "pk", "notes", "underdog", "core", "cards", "styleContribution", "styleWin", "captain", "gold", "scholarQuality", "tournamentFatigue"];
+  const jobs = [...Array.from({ length: SEASON_CHUNKS }, (_, i) => `season:${i}`), ...focusJobs, "staffGrowth", "tactics", "scenes", "pk", "notes", "underdog", "core", "cards", "styleContribution", "styleWin", "captain", "gold", "scholarQuality", "tournamentFatigue"];
+  // 調整用：BALANCE_ONLY=season,focus のように、名前の頭で仕事を絞れる
+  const only = process.env.BALANCE_ONLY?.split(",");
+  if (only) jobs.splice(0, jobs.length, ...jobs.filter((j) => only.some((o) => j.startsWith(o))));
   const out = new Map<string, string>();
   let next = 0;
   const worker = async () => {
@@ -238,6 +252,7 @@ async function orchestrate() {
       process.stdout.write(out.get(name) ?? "");
       continue;
     }
+    if (!out.has("season:0")) continue;
     const parts: SeasonData[] = [];
     for (let i = 0; i < SEASON_CHUNKS; i++) {
       const txt = out.get(`season:${i}`) ?? "";
@@ -245,6 +260,13 @@ async function orchestrate() {
     }
     const graduates = reportSeasons(mergeSeasons(parts));
     graduateSkillTable(graduates.filter((a) => !a.scholarship));
+    if (focusJobs.every((name) => out.has(name))) {
+      const focus: FocusData[] = focusJobs.map((name) => {
+        const txt = out.get(name) ?? "";
+        return JSON.parse(txt.slice(txt.indexOf(SEASON_MARK) + SEASON_MARK.length));
+      });
+      reportFocus(focus, FOCUS_GAMES, FOCUS_YEARS);
+    }
   }
   console.log(`\n(全体の計算時間 ${((Date.now() - t0) / 1000).toFixed(1)} 秒・${WORKERS} 並列)`);
 }
