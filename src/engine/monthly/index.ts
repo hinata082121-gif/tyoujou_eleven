@@ -159,6 +159,44 @@ export function monthlyReview(state: GameState): MonthlyReview {
   };
 }
 
+/** 通しの月（1 年目の 4 月 = 0） */
+export const serialMonth = (year: number, month: number) => (year - 1) * 12 + month;
+
+/**
+ * 重点にしてからの累計の伸びの記録を、今月の重点に合わせる（R3。計画 4.2）。
+ * 「指示」でも「おまかせ」でも、同じ能力が重点のままなら数え続ける。重点から外した能力・いなくなった選手の記録は消す
+ */
+export function updateFocusLog(log: NonNullable<MonthlyState["focusLog"]>, players: readonly Player[], now: number) {
+  const ids = new Set(players.map((p) => p.id));
+  for (const id of Object.keys(log)) if (!ids.has(id)) delete log[id];
+  for (const p of players) {
+    const focus = effectiveFocus(p);
+    const rec = log[p.id] ?? {};
+    for (const k of Object.keys(rec) as StatKey[]) if (!focus.includes(k)) delete rec[k];
+    for (const k of focus) rec[k] ??= [now, p.stats[k]];
+    if (Object.keys(rec).length > 0) log[p.id] = rec;
+    else delete log[p.id];
+  }
+}
+
+/** 重点の能力ごとの、重点にしてからの月数と伸び（months 0 は今月から） */
+export interface FocusStreak {
+  stat: StatKey;
+  months: number;
+  gain: number;
+}
+
+/** 今の重点の能力ごとに、重点にしてから何か月・どれだけ伸びたか（月初の指示の画面に出す） */
+export function focusStreaks(state: GameState, p: Player): FocusStreak[] {
+  const month = state.pending?.type === "monthly" ? state.pending.month : monthIndex(state.calendar.position);
+  const now = serialMonth(state.year, month);
+  const rec = state.monthly?.focusLog?.[p.id] ?? {};
+  return effectiveFocus(p).map((stat) => {
+    const r = rec[stat];
+    return r ? { stat, months: Math.max(0, now - r[0]), gain: Math.max(0, p.stats[stat] - r[1]) } : { stat, months: 0, gain: 0 };
+  });
+}
+
 /** 指示を決めて閉じる。能力の記録を取り直す */
 export function finishMonthly(state: GameState): boolean {
   const p = state.pending;
@@ -166,7 +204,9 @@ export function finishMonthly(state: GameState): boolean {
   const players = playerSchool(state).players.filter((x) => x.status === "active");
   const snap = Object.fromEntries(players.map((x) => [x.id, statsArray(x.stats)]));
   const prev: MonthlyState = state.monthly ?? { doneMonth: -1 };
-  state.monthly = { ...prev, doneMonth: p.month, snap, snapMonth: p.month, ...(p.month === 0 ? { yearSnap: snap } : {}) };
+  const focusLog = { ...(prev.focusLog ?? {}) };
+  updateFocusLog(focusLog, players, serialMonth(state.year, p.month));
+  state.monthly = { ...prev, doneMonth: p.month, snap, snapMonth: p.month, ...(p.month === 0 ? { yearSnap: snap } : {}), focusLog };
   state.pending = undefined;
   return true;
 }

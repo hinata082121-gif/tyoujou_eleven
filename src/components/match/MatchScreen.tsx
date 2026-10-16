@@ -22,6 +22,8 @@ import { TacticsEditor } from "./TacticsEditor";
 import { webglSupported } from "@/view3d/webgl";
 import type { LoadTimes } from "@/view3d/Match3D";
 import { shortNames } from "@/lib/names";
+import { MOVE } from "@/engine/config/replay";
+import { replayFor } from "@/engine/replay/sim";
 
 /** 3D の描画（three）は、3D で観戦するときだけ読み込む（P4。ほかの画面の読み込みを重くしない） */
 const loadTimes: LoadTimes = { start: 0 };
@@ -129,6 +131,8 @@ export function MatchScreen() {
     setPanel(true);
   }, [display, panel, ms, side, breaksOnly]);
 
+  // テキストだけの表示は描画のループが無いので、ここで動きを少しずつ計算する（速報・スコアの時刻に使う）
+  if (!use3d && !view2d) replayFor(ms).pump(display, MOVE.pump.textSteps);
   const events = shownEvents(ms, display);
 
   if (inPk) return <PkScreen />;

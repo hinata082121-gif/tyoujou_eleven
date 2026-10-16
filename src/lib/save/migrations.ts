@@ -16,7 +16,7 @@ import { PERSONALITIES, type Alumnus, type Career, type LogEntry, type Personali
 import { packGame, packTraits, unpackGame, unpackPlayer, withLookSlot, type PackedPlayer, type PackedTraits } from "./codec";
 import { upgradeToPhase2c, upgradeToPhase3, upgradeToPhase4, upgradeToPhaseR2 } from "@/engine/game";
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type RawSave = { schemaVersion: number; [key: string]: any };
@@ -188,6 +188,14 @@ export function migrateV7toV8(data: RawSave): RawSave {
   return { ...data, schemaVersion: 8, game: packGame(state) };
 }
 
+/**
+ * v8（R2）→ v9（R3）：月初の指示に、重点にしてからの累計の伸びの記録（monthly.focusLog）を足す。
+ * それより前の分は分からないので遡らず、移行の後の最初の月初の指示から数え始める（記録は空のまま）
+ */
+export function migrateV8toV9(data: RawSave): RawSave {
+  return { ...data, schemaVersion: 9, game: structuredClone(data.game) };
+}
+
 /** MIGRATIONS[n] は バージョン n → n+1 の変換 */
 export const MIGRATIONS: Record<number, Migration> = {
   2: migrateV2toV3,
@@ -196,6 +204,7 @@ export const MIGRATIONS: Record<number, Migration> = {
   5: migrateV5toV6,
   6: migrateV6toV7,
   7: migrateV7toV8,
+  8: migrateV8toV9,
 };
 
 export const OLD_FORMAT_MESSAGE = "このセーブは古い形式のため読み込めません";

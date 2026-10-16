@@ -560,6 +560,11 @@ export interface MonthlyState {
   yearSnap?: Record<string, number[]>;
   /** 同じ日に、指示の後に残っているもの（8/1・2/1 は試合、3/1 は卒業式の後に指示） */
   after?: "major" | "monthly";
+  /**
+   * 重点にしてからの累計の伸びの記録（R3。表示だけで、成長の計算・試合・乱数には使わない。スキーマ v9）。
+   * 選手 ID → 能力 → [重点にした月（通しの月。1 年目の 4 月 = 0）, そのときの値]。重点から外したら消す
+   */
+  focusLog?: Record<string, Partial<Record<StatKey, [number, number]>>>;
 }
 
 /** 学校行事の進み具合（R2） */

@@ -334,7 +334,7 @@ export class ReplaySim {
    * まだ起きていなければ undefined。ハーフタイム・試合終了などで時計が追いついたときは、起きていないキーも予定の時刻で出す
    */
   shownAt(index: number, display: number): number | undefined {
-    this.advance(display);
+    this.sync();
     const f = this.firedAt[index];
     if (f !== undefined) return f;
     const st = this.schedule.times[index];
@@ -354,6 +354,22 @@ export class ReplaySim {
   private markFired(f: Fired) {
     this.fired.push(f);
     this.firedAt[f.key.index] = f.t;
+  }
+
+  /**
+   * 時刻 t まで、多くても maxSteps 歩だけ動かす（再開したときなどの重い計算を 1 フレームに詰めず、画面を止めない）。
+   * 追いついたら true
+   */
+  pump(t: number, maxSteps: number): boolean {
+    this.sync();
+    const last = Math.floor(Math.min(t, this.limit) / STEP + 1e-6);
+    for (let n = 0; this.steps <= last && n < maxSteps; n++) this.stepOnce(this.steps++);
+    return this.steps > last;
+  }
+
+  /** 計算が済んだ最後の時刻（分） */
+  get computed(): number {
+    return Math.max(0, (this.steps - 1) * STEP);
   }
 
   /** 時刻 t まで動かす（計算が済んだ区間の中で） */

@@ -211,6 +211,32 @@ describe("選手とボールが常に動く（R3。計画 1 章）", () => {
     expect(checked).toBeGreaterThan(5);
   });
 
+  it("速報・スコアに出す時刻：ゴールはボールが入った時刻より前には出ない。ハーフタイム・試合終了で時計が追いついたら、すべて出る", () => {
+    let goals = 0;
+    for (const sim of SIMS) {
+      const ms = sim.ms;
+      for (const f of sim.fired) {
+        if (f.key.type !== "goal") continue;
+        expect(sim.isShown(f.key.index, f.t - 0.01)).toBe(false);
+        expect(sim.isShown(f.key.index, f.t)).toBe(true);
+        goals++;
+      }
+      // 試合が終わって時計が追いついたら、どのイベントも出ている
+      ms.events.forEach((_, i) => expect(sim.isShown(i, ms.minute)).toBe(true));
+    }
+    expect(goals).toBeGreaterThan(5);
+  });
+
+  it("少しずつ動かしても（1 フレームの歩数の上限つき）、一度に動かしたのと同じ動きになる", () => {
+    const ms = SIMS[1].ms;
+    const a = new ReplaySim(ms);
+    let frames = 0;
+    while (!a.pump(ms.minute, MOVE.pump.frameSteps)) frames++;
+    expect(frames).toBeGreaterThan(50);
+    expect(a.fired.map((f) => [f.key.index, f.t])).toEqual(SIMS[1].fired.map((f) => [f.key.index, f.t]));
+    for (let t = 0; t <= ms.minute; t += 1.7) expect(a.frame(t, 0)).toEqual(SIMS[1].frame(t, 0));
+  });
+
   it("コーナーキックを蹴るときは、攻める側の 4 人以上と守る側の 4 人以上がペナルティエリアの中にいる（間に合わなければ場面を切り替えて並べる）", () => {
     let n = 0;
     for (const sim of SIMS)

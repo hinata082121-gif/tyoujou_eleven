@@ -95,9 +95,12 @@ export class Animator {
   }
 
   /** t：試合時間（分）、dt：前のフレームからの現実の秒、speed：倍速。カメラ用の場面を返す */
-  update(t: number, dt: number, speed: number): CameraShot {
+  update(t0: number, dt: number, speed: number): CameraShot {
     const sim = this.sim;
-    const f = sim.frame(t);
+    // 動きの計算は 1 フレームに少しずつ（再開したときは、追いつくまで計算が済んだ所を見せる）
+    sim.pump(t0 + MOVE.pump.ahead, MOVE.pump.frameSteps);
+    const t = Math.min(t0, sim.computed);
+    const f = sim.frame(t, 0);
     const script = scriptFor(sim);
     activeCues(script, t, this.cues);
     this.idleT += dt;
@@ -185,7 +188,8 @@ export class Animator {
   }
 
   /** 場面の切り替え（セットプレーの並び直し）の近くでは、画面を少し暗くする（0〜1） */
-  cutFade(t: number): number {
+  cutFade(t0: number): number {
+    const t = Math.min(t0, this.sim.computed);
     let k = 0;
     for (const c of this.sim.cuts) {
       const d = Math.abs(t - c);
