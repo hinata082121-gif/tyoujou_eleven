@@ -207,10 +207,11 @@ export function ChoiceScreen() {
         const o = confirm(idx);
         if (o) pushScenes([o]);
       }}
-      className="pressable cut-r min-h-11 flex-1 bg-telop py-1.5 pl-3 pr-6 text-left text-[0.875rem] font-black leading-snug text-ink shadow-hard"
+      className="pressable cut-r flex min-h-11 flex-1 items-center gap-1.5 bg-telop py-1.5 pl-3 pr-6 text-left text-[0.875rem] font-black leading-snug text-ink shadow-hard"
     >
-      <span className="font-num mr-1.5 text-[0.75rem] text-red-2">{idx + 1}</span>
-      {label}
+      <span className="font-num shrink-0 text-[0.75rem] text-red-2">{idx + 1}</span>
+      {/* 1 文字だけ次の行に落ちないよう、行の長さをそろえ、言葉の切れ目で折り返す */}
+      <span className="text-balance [word-break:auto-phrase]">{label}</span>
     </button>
   ));
   return <EventScene key={view.def.id} scenes={scenes} onDone={() => undefined} choices={choices} compact={mode === "text"} skippable={false} />;

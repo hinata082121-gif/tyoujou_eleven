@@ -10,7 +10,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "balance:quick": "tsx scripts/balance.ts quick",
-    "balance:full": "tsx scripts/balance.ts full"
+    "balance:full": "tsx scripts/balance.ts full",
+    "balance:national": "tsx scripts/balance.ts national"
   },
   "dependencies": {
     "lz-string": "^1.5.0",

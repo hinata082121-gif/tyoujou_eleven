@@ -22,6 +22,7 @@ import { PkScreen } from "./PkScreen";
 import { TacticsEditor } from "./TacticsEditor";
 import { webglSupported } from "@/view3d/webgl";
 import type { LoadTimes } from "@/view3d/Match3D";
+import { shortNames } from "@/lib/names";
 
 /** 3D の描画（three）は、3D で観戦するときだけ読み込む（P4。ほかの画面の読み込みを重くしない） */
 const loadTimes: LoadTimes = { start: 0 };
@@ -495,7 +496,7 @@ function OrdersPanel({
                     {inPending && (
                       <span className="flex shrink-0 items-center gap-0.5 text-[0.6875rem] font-bold text-warn">
                         <Icon name="sub" size={12} />
-                        {team.players[pending!.subs.find((s) => s.in === id)!.out].name.split(" ")[0]}と交代
+                        {shortNames(Object.values(team.players)).get(pending!.subs.find((s) => s.in === id)!.out)}と交代
                       </span>
                     )}
                   </button>

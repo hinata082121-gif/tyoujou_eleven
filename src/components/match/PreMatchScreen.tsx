@@ -18,6 +18,7 @@ import { KitFigure, PlayerFace } from "../look/Figure";
 import { usePortrait } from "../shell/usePortrait";
 import { Bar, Button, fitnessColor, IconButton, Label, RankBadge, Screen } from "../ui";
 import { TacticsEditor } from "./TacticsEditor";
+import { shortNames } from "@/lib/names";
 
 type Tab = "players" | "tactics" | "note" | "opponent";
 
@@ -59,6 +60,7 @@ export function PreMatchScreen() {
     setMatchDraft({ key: draftKey, setup, noteId });
   }, [draftKey, setup, noteId, setMatchDraft]);
   const byId = new Map(school.players.map((p) => [p.id, p]));
+  const short = shortNames(school.players.filter((p) => p.status === "active"));
   const pool = eligiblePlayers(game);
   const poolIds = new Set(pool.map((p) => p.id));
   const official = pendingIsOfficial(game);
@@ -210,7 +212,7 @@ export function PreMatchScreen() {
                     {pl?.shirtNumber !== undefined && <span className="font-num absolute -bottom-0.5 -right-2 bg-ink px-0.5 text-[0.625rem] leading-tight text-text">{pl.shirtNumber}</span>}
                   </span>
                   <span className={`mt-0.5 max-w-full truncate px-1 text-[0.6875rem] font-black leading-tight ${selected ? "bg-yellow text-ink" : "bg-panel/85 text-text"}`}>
-                    {pl ? pl.name.split(" ")[0] : "空き"}
+                    {pl ? short.get(pl.id) : "空き"}
                   </span>
                   {pl && (
                     <span className="mt-px flex w-9">
@@ -452,6 +454,7 @@ function LineupAnnounce({ school, label, opponent, players, kit, gkColor, onDone
     const t = setTimeout(onDone, 4200);
     return () => clearTimeout(t);
   }, [onDone, portrait]);
+  const short = shortNames(players.map((x) => x.p));
   // 後ろの段に GK と DF、前の段に MF と FW（前の段を大きく）
   const back = players.filter((x) => x.slot.line === "GK" || x.slot.line === "DF");
   const front = players.filter((x) => x.slot.line !== "GK" && x.slot.line !== "DF");
@@ -462,7 +465,7 @@ function LineupAnnounce({ school, label, opponent, players, kit, gkColor, onDone
         <KitFigure kit={x.slot.pos === "GK" ? gkKit(gkColor) : kit} number={x.p.shirtNumber} look={x.p.look} expr={j % 3 === 0 ? "focus" : "normal"} size={size} height={b.height} build={b.build} />
         <div className="-mt-1 flex max-w-full items-center bg-panel">
           <span className="font-num bg-yellow px-1 text-[0.75rem] text-ink">{x.p.shirtNumber ?? ""}</span>
-          <span className="truncate px-1 text-[0.6875rem] font-black">{x.p.name.split(" ")[0]}</span>
+          <span className="truncate px-1 text-[0.6875rem] font-black">{short.get(x.p.id)}</span>
         </div>
       </div>
     );
