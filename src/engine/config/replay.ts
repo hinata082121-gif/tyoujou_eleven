@@ -104,3 +104,79 @@ export const MOTION_TIMING = {
     shot: { min: 0.4, max: 3.0 },
   },
 };
+
+/**
+ * 選手とボールが常に動く演出（R3。計画 1 章）の数値。表示だけで、試合の結果には関わらない。
+ * 長さは m、時刻は試合時間の分。速さは「現実の m/秒」で書き、等速の換算（試合の 1 分 = 現実の 4 秒）で分あたりにする
+ */
+export const MOVE = {
+  /** ピッチ（m）：長さ・幅 */
+  pitch: { length: 105, width: 68 },
+  /** 1 歩の長さ（試合時間の分。等速で 0.1 秒） */
+  step: 0.025,
+  /** 等速での現実の秒 / 試合の 1 分（SPEC 10.7） */
+  secondsPerMinute: 4,
+  /** 走る速さの上限（m/秒）：base + perSpeed × スピード / 100 */
+  run: { base: 6.0, perSpeed: 2.8 },
+  /** 加速の上限（m/秒²） */
+  accel: 5.5,
+  /** 疲れ：体力 fullAt 以上は 1、0 で minMult（速さの上限と、立ち位置へ戻る動きの大きさに掛ける） */
+  fatigue: { fullAt: 80, minSpeed: 0.72, minReach: 0.7 },
+  /** ふだんの動きの速さ（上限に対する割合）。約束に向かう・プレス・切り替えは 1 */
+  urgency: { idle: 0.55, appointment: 0.75, setPiece: 0.85, press: 0.9 },
+  /** 間隔：味方どうしは必ず sepTeam 以上（2D の丸が重ならない）。相手とはふだん sepOpp、競り合いは duel */
+  separation: { sepTeam: 3.6, sepOpp: 2.4, duel: 1.4, steerTeam: 5.0, sidestep: 2.0 },
+  /** ボールの速さ（m/秒）。dribble はボールを運ぶ速さ */
+  ball: { pass: 17, air: 21, lofted: 19, shot: 27, dribble: 5.6, throwIn: 12 },
+  /** ボールの区間の最低の長さ（分） */
+  legMin: { pass: 0.03, air: 0.08, lofted: 0.08, shot: 0.02 },
+  /** 浮き球の頂点（m）：air は 3 + 距離 × 0.16（上限 14）、lofted（クロス・CK）は 6、shot は 1.2 */
+  peak: { airBase: 3, airPerMeter: 0.16, airMax: 14, lofted: 6, shot: 1.2, throwIn: 2.5 },
+  /**
+   * 時刻の割り付け（計画 1.2）：前のイベントからの間隔の目安（分）。
+   * 0.1 + ボールの距離 ÷ pass の速さ。同じ選手が運ぶならドリブルの速さ。止まるプレーの前後は長め
+   */
+  gap: { base: 0.1, travel: 14, carry: 6.5, afterGoal: 0.9, afterMiss: 0.35, beforeSetPiece: 1.0, afterFoul: 0.25, afterPhaseStart: 0.3 },
+  /** 速報に出るイベントの時刻：その分の (m − 1 + lead, m − tail] に入れる。区間の始めの分は segmentLead から */
+  window: { lead: 0.04, tail: 0.02, segmentLead: 0.3 },
+  /** 先読み：次のイベントの選手が動き出すのは何分前から（セットプレーは長め） */
+  lookahead: { play: 1.2, setPiece: 3.5, cornerGather: 1.6, keys: 3 },
+  /** 約束（次のキーに間に合う）：速さの上限 × go × 残り時間より遠ければまっすぐ向かう。近ければ keep の範囲でふだんの動き */
+  appointment: { play: { go: 0.8, keep: 0.7 }, setPiece: { go: 0.6, keep: 0.5 } },
+  /** 切り替え（計画 1.6・承認のときの修正 1）：奪われた側は近くの選手が全力で戻り、奪った側は 2〜3 人が前へ走る */
+  transition: {
+    minutes: 1.0,
+    counterMinutes: 1.4,
+    recoverRadius: 38,
+    runners: 2,
+    counterRunners: 3,
+    /** 前へ走る人の行き先：ボールの runAhead m 先、自分の今の位置の runPast m 先。相手の最終ラインを beatLine（奥行き）まで越えてよい */
+    runAhead: 18,
+    runPast: 16,
+    beatLine: 0.05,
+    /** 奪った側のほかの選手：ボールがこれだけ前にあるつもりで押し上げる（奥行き） */
+    pushUp: 0.12,
+    /** 奪われた側の戻る選手：今の位置より少なくとも dropBack m 自陣へ */
+    dropBack: 8,
+  },
+  /** プレスの人数（高・中・低）。低は自陣（奥行き 0.45 未満）に入ったら 1 人 */
+  pressers: { high: 2, mid: 1, low: 0 },
+  /** 交代で出入りするところ（タッチラインの中央、ベンチの側） */
+  bench: { x: 0.6 },
+  /** ゴールの喜び（分）：味方が得点者に寄る時間 */
+  celebrate: 0.35,
+  /** ボールの高さ（実寸の m。地面はボールの半径）。頭の高さ・GK が跳んで取る高さ・シュートが枠へ向かう高さの幅（外れは上へ） */
+  height: { ground: 0.11, hands: 2, head: 2.0, gkHigh: 2.45, shot: { min: 0.25, max: 1.9, overMiss: 0.5 } },
+  /** ドリブル：ボールは運ぶ人の足もと（前へ m） */
+  carry: { ahead: 0.7 },
+  /** セットプレー：蹴る人がボールのそばに来るまで待つ（m・最大の分。前半・後半などの終わりの何分前まで）。待ちきれなければ、場面を切り替えて並びに置き直す */
+  setWait: { near: 1.6, max: 0.45, phaseEnd: 0.4 },
+  /** ヘディングの後、同じ選手のシュートがこの分より近ければ、頭で触れたその場で打つ */
+  headShot: 0.5,
+  /** 減速・向きを変えるときの加速の上限（走り出すときの何倍か） */
+  decel: 1.6,
+  /** 2D の選手の丸の半径（m）。味方どうしの間隔 sepTeam は、この 2 倍より広くする（丸が重ならない） */
+  disc2d: 1.65,
+  /** 選手が出てよいピッチの外（m。スローイン・コーナーキック） */
+  outside: 1.2,
+} as const;
