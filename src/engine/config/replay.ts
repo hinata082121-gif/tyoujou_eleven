@@ -139,10 +139,17 @@ export const MOVE = {
   gap: { base: 0.1, travel: 14, carry: 6.5, afterGoal: 0.9, afterMiss: 0.35, beforeSetPiece: 1.0, afterFoul: 0.25, afterPhaseStart: 0.3 },
   /** 速報に出るイベントの時刻：その分の (m − 1 + lead, m − tail] に入れる。区間の始めの分は segmentLead から */
   window: { lead: 0.04, tail: 0.02, segmentLead: 0.3 },
-  /** 先読み：次のイベントの選手が動き出すのは何分前から（セットプレーは長め）。setHold：セットプレーを蹴った後もゴール前の並びを保つ長さ */
-  lookahead: { play: 1.2, setPiece: 3.5, cornerGather: 1.6, keys: 3, setHold: 0.4 },
-  /** 約束（次のキーに間に合う）：速さの上限 × go × 残り時間より遠ければまっすぐ向かう。近ければ keep の範囲でふだんの動き */
-  appointment: { play: { go: 0.8, keep: 0.7 }, setPiece: { go: 0.6, keep: 0.5 } },
+  /**
+   * シュートにつながる攻めの場所を寄せる：シュートを打つ選手が、前のキーの場所から pace（現実の m/秒）で間に合う所まで。
+   * その選手が前のキーのボールの所にいれば base m、パスを受ける側なら pass m の余裕を見る
+   */
+  chain: { pace: 5, base: 4, pass: 10 },
+  /** GK が 1 対 1 などで飛び出す、ゴールからの距離の上限（m） */
+  gkReach: 16,
+  /** 先読み：次のイベントの選手が動き出すのは何分前から（シュート・セットプレーは長め）。setHold：セットプレーを蹴った後もゴール前の並びを保つ長さ */
+  lookahead: { play: 1.2, shot: 2.0, setPiece: 3.5, cornerGather: 1.6, keys: 3, setHold: 0.4 },
+  /** 約束（次のキーに間に合う）：速さの上限 × go × 残り時間より遠ければまっすぐ向かう。近ければ keep の範囲でふだんの動き。つなぎのパスを受ける約束は、受ける時刻の passExpire 分後に消す */
+  appointment: { play: { go: 0.8, keep: 0.7 }, setPiece: { go: 0.6, keep: 0.5 }, passExpire: 0.05 },
   /** 切り替え（計画 1.6・承認のときの修正 1）：奪われた側は近くの選手が全力で戻り、奪った側は 2〜3 人が前へ走る */
   transition: {
     minutes: 1.0,
@@ -178,8 +185,9 @@ export const MOVE = {
   /**
    * 画面の 1 フレームで動きを計算する歩数の上限（計画 5.1：1 フレーム 8ms 以内。1 歩は遅いスマホで 0.2ms ほど）。
    * 40 歩 = 試合時間 1 分なので、60fps なら 1 秒で 60 分ぶん追いつく。テキストだけの表示は、0.1 秒ごとに textSteps 歩
+   * 途中から再開して seekGap 分より遅れているときは、画面を暗くして 1 フレーム seekSteps 歩（10 分）ずつ追いつく
    */
-  pump: { frameSteps: 40, textSteps: 200, ahead: 0.6 },
+  pump: { frameSteps: 40, textSteps: 200, ahead: 0.6, seekGap: 1, seekSteps: 400 },
   /** ヘディングの後、同じ選手のシュートがこの分より近ければ、頭で触れたその場で打つ */
   headShot: 0.5,
   /** 減速・向きを変えるときの加速の上限（走り出すときの何倍か） */

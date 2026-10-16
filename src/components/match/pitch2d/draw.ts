@@ -479,18 +479,23 @@ export function cutFade(sim: ReplaySim, t: number, span = 0.06): number {
   return k;
 }
 
-/** 1 コマを描く。w・h は CSS の px（ctx は画素密度を掛けてある） */
-export function drawFrame(ctx: CanvasRenderingContext2D, w: number, h: number, sim: ReplaySim, t0: number, o: DrawOptions) {
+/** 1 コマを描く。w・h は CSS の px（ctx は画素密度を掛けてある）。動きの計算がまだ追いついていなければ true */
+export function drawFrame(ctx: CanvasRenderingContext2D, w: number, h: number, sim: ReplaySim, t0: number, o: DrawOptions): boolean {
   const ms = sim.ms;
-  // 動きの計算は 1 フレームに少しずつ（再開したときは、追いつくまで計算が済んだ所を見せる。計画 5.1）
-  sim.pump(t0 + MOVE.pump.ahead, MOVE.pump.frameSteps);
-  const t = Math.min(t0, sim.computed);
-  const f = sim.frame(t, 0);
+  // 動きの計算は 1 フレームに少しずつ（計画 5.1）
+  const { t, seeking } = sim.pumpFrame(t0);
   const pr = project(w, h, o.userSide, o.insets);
   const k = pr.k;
   ctx.fillStyle = C.night;
   ctx.fillRect(0, 0, w, h);
   pitch(ctx, pr);
+  if (seeking) {
+    // 途中から再開して追いつくまでは、選手を描かない
+    ctx.fillStyle = "rgba(11,18,15,0.85)";
+    ctx.fillRect(0, 0, w, h);
+    return true;
+  }
+  const f = sim.frame(t, 0);
   if (o.tactical) tacticalOverlay(ctx, pr, f, sim, ms);
   trail(ctx, pr, f);
 
@@ -587,4 +592,5 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: number, h: number, s
     ctx.fillStyle = `rgba(11,18,15,${(0.85 * fade).toFixed(3)})`;
     ctx.fillRect(0, 0, w, h);
   }
+  return false;
 }

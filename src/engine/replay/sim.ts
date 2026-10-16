@@ -113,6 +113,8 @@ const ownGoal = (side: Side): V => ({ x: PW / 2, y: side === 0 ? PL : 0 });
 const GOALLINE = new Set<MatchEventType>(["goal", "miss", "pkGoal", "pkMiss", "pkSaved"]);
 const DELIVER_BY_MAIN = new Set<MatchEventType>(["longBall", "switchPlay", "longBallShort", "longBallLost"]);
 const CARDS = new Set<MatchEventType>(["yellow", "red", "secondYellow"]);
+/** シュート（打つ選手は早めにゴール前へ向かう） */
+const SHOT_KEYS = new Set<MatchEventType>(["shot", "oneOnOne", "header", "rebound"]);
 const DUELS = new Set<MatchEventType>(["dribbleFail", "passBlocked", "dribble", "foul", "block", "oneOnOne"]);
 
 /** ボールが来たときに、だれがボールの所にいるか（main / other / なし） */
@@ -247,7 +249,8 @@ export class ReplaySim {
   /** 頭で触れた直後（次のボールは頭から出る。足もとへ落とさない） */
   private headed = false;
   /** 約束：選手 → 場所と時刻 */
-  private appts = new Map<number, { t: number; at: V; set?: boolean }>();
+  /** 約束：その時刻にその場所へ（set：セットプレー。pass：つなぎのパスを受ける。受ける時刻を過ぎたら消す） */
+  private appts = new Map<number, { t: number; at: V; set?: boolean; pass?: boolean }>();
   private trans: Transition | null = null;
   /** 場面を切り替えて並べ直したセットプレー（keys の添字。2 度は切り替えない） */
   private cutFor = -1;
@@ -340,6 +343,8 @@ export class ReplaySim {
     const st = this.schedule.times[index];
     if (st === undefined) return undefined;
     if (!this.keyOf.has(index)) return st;
+    // 途中から再開して動きの計算が追いついていない間は、予定の時刻で出す（画面は暗くしている）
+    if (this.lagging(display)) return st;
     const ms = this.ms;
     const settled = display >= ms.minute - 1e-9 && ms.phase !== "H1" && ms.phase !== "H2" && ms.phase !== "ET1" && ms.phase !== "ET2";
     return settled ? st : undefined;
@@ -365,6 +370,22 @@ export class ReplaySim {
     const last = Math.floor(Math.min(t, this.limit) / STEP + 1e-6);
     for (let n = 0; this.steps <= last && n < maxSteps; n++) this.stepOnce(this.steps++);
     return this.steps > last;
+  }
+
+  /**
+   * 表示の時刻 t0 に向けて 1 フレームぶん計算する（計画 5.1）。大きく遅れているとき（途中から再開したとき）は多めに計算する。
+   * 描く時刻と、まだ追いついていないか（追いつくまでは画面を暗くして、早送りのような動きを見せない）を返す
+   */
+  pumpFrame(t0: number): { t: number; seeking: boolean } {
+    const p = MOVE.pump;
+    this.pump(t0 + p.ahead, this.lagging(t0) ? p.seekSteps : p.frameSteps);
+    return { t: Math.min(t0, this.computed), seeking: this.lagging(t0) };
+  }
+
+  /** 表示の時刻 t0 より、計算が大きく遅れているか */
+  lagging(t0: number): boolean {
+    this.sync();
+    return Math.min(t0, this.limit) - this.computed > MOVE.pump.seekGap;
   }
 
   /** 計算が済んだ最後の時刻（分） */
@@ -622,7 +643,7 @@ export class ReplaySim {
       this.legs.push(leg);
       if (carrier >= 0) this.kicks.push({ t, id: this.players[carrier].id, kind, set, head: (kind !== "throw" && h0 >= MOVE.height.head - 0.3) || undefined });
     }
-    if (receiver >= 0 && kind !== "dribble") this.appts.set(receiver, { t: leg.t1, at: leg.to });
+    if (receiver >= 0 && kind !== "dribble") this.appts.set(receiver, { t: leg.t1, at: leg.to, pass: true });
   }
 
   /** 最後の 1 本が着く高さ（頭で触れる・GK が高い所で取る・シュートが枠へ向かう。決まった値で散らす） */
@@ -923,8 +944,9 @@ export class ReplaySim {
     let B: V = { ...k.ball };
     if (k.type === "corner") B = { x: k.ball.x < PW / 2 ? 0.6 : PW - 0.6, y: yOf(this.attackTeam(k), 0.995) };
     else if (k.type === "longThrow") B = { x: k.ball.x < PW / 2 ? 0.3 : PW - 0.3, y: k.ball.y };
-    else if (recv >= 0 && !GOALLINE.has(k.type)) {
-      // 選手が間に合う場所に寄せる（時刻と速さの上限が優先。場所は同じ辺りの中で動かしてよい）
+    else if (recv >= 0 && !GOALLINE.has(k.type) && !SET_PIECES.has(k.type)) {
+      // 選手が間に合う場所に寄せる（時刻と速さの上限が優先。場所は同じ辺りの中で動かしてよい）。
+      // セットプレーは寄せない（蹴る人が遅れたら、待つか場面を切り替える）
       const r = this.players[recv];
       const reach = this.vmax(r, t) * 0.8 * Math.max(0, k.t - t);
       const dx = B.x - r.x,
@@ -1312,13 +1334,19 @@ export class ReplaySim {
       const nk = keys[j];
       if (nk.start) break;
       const setp = SET_PIECES.has(nk.type);
-      if (nk.t - t >= (setp ? MOVE.lookahead.setPiece : MOVE.lookahead.play)) continue;
-      if (j > cur + MOVE.lookahead.keys && !setp) continue;
+      const shot = SHOT_KEYS.has(nk.type);
+      if (nk.t - t >= (setp ? MOVE.lookahead.setPiece : shot ? MOVE.lookahead.shot : MOVE.lookahead.play)) continue;
+      if (j > cur + MOVE.lookahead.keys && !setp && !shot) continue;
       const who = atActor(nk.type);
       const r = this.actorIdx(nk, who);
-      // 間のキーに出てくる選手は、そちらを先に（あとのキーの約束は、間のキーが済んでから）
+      // 間のキーの場所にいる選手（ボールを持つ・競る）は、そちらを先に（あとのキーの約束は、間のキーが済んでから）。
+      // 間のキーでパスを受けるだけの選手は、あとのキーの場所へ先に向かう
       let busy = false;
-      for (let q = cur; q < j && !busy; q++) busy = keys[q].actors.includes(this.players[r]?.id ?? "");
+      for (let q = cur; q < j && !busy; q++) {
+        const kq = keys[q];
+        const w = atActor(kq.type);
+        busy = (w !== null && this.actorIdx(kq, w) === r) || (DUELS.has(kq.type) && kq.actors.includes(this.players[r]?.id ?? ""));
+      }
       if (busy && !setp) continue;
       const spot = nk.type === "corner" ? { x: nk.ball.x < PW / 2 ? -0.2 : PW + 0.2, y: yOf(this.attackTeam(nk), 1.005) } : setp ? this.behindBall(nk.ball, this.attackTeam(nk)) : nk.ball;
       if (r >= 0 && r !== ballOwnerNow && (!this.appts.has(r) || (setp && this.appts.get(r)!.t < t))) this.appts.set(r, { t: nk.t, at: spot, set: setp || undefined });
@@ -1328,7 +1356,9 @@ export class ReplaySim {
         const dx = g.x - nk.ball.x,
           dy = g.y - nk.ball.y;
         const dd = len(dx, dy) || 1;
-        this.appts.set(o2, { t: nk.t, at: clampV({ x: nk.ball.x + (dx / dd) * 1.6, y: nk.ball.y + (dy / dd) * 1.6 }) });
+        // GK は飛び出してもゴールから gkReach m まで（1 対 1 が遠くで起きても、ゴール前で構える）
+        const back = this.players[o2].gk ? Math.max(1.6, dd - MOVE.gkReach) : 1.6;
+        this.appts.set(o2, { t: nk.t, at: clampV({ x: nk.ball.x + (dx / dd) * back, y: nk.ball.y + (dy / dd) * back }) });
       }
     }
     let setSoon: SimKey | undefined;
@@ -1352,7 +1382,12 @@ export class ReplaySim {
         const p = this.players[x.idx];
         let tgt: V;
         let urg: number = U.idle;
-        const ap = this.appts.get(p.idx);
+        let ap = this.appts.get(p.idx);
+        if (ap?.pass && t > ap.t + MOVE.appointment.passExpire) {
+          // 受け終わったつなぎのパスの約束は消す（残すと、次のキーまでその場所に止まってしまう）
+          this.appts.delete(p.idx);
+          ap = undefined;
+        }
         const vm = this.vmax(p, t);
         if (p.idx === ballOwnerNow && carried) {
           // ボールを運ぶ：行き先へ、着く時刻に合わせた速さで（止まるプレーはその場で）

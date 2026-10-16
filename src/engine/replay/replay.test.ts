@@ -237,6 +237,40 @@ describe("選手とボールが常に動く（R3。計画 1 章）", () => {
     for (let t = 0; t <= ms.minute; t += 1.7) expect(a.frame(t, 0)).toEqual(SIMS[1].frame(t, 0));
   });
 
+  it("途中から再開したとき：追いつくまでは多めに計算して seeking を返し、スコアは予定の時刻で出す。追いついた後の動きは通して作ったものと同じ", () => {
+    const ms = SIMS[1].ms;
+    const t0 = Math.min(ms.minute, 80);
+    const a = new ReplaySim(ms);
+    expect(a.lagging(t0)).toBe(true);
+    const goals = ms.events.map((e, i) => [e, i] as const).filter(([e]) => e.type === "goal" && e.minute < t0 - 2);
+    expect(goals.length).toBeGreaterThan(0);
+    // 計算前でも、予定の時刻を過ぎた得点は出す
+    for (const [, i] of goals) expect(a.isShown(i, t0)).toBe(true);
+    let frames = 0;
+    let r = a.pumpFrame(t0);
+    expect(r.seeking).toBe(true);
+    while (r.seeking) {
+      r = a.pumpFrame(t0);
+      frames++;
+    }
+    expect(frames).toBeLessThan(Math.ceil(t0 / 10) + 2);
+    expect(r.t).toBeGreaterThan(t0 - MOVE.pump.seekGap);
+    expect(a.pumpFrame(t0).t).toBeCloseTo(t0, 6);
+    expect(a.frame(t0, 0)).toEqual(SIMS[1].frame(t0, 0));
+  });
+
+  it("シュートは多くがゴール前から打つ（攻めの場所を寄せ、打つ選手は早めにゴール前へ向かう）", () => {
+    const ds: number[] = [];
+    for (const sim of SIMS)
+      for (const f of sim.fired) {
+        if (f.skipped || !["shot", "oneOnOne", "header", "rebound"].includes(f.key.type)) continue;
+        ds.push(Math.abs(f.key.ball.y - (f.key.side === 0 ? 0 : PL)));
+      }
+    ds.sort((a, b) => a - b);
+    expect(ds.length).toBeGreaterThan(20);
+    expect(ds[Math.floor(ds.length / 2)]).toBeLessThan(25);
+  });
+
   it("コーナーキックを蹴るときは、攻める側の 4 人以上と守る側の 4 人以上がペナルティエリアの中にいる（間に合わなければ場面を切り替えて並べる）", () => {
     let n = 0;
     for (const sim of SIMS)

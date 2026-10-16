@@ -92,14 +92,15 @@ export function Pitch2D(props: Pitch2DProps) {
     let lastPerf = 0;
     let raf = 0;
     let last = performance.now();
+    let seeking = true;
     const loop = (now: number) => {
       raf = requestAnimationFrame(loop);
       const lp = live.current;
       const c = clock.current;
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
-      // 止まっているときは、少し描いたら止める（電池を使わない）
-      if (!lp.playing && now - c.wake > 600) return;
+      // 止まっているときは、少し描いたら止める（電池を使わない）。途中から再開して動きの計算が追いつくまでは描き続ける
+      if (!lp.playing && now - c.wake > 600 && !seeking) return;
       const rate = lp.playing ? GAME_MINUTES_PER_SECOND * lp.speed : 0;
       const target = Math.min(c.display + rate * Math.min(0.15, (now - c.at) / 1000), lp.ms.minute);
       c.t = target < c.t - 0.5 || !lp.playing ? target : Math.max(c.t, target);
@@ -121,7 +122,7 @@ export function Pitch2D(props: Pitch2DProps) {
       }
       const d0 = performance.now();
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      drawFrame(ctx, w, h, replayFor(lp.ms), c.t, { userSide: lp.userSide, fonts, insets, names: namesRef.current, tactical: !!lp.tactical, speed: lp.speed });
+      seeking = drawFrame(ctx, w, h, replayFor(lp.ms), c.t, { userSide: lp.userSide, fonts, insets, names: namesRef.current, tactical: !!lp.tactical, speed: lp.speed });
       if (lp.perf && perfBox.current) {
         drawMs.push(performance.now() - d0);
         frames.push(dt);

@@ -162,5 +162,40 @@ export class EventSchedule {
       prev = group[group.length - 1];
       i = j;
     }
+    pullChains(fresh);
+  }
+}
+
+/** シュート（ここへ向けて攻めの場所を寄せる） */
+const SHOTS = new Set<MatchEventType>(["shot", "oneOnOne", "header", "rebound"]);
+/** キーの場所にいる選手（main：actors[0]、other：actors[1]） */
+const atIndex = (type: MatchEventType) => (type === "longBall" || type === "switchPlay" || type === "foul" ? 1 : 0);
+
+/**
+ * シュートにつながる攻めの場所を、シュートを打つ選手が走って間に合う所までゴールへ寄せる（R3）。
+ * 場所は zone の大まかな表の値なので、そのままだと時刻の間隔に対して遠すぎ、動きの中でシュートが遠くからになる。
+ * シュートの前のキーから順にさかのぼり、次のキーの選手が前のキーにも出てくる間だけ寄せる（セットプレーと、相手のキーで止める）。
+ * 区間の中のキーだけを変え、割り付けた後は変えない（観戦しながら作っても同じ）
+ */
+function pullChains(fresh: SimKey[]) {
+  const C = MOVE.chain;
+  for (let n = fresh.length - 1; n >= 0; n--) {
+    if (!SHOTS.has(fresh[n].type)) continue;
+    let next = fresh[n];
+    for (let q = n - 1; q >= 0; q--) {
+      const k = fresh[q];
+      if (k.start || k.side !== next.side || SET_PIECES.has(k.type) || SHOTS.has(k.type)) break;
+      const runner = next.actors[atIndex(next.type)];
+      const role = k.actors.indexOf(runner);
+      if (!runner || role < 0) break;
+      const allow = (role === atIndex(k.type) ? C.base : C.pass) + mps(C.pace) * Math.max(0, next.t - k.t);
+      const d = dist(k.ball, next.ball);
+      if (d <= allow) break;
+      const f = allow / d;
+      const p = { x: next.ball.x + (k.ball.x - next.ball.x) * f, y: next.ball.y + (k.ball.y - next.ball.y) * f };
+      k.ball = p;
+      (k as { at: Pt }).at = { ...p };
+      next = k;
+    }
   }
 }

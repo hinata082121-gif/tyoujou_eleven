@@ -59,6 +59,8 @@ export class Animator {
   private m4 = new THREE.Matrix4();
   private first = true;
   private idleT = 0;
+  /** 途中から再開して、動きの計算がまだ追いついていない（画面を暗くしておく） */
+  seeking = false;
 
   constructor(private o: AnimatorOptions) {
     const r = MOTION_TIMING.ball.radius;
@@ -97,9 +99,9 @@ export class Animator {
   /** t：試合時間（分）、dt：前のフレームからの現実の秒、speed：倍速。カメラ用の場面を返す */
   update(t0: number, dt: number, speed: number): CameraShot {
     const sim = this.sim;
-    // 動きの計算は 1 フレームに少しずつ（再開したときは、追いつくまで計算が済んだ所を見せる）
-    sim.pump(t0 + MOVE.pump.ahead, MOVE.pump.frameSteps);
-    const t = Math.min(t0, sim.computed);
+    // 動きの計算は 1 フレームに少しずつ（途中から再開して追いつくまでは、seeking で画面を暗くする）
+    const { t, seeking } = sim.pumpFrame(t0);
+    this.seeking = seeking;
     const f = sim.frame(t, 0);
     const script = scriptFor(sim);
     activeCues(script, t, this.cues);

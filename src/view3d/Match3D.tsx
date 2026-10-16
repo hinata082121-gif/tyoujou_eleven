@@ -166,7 +166,7 @@ export default function Match3D(props: Match3DProps) {
       const c = clock.current;
       const dt = Math.min(0.1, (now - last) / 1000);
       // 止まっている（一時停止・ハーフタイム）ときは、カメラが落ち着いたら描かない（電池を使わない）
-      if (!lp.playing && ready && now - c.wake > 1500) {
+      if (!lp.playing && ready && now - c.wake > 1500 && !anim.seeking) {
         last = now;
         return;
       }
@@ -186,10 +186,11 @@ export default function Match3D(props: Match3DProps) {
         checkAvoid();
       }
       // 場面の切り替え（セットプレーの並び直し）は、短く暗くしてつなぐ
-      const fade = anim.cutFade(c.t);
+      // 途中から再開して動きの計算が追いつくまでは真っ暗にする（早送りのような動きを見せない）
+      const fade = anim.seeking ? 1 : 0.85 * anim.cutFade(c.t);
       if (fadeBox.current && Math.abs(fade - lastFade) > 0.01) {
         lastFade = fade;
-        fadeBox.current.style.opacity = (0.85 * fade).toFixed(3);
+        fadeBox.current.style.opacity = fade.toFixed(3);
       }
       if (lp.perf) {
         jsMs.push(j1 - j0);
