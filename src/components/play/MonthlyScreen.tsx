@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { PLAY_STYLE_NAMES, POSITION_NAMES, STAT_NAMES } from "@/engine/config/names";
 import { FOCUS } from "@/engine/config/growth";
-import { focusChoices, monthlyReview, type MonthlyReviewRow } from "@/engine/monthly";
+import { focusChoices, focusStreaks, monthlyReview, type FocusStreak, type MonthlyReviewRow } from "@/engine/monthly";
 import { bodyScale, generateKits } from "@/engine/look";
 import { overall } from "@/engine/player/rating";
 import { statRank } from "@/engine/player/rank";
@@ -22,20 +22,28 @@ const GROUPS = ["GK", "DF", "MF", "FW"] as const;
 const sign = (v: number) => (v > 0 ? `+${v}` : `${v}`);
 const fmtOv = (v: number) => (v >= 0.05 ? `+${v.toFixed(1)}` : "±0");
 
-/** 重点の能力名（2 段まで。切らずに全部見せる） */
-function FocusNames({ p }: { p: Player }) {
+/** 重点にしてからの月数と伸び（一覧用の短い形：「5か月 +6」「今月から」） */
+const streakShort = (f: FocusStreak) => (f.months === 0 ? "今月から" : `${f.months}か月 +${f.gain}`);
+/** 1 人の指示の画面の形：「スピード：重点にして5か月、＋6」 */
+const streakLong = (f: FocusStreak) => (f.months === 0 ? `${STAT_NAMES[f.stat]}：今月から重点` : `${STAT_NAMES[f.stat]}：重点にして${f.months}か月、＋${f.gain}`);
+
+/** 「指示」か「おまかせ」かの札 */
+function FocusMode({ p }: { p: Player }) {
   const auto = !p.focus;
-  const stats = p.focus ?? p.autoFocus ?? [];
+  return <span className={`w-fit shrink-0 px-1 text-[0.625rem] font-black leading-[0.9rem] ${auto ? "bg-panel-3 text-text" : "bg-yellow text-ink"}`}>{auto ? "おまかせ" : "指示"}</span>;
+}
+
+/** 重点の能力名（2 段まで。切らずに全部見せる）と、重点にしてからの累計の伸び（R3。名前が長くて入らなければ伸びは次の行へ） */
+function FocusNames({ p, streaks }: { p: Player; streaks: FocusStreak[] }) {
+  const auto = !p.focus;
   return (
-    <span className="flex min-w-0 items-center gap-1.5">
-      <span className={`shrink-0 px-1 text-[0.625rem] font-black ${auto ? "bg-panel-3 text-text" : "bg-yellow text-ink"}`}>{auto ? "おまかせ" : "指示"}</span>
-      <span className="flex flex-col leading-[1.05rem]">
-        {stats.map((k) => (
-          <span key={k} className={`whitespace-nowrap text-[0.75rem] font-black ${auto ? "text-text-2" : "text-yellow"}`}>
-            {STAT_NAMES[k]}
-          </span>
-        ))}
-      </span>
+    <span className="flex min-w-0 flex-col leading-[1.05rem]">
+      {streaks.map((f) => (
+        <span key={f.stat} className="flex flex-wrap items-baseline gap-x-1.5">
+          <span className={`whitespace-nowrap text-[0.75rem] font-black ${auto ? "text-text-2" : "text-yellow"}`}>{STAT_NAMES[f.stat]}</span>
+          <span className={`whitespace-nowrap text-[0.6875rem] font-bold ${f.months > 0 && f.gain > 0 ? "text-good" : "text-text-3"}`}>{streakShort(f)}</span>
+        </span>
+      ))}
     </span>
   );
 }
@@ -76,12 +84,12 @@ export function MonthlyScreen() {
     <Screen title={`${MONTHS[month]}月の育成指示`} sub="毎月1日" right={<Chip tone="dark">指示は来月にそのまま引き継ぐ</Chip>}>
       <div className="flex min-h-0 flex-1 gap-2">
         {/* 先月の振り返り */}
-        <section className="flex w-[11.5rem] shrink-0 flex-col">
+        <section className="flex w-[10rem] shrink-0 flex-col min-[760px]:w-[11.5rem]">
           <Band sub={review.label}>振り返り</Band>
           <div className="scroll-y mt-1 flex min-h-0 flex-1 flex-col gap-1.5 bg-panel p-2">
             {review.label ? (
               <>
-                <div className="grid grid-cols-2 gap-1.5">
+                <div className="grid grid-cols-1 gap-1.5 min-[760px]:grid-cols-2">
                   <div className="bg-panel-2 px-2 py-1">
                     <div className="text-[0.6875rem] font-bold text-text-3">総合の伸び</div>
                     <div className="font-num text-[1.25rem] font-bold text-good">+{review.teamOverall.toFixed(1)}</div>
@@ -121,8 +129,8 @@ export function MonthlyScreen() {
         <section className="flex min-h-0 min-w-0 flex-1 flex-col">
           <Band sub={`${ps.length}人　タップで1人ずつ変える`}>今月の重点</Band>
           <div className="scroll-y mt-1 min-h-0 flex-1 bg-panel">
-            <div className="sticky top-0 z-10 grid grid-cols-[1.75rem_6.25rem_2rem_2rem_2.5rem_minmax(0,1fr)] items-center gap-1.5 border-b border-line-2 bg-panel-2 px-2 py-0.5 text-[0.6875rem] font-black text-text-3">
-              <span />
+            <div className="sticky top-0 z-10 grid grid-cols-[6.25rem_2rem_2rem_2.5rem_minmax(0,1fr)] items-center gap-1.5 border-b border-line-2 bg-panel-2 px-2 py-0.5 text-[0.6875rem] font-black text-text-3 min-[760px]:grid-cols-[1.75rem_6.25rem_2rem_2rem_2.5rem_minmax(0,1fr)]">
+              <span className="hidden min-[760px]:block" />
               <span>名前</span>
               <span>位置</span>
               <span>総合</span>
@@ -136,17 +144,23 @@ export function MonthlyScreen() {
                   key={p.id}
                   type="button"
                   onClick={() => setOpen(p.id)}
-                  className="pressable grid min-h-11 w-full grid-cols-[1.75rem_6.25rem_2rem_2rem_2.5rem_minmax(0,1fr)] items-center gap-1.5 border-b border-line px-2 py-0.5 text-left text-[0.75rem]"
+                  className="pressable grid min-h-11 w-full grid-cols-[6.25rem_2rem_2rem_2.5rem_minmax(0,1fr)] items-center gap-1.5 border-b border-line px-2 py-0.5 text-left text-[0.75rem] min-[760px]:grid-cols-[1.75rem_6.25rem_2rem_2rem_2.5rem_minmax(0,1fr)]"
                 >
-                  <PlayerFace look={p.look} size={28} kit={kits.first} />
-                  <span className="truncate font-bold">
-                    <span className="mr-1 text-[0.6875rem] text-text-3">{p.grade}年</span>
-                    {p.name}
+                  {/* 狭い画面（667 など）は顔を省いて、重点と累計の伸びの幅を取る */}
+                  <span className="hidden min-[760px]:block">
+                    <PlayerFace look={p.look} size={28} kit={kits.first} />
+                  </span>
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className="truncate font-bold">
+                      <span className="mr-1 text-[0.6875rem] text-text-3">{p.grade}年</span>
+                      {p.name}
+                    </span>
+                    <FocusMode p={p} />
                   </span>
                   <span className="font-bold text-text-2">{p.mainPosition}</span>
                   <RankBadge rank={statRank(overall(p))} size="sm" />
                   <span className={`font-num text-[0.875rem] ${r && r.overall >= 1 ? "text-good" : "text-text-2"}`}>{r ? fmtOv(r.overall) : "—"}</span>
-                  <FocusNames p={p} />
+                  <FocusNames p={p} streaks={focusStreaks(game, p)} />
                 </button>
               );
             })}
@@ -154,7 +168,7 @@ export function MonthlyScreen() {
         </section>
 
         {/* まとめての操作 */}
-        <section className="flex w-[8.25rem] shrink-0 flex-col gap-1.5">
+        <section className="flex w-[7.5rem] shrink-0 flex-col gap-1.5 min-[760px]:w-[8.25rem]">
           <Band>まとめて</Band>
           <Button variant="ghost" icon="squad" className="w-full !justify-start" onClick={() => setGroupOpen(true)}>
             ポジション別
@@ -300,6 +314,16 @@ function MonthlyPlayer({ p, row, label, onBack }: { p: Player; row: MonthlyRevie
             })}
           </div>
           {!p.focus && current.length > 0 && <p className="mt-1.5 text-[0.75rem] text-text-2">おまかせ：ヘッドコーチが今月は「{current.map((k) => STAT_NAMES[k]).join("・")}」を重点にしました。</p>}
+          {/* 重点にしてからの累計の伸び（R3。「指示」と「おまかせ」を切り替えても、同じ能力が重点のままなら数え続ける） */}
+          {current.length > 0 && (
+            <ul className="mt-1.5 flex flex-col gap-0.5 border-l-4 border-yellow bg-panel px-2 py-1">
+              {focusStreaks(game, p).map((f) => (
+                <li key={f.stat} className="text-[0.8125rem] font-bold">
+                  {streakLong(f)}
+                </li>
+              ))}
+            </ul>
+          )}
           <div className="mt-auto flex flex-wrap items-center gap-2 pt-2">
             <Band>スタイル</Band>
             <span className="text-[0.8125rem] font-bold">{PLAY_STYLE_NAMES[p.playStyle]}</span>

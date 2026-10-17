@@ -6,20 +6,41 @@
  */
 import { KIT_PALETTE } from "@/engine/config/look";
 import { isOut, isPlayingPhase, playersShort } from "@/engine/match/engine";
-import { describeEvent, isHighlight, isIncident } from "@/engine/match/text";
+import { describeEvent, isHighlight, isIncident, isMinorEvent } from "@/engine/match/text";
+import { replayFor } from "@/engine/replay/sim";
 import type { MatchEvent, MatchState, Side } from "@/engine/match/types";
 import { Icon, type IconName } from "../icons";
 import { shortNames } from "@/lib/names";
 
+/**
+ * 表示している時間までに出すイベントか（R3。計画 1.2）：ボールが関わるイベントは、2D・3D の動きの中で起きた時刻に出す
+ * （ボールがゴールに入ってから点が入る）。テキストだけの表示でも同じ時刻にそろえる
+ */
+export function isShown(ms: MatchState, index: number, display: number): boolean {
+  return replayFor(ms).isShown(index, display);
+}
+
+/** 表示している時間までに出すイベント（新しい順。細かいイベントは除く） */
+export function shownEvents(ms: MatchState, display: number, max = 80): MatchEvent[] {
+  const out: MatchEvent[] = [];
+  for (let i = ms.events.length - 1; i >= 0 && out.length < max; i--) {
+    const e = ms.events[i];
+    if (!isMinorEvent(e) && isShown(ms, i, display)) out.push(e);
+  }
+  return out;
+}
+
 /** 表示している時間までの得点 */
 export function visibleScore(ms: MatchState, display: number): [number, number] {
   const s: [number, number] = [0, 0];
-  for (const e of ms.events) {
-    if (e.minute > display) break;
-    if (e.type === "goal" || e.type === "pkGoal") s[e.side]++;
-  }
+  ms.events.forEach((e, i) => {
+    if ((e.type === "goal" || e.type === "pkGoal") && isShown(ms, i, display)) s[e.side]++;
+  });
   return s;
 }
+
+/** 時計の分（R3：経過中の分。14 分台なら 15'） */
+export const clockMinute = (display: number) => Math.max(1, Math.ceil(display - 1e-6));
 
 /** 前半・後半などの表示 */
 export function phaseLabel(ms: MatchState, display: number): string {
@@ -111,7 +132,7 @@ export function Scoreboard({ ms, display, label, compact = false }: { ms: MatchS
         {team(1, "l")}
         <span className={`font-num ml-1 shrink-0 bg-panel-3 px-1.5 text-[0.8125rem] ${ended || brk ? "text-yellow" : "text-text"}`}>
           {phaseLabel(ms, display)}
-          {!ended && !brk && ` ${Math.floor(display)}'`}
+          {!ended && !brk && ` ${clockMinute(display)}'`}
           {ms.pk && ` PK ${ms.pk.score[0]}-${ms.pk.score[1]}`}
         </span>
       </div>
@@ -152,7 +173,7 @@ export function Momentum({ ms, display, userSide, className = "" }: { ms: MatchS
 export function TeamStatus({ ms, display }: { ms: MatchState; display: number }) {
   const info = (side: Side) => {
     const t = ms.teams[side];
-    const shown = new Set(ms.events.filter((e) => e.side === side && e.minute <= display && (e.type === "red" || e.type === "secondYellow" || e.type === "injury")).map((e) => e.players![0]));
+    const shown = new Set(ms.events.filter((e, i) => e.side === side && (e.type === "red" || e.type === "secondYellow" || e.type === "injury") && isShown(ms, i, display)).map((e) => e.players![0]));
     const out = t.onPitch.filter((id) => isOut(t.players[id]) && shown.has(id));
     return { short: out.length > 0 ? playersShort(t) : 0, out: out.map((id) => ({ id, red: !!t.players[id].sentOff, name: shortNames(Object.values(t.players)).get(id)! })) };
   };

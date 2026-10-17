@@ -11,10 +11,10 @@ import { netTexture, pitchTexture } from "./textures";
 
 export const PITCH_L = 105;
 export const PITCH_W = 68;
-/** ゴールは選手（約 1.6 倍）に合わせて約 1.45 倍の大きさで描く */
-export const GOAL = { w: 7.32 * 1.45, h: 2.44 * 1.45, depth: 2.9 };
+/** ゴールは選手（約 1.3 倍）に合わせて約 1.2 倍の大きさで描く */
+export const GOAL = { w: 7.32 * 1.2, h: 2.44 * 1.2, depth: 2.6 };
 
-/** 演出タイムラインの座標（0〜1）→ 3D の位置 */
+/** 演出の座標（0〜1。x は幅、y は長さ）→ 3D の位置 */
 export const toWorldX = (x: number) => (x - 0.5) * PITCH_W;
 export const toWorldZ = (y: number) => (y - 0.5) * PITCH_L;
 
@@ -93,9 +93,14 @@ function buildGoal(z: number, dir: number, net: THREE.Texture, disposables: { di
   return grp;
 }
 
-/** 会場を作る。home は自校の応援の色 */
-export function buildStage(venue: VenueStage, homeMain: string, homeSub: string, q: QualitySettings): Stage {
-  const look = VENUE_LOOK[venue];
+/**
+ * 会場を作る。home は自校の応援の色。camSide はカメラのいるタッチラインの側（+1：x が大きい側）。
+ * 自校の応援席・片側だけのスタンド・屋根は、カメラの向かい側（画面の奥）に置く（R3。計画 Q7）
+ */
+export function buildStage(venue: VenueStage, homeMain: string, homeSub: string, q: QualitySettings, camSide: 1 | -1 = 1): Stage {
+  const base = VENUE_LOOK[venue];
+  const far = -camSide;
+  const look = { ...base, sides: base.sides.map(([sx, sz]) => [venue === 2 ? sx * far : sx, sz] as [number, number]) };
   const group = new THREE.Group();
   const disposables: { dispose: () => void }[] = [];
   const add = (geo: THREE.BufferGeometry, mat: THREE.Material) => {
@@ -137,7 +142,7 @@ export function buildStage(venue: VenueStage, homeMain: string, homeSub: string,
     }
     for (const s of [-1, 1]) {
       const bench = new THREE.BoxGeometry(0.8, 1.2, 6);
-      bench.translate(-(PITCH_W / 2 + 4), 0.6, s * 8);
+      bench.translate(camSide * (PITCH_W / 2 + 4), 0.6, s * 8);
       fence.push(bench);
     }
     add(mergeGeometries(fence)!, new THREE.MeshLambertMaterial({ color: "#5a6b5a" }));
@@ -154,7 +159,7 @@ export function buildStage(venue: VenueStage, homeMain: string, homeSub: string,
     const n = Math.round(70 * thin);
     for (let i = 0; i < n; i++) {
       const side = i % 2 ? -1 : 1;
-      seats.push({ x: side * (PITCH_W / 2 + 8.5 + hash01(i, 1) * 3), y: 0, z: -45 + hash01(i, 2) * 90, home: side > 0 && hash01(i, 4) < 0.5 });
+      seats.push({ x: side * (PITCH_W / 2 + 8.5 + hash01(i, 1) * 3), y: 0, z: -45 + hash01(i, 2) * 90, home: side === far && hash01(i, 4) < 0.5 });
     }
   } else {
     // 競技場（段階 2・3）は陸上のトラックで囲む。スタンドはトラックの外
@@ -194,8 +199,8 @@ export function buildStage(venue: VenueStage, homeMain: string, homeSub: string,
           const id = r * 1000 + k + (sx + 2) * 100000 + (sz + 2) * 400000;
           if (hash01(id, 7) > look.fill) continue;
           const along = -len / 2 + (k + 0.5) * (len / per);
-          // 自校の応援席：右側（+x）のスタンドの中央
-          const home = sx > 0 && Math.abs(along) < 20;
+          // 自校の応援席：カメラの向かい側のスタンドの中央
+          const home = sx === far && Math.abs(along) < 20;
           seats.push({ x: sx ? sx * (PITCH_W / 2 + d) : along, y: h, z: sx ? along : sz * (PITCH_L / 2 + d), home });
         }
       }
@@ -204,8 +209,8 @@ export function buildStage(venue: VenueStage, homeMain: string, homeSub: string,
     steps.forEach((g) => g.dispose());
     if (venue === 4) {
       const roof = add(new THREE.BoxGeometry(12, 0.5, PITCH_L + 20), new THREE.MeshLambertMaterial({ color: "#cfd4da" }));
-      roof.position.set(-(PITCH_W / 2 + 9 + look.rows - 5), look.rows * 0.55 + 6, 0);
-      roof.rotation.z = -0.12;
+      roof.position.set(far * (PITCH_W / 2 + 9 + look.rows - 5), look.rows * 0.55 + 6, 0);
+      roof.rotation.z = 0.12 * far;
       const towers: THREE.BufferGeometry[] = [];
       const lamps: THREE.BufferGeometry[] = [];
       for (const [x, z] of [

@@ -113,6 +113,11 @@ export interface MatchTeamState {
   isUser: boolean;
   /** 並びの記録（P3：2D の再生用。変わったときだけ足す） */
   shapes?: { minute: number; formation: FormationId; onPitch: string[] }[];
+  /**
+   * 区間ごとの記録（R3：演出の動き用。計算には使わない）。区間の始めの戦術と、出ている選手の体力（onPitch の順、整数）。
+   * 古いセーブの途中の試合にはない
+   */
+  trace?: { minute: number; tactics: Tactics; stamina: number[] }[];
   /** 采配できるのは試合前とハーフタイムだけ（リーグ戦・練習試合の采配あり。P3）。ケガ人は自動で交代する */
   breaksOnly?: boolean;
   players: Record<string, MatchPlayer>;

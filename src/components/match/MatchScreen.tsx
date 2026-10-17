@@ -8,7 +8,6 @@ import { pendingMatchLabel } from "@/engine/game";
 import { cancelSubstitution, injuredAwaitingSub, isBreakPhase, isPlayingPhase, playSegment, resumeFromBreak, subsRemaining } from "@/engine/match/engine";
 import { manualFormation, manualSubstitution, manualTactics } from "@/engine/match/orders";
 import { halfReport } from "@/engine/match/report";
-import { isMinorEvent } from "@/engine/match/text";
 import type { MatchTeamState, Side } from "@/engine/match/types";
 import { FORMATION_IDS } from "@/engine/types";
 import { useGameStore } from "@/store/gameStore";
@@ -16,13 +15,15 @@ import { Icon, type IconName } from "../icons";
 import { PlayerFace } from "../look/Figure";
 import { usePortrait } from "../shell/usePortrait";
 import { Bar, Button, fitnessColor, IconButton, Label, Segmented, Sheet } from "../ui";
-import { EventLine, Momentum, Scoreboard, TeamStatus } from "./broadcast";
+import { EventLine, Momentum, Scoreboard, shownEvents, TeamStatus } from "./broadcast";
 import { Pitch2D } from "./Pitch2D";
 import { PkScreen } from "./PkScreen";
 import { TacticsEditor } from "./TacticsEditor";
 import { webglSupported } from "@/view3d/webgl";
 import type { LoadTimes } from "@/view3d/Match3D";
 import { shortNames } from "@/lib/names";
+import { MOVE } from "@/engine/config/replay";
+import { replayFor } from "@/engine/replay/sim";
 
 /** 3D の描画（three）は、3D で観戦するときだけ読み込む（P4。ほかの画面の読み込みを重くしない） */
 const loadTimes: LoadTimes = { start: 0 };
@@ -64,6 +65,8 @@ export function MatchScreen() {
   const [ready3d, setReady3d] = useState(false);
   const [perf] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("perf") === "1");
   const [tickerOpen, setTickerOpen] = useState(false);
+  const tickerRef = useRef<HTMLButtonElement>(null);
+  const wide = useWide();
   useEffect(() => {
     if (view !== "3d") return;
     loadTimes.start = performance.now();
@@ -128,13 +131,16 @@ export function MatchScreen() {
     setPanel(true);
   }, [display, panel, ms, side, breaksOnly]);
 
-  const events = ms.events.filter((e) => e.minute <= display && !isMinorEvent(e)).slice(-80).reverse();
+  // テキストだけの表示は描画のループが無いので、ここで動きを少しずつ計算する（速報・スコアの時刻に使う）
+  if (!use3d && !view2d) replayFor(ms).pump(display, MOVE.pump.textSteps);
+  const events = shownEvents(ms, display);
 
   if (inPk) return <PkScreen />;
 
   const breakLabel = ms.phase === "HT" ? "ハーフタイム" : ms.phase === "ET_BREAK" ? "延長戦の前" : "延長ハーフタイム";
   const setView = (v: "3d" | "2d" | "text") => updateSettings(tournament ? { tournamentView: v } : { matchView: v === "3d" ? "2d" : v });
   const nextSpeed = () => updateSettings({ matchSpeed: speed === 1 ? 2 : speed === 2 ? 4 : 1 });
+  const playing = !(stopped || inBreak || inPk || ended);
 
   const ordersPanel = panel && (
     <OrdersPanel
@@ -160,6 +166,44 @@ export function MatchScreen() {
     />
   );
 
+  const tickerSheet = tickerOpen && (
+    <Sheet onClose={() => setTickerOpen(false)} title="速報" wide>
+      <ul>
+        {events.map((e, i) => (
+          <EventLine key={`${e.minute}-${i}-${e.type}`} ms={ms} e={e} userSide={side} />
+        ))}
+      </ul>
+    </Sheet>
+  );
+
+  /** 右の端の縦のボタン（3D・2D 共通） */
+  const rail = (
+    <div className="absolute bottom-[max(0.5rem,var(--safe-b))] right-[max(0.5rem,var(--safe-r))] top-[max(0.5rem,var(--safe-t))] z-10 flex w-[4.25rem] flex-col items-stretch justify-end gap-1.5">
+      {use3d ? (
+        <RailButton icon="squad" label="2D" onClick={() => setView("2d")} />
+      ) : (
+        <>
+          {tournament && <RailButton icon="squad" label="3D" onClick={() => setView("3d")} />}
+          <RailButton icon="list" label="文章だけ" onClick={() => setView("text")} />
+        </>
+      )}
+      {ended ? (
+        <RailButton icon="next" label="結果へ" primary onClick={finishMatch} />
+      ) : inBreak ? (
+        <>
+          {breaksOnly && <RailButton icon="speed" label="結果のみ" onClick={toAuto} />}
+          <RailButton icon="tactics" label={breakLabel} primary onClick={() => setPanel(true)} />
+        </>
+      ) : (
+        <>
+          <RailButton icon="speed" label={`${speed}倍`} onClick={nextSpeed} />
+          {breaksOnly ? <RailButton icon="next" label="結果のみ" onClick={toAuto} /> : <RailButton icon="tactics" label="采配" onClick={() => setPanel(true)} />}
+          <RailButton icon={paused ? "play" : "pause"} label={paused ? "再開" : "一時停止"} primary={paused} onClick={() => setPaused((p) => !p)} />
+        </>
+      )}
+    </div>
+  );
+
   /** 3D：画面いっぱいに 3D、左上にスコアボード、左下に速報のテロップ、右の端に操作のボタンを縦に */
   if (use3d)
     return (
@@ -167,12 +211,13 @@ export function MatchScreen() {
         <Match3D
           ms={ms}
           display={Math.min(display, ms.minute)}
-          playing={!(stopped || inBreak || inPk || ended)}
+          playing={playing}
           speed={speed}
           userSide={side}
           quality={settings.quality3d}
           perf={perf}
           load={loadTimes}
+          avoid={tickerRef}
           onReady={() => setReady3d(true)}
           onError={() => setLost3d(true)}
         />
@@ -184,10 +229,12 @@ export function MatchScreen() {
             <TeamStatus ms={ms} display={display} />
           </div>
         </div>
+        {/* 速報：ボールや選手が手前に来たら、薄くして 1 行にする（Match3D が data-near を付ける。計画の修正 5） */}
         <button
+          ref={tickerRef}
           type="button"
           aria-label="速報の一覧"
-          className="pressable absolute bottom-[max(0.5rem,var(--safe-b))] left-[max(0.5rem,var(--safe-l))] z-10 w-[min(32rem,62%)] border-l-4 border-yellow bg-panel/90 py-1 text-left"
+          className="pressable group absolute bottom-[max(0.5rem,var(--safe-b))] left-[max(0.5rem,var(--safe-l))] z-10 w-[min(32rem,62%)] border-l-4 border-yellow bg-panel/90 py-1 text-left transition-opacity duration-300 data-[near=1]:bg-panel/60 data-[near=1]:opacity-60"
           onClick={() => setTickerOpen(true)}
         >
           <ul>
@@ -195,42 +242,89 @@ export function MatchScreen() {
               .slice(0, 3)
               .reverse()
               .map((e, i, arr) => (
-                <EventLine key={`${e.minute}-${i}-${e.type}`} ms={ms} e={e} userSide={side} className={`!border-0 !py-0.5 ${i === arr.length - 1 ? "" : "opacity-75"} [&>span:last-child]:truncate`} />
+                <EventLine
+                  key={`${e.minute}-${i}-${e.type}`}
+                  ms={ms}
+                  e={e}
+                  userSide={side}
+                  className={`!border-0 !py-0.5 ${i === arr.length - 1 ? "" : "opacity-75 group-data-[near=1]:hidden"} [&>span:last-child]:truncate`}
+                />
               ))}
             {events.length === 0 && <li className="px-2 py-0.5 text-[0.8125rem] font-bold text-text-3">まもなくキックオフ</li>}
           </ul>
         </button>
-        <div className="absolute bottom-[max(0.5rem,var(--safe-b))] right-[max(0.5rem,var(--safe-r))] top-[max(0.5rem,var(--safe-t))] z-10 flex w-[4.25rem] flex-col items-stretch justify-end gap-1.5">
-          <RailButton icon="squad" label="2D" onClick={() => setView("2d")} />
-          {ended ? (
-            <RailButton icon="next" label="結果へ" primary onClick={finishMatch} />
-          ) : inBreak ? (
-            <>
-              {breaksOnly && <RailButton icon="speed" label="結果のみ" onClick={toAuto} />}
-              <RailButton icon="tactics" label={breakLabel} primary onClick={() => setPanel(true)} />
-            </>
-          ) : (
-            <>
-              <RailButton icon="speed" label={`${speed}倍`} onClick={nextSpeed} />
-              {breaksOnly ? <RailButton icon="next" label="結果のみ" onClick={toAuto} /> : <RailButton icon="tactics" label="采配" onClick={() => setPanel(true)} />}
-              <RailButton icon={paused ? "play" : "pause"} label={paused ? "再開" : "一時停止"} primary={paused} onClick={() => setPaused((p) => !p)} />
-            </>
-          )}
-        </div>
-        {tickerOpen && (
-          <Sheet onClose={() => setTickerOpen(false)} title="速報" wide>
-            <ul>
-              {events.map((e, i) => (
-                <EventLine key={`${e.minute}-${i}-${e.type}`} ms={ms} e={e} userSide={side} />
-              ))}
-            </ul>
-          </Sheet>
-        )}
+        {rail}
+        {tickerSheet}
         {ordersPanel}
       </main>
     );
 
-  /** テキスト・2D：上にスコアボード、左に 2D のピッチか速報、右に試合の流れ・状態・操作 */
+  /** 2D：ピッチを画面いっぱいに描き、左上にスコアボード、速報（広い画面は左の列・狭い画面は下に 1 行）、右の端にボタン（計画 2.5） */
+  if (view2d) {
+    const top = "top-[calc(max(0.5rem,var(--safe-t))+2.375rem)]";
+    const area = wide
+      ? `${top} bottom-[max(0.5rem,var(--safe-b))] left-[calc(max(0.5rem,var(--safe-l))+15.5rem)] right-[calc(max(0.5rem,var(--safe-r))+4.75rem)]`
+      : `${top} bottom-[calc(max(0.5rem,var(--safe-b))+2rem)] left-[max(0.25rem,var(--safe-l))] right-[calc(max(0.5rem,var(--safe-r))+4.75rem)]`;
+    const latest = events[0];
+    return (
+      <main className="fixed inset-0 overflow-hidden bg-night">
+        <Pitch2D ms={ms} display={Math.min(display, ms.minute)} playing={playing} speed={speed} userSide={side} areaClass={area} tactical={paused || inBreak} perf={perf} />
+        <div className="pointer-events-none absolute left-[max(0.5rem,var(--safe-l))] right-[calc(max(0.5rem,var(--safe-r))+4.75rem)] top-[max(0.5rem,var(--safe-t))] z-10 flex flex-col items-start gap-1">
+          <div className="pointer-events-auto max-w-full">
+            <Scoreboard ms={ms} display={display} label={label} compact />
+          </div>
+          {no3d && view === "3d" && (
+            <p className="flex items-center gap-1.5 bg-panel/90 px-2 py-0.5 text-[0.6875rem] font-bold text-warn">
+              <Icon name="warning" size={12} />
+              {no3d === "webgl" ? "この端末では 3D を表示できないため、2D で表示しています。" : "3D の表示が止まったため、2D に切り替えました。"}
+            </p>
+          )}
+          {!wide && (
+            <div className="w-[17rem] max-w-full">
+              <TeamStatus ms={ms} display={display} />
+            </div>
+          )}
+        </div>
+        {wide ? (
+          <div className={`absolute ${top} bottom-[max(0.5rem,var(--safe-b))] left-[max(0.5rem,var(--safe-l))] z-10 flex w-[15rem] flex-col gap-1`}>
+            <Momentum ms={ms} display={display} userSide={side} />
+            <TeamStatus ms={ms} display={display} />
+            <button type="button" aria-label="速報の一覧" className="pressable flex min-h-0 flex-1 flex-col justify-end overflow-hidden border-l-4 border-yellow bg-panel/90 text-left" onClick={() => setTickerOpen(true)}>
+              <ul>
+                {events
+                  .slice(0, 8)
+                  .reverse()
+                  .map((e, i) => (
+                    <EventLine key={`${e.minute}-${i}-${e.type}`} ms={ms} e={e} userSide={side} className="!border-0" />
+                  ))}
+                {events.length === 0 && <li className="px-2 py-1 text-[0.8125rem] font-bold text-text-3">まもなくキックオフ</li>}
+              </ul>
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            aria-label="速報の一覧"
+            className="pressable absolute bottom-[max(0.5rem,var(--safe-b))] left-[max(0.5rem,var(--safe-l))] right-[calc(max(0.5rem,var(--safe-r))+4.75rem)] z-10 border-l-4 border-yellow bg-panel/90 text-left"
+            onClick={() => setTickerOpen(true)}
+          >
+            <ul>
+              {latest ? (
+                <EventLine ms={ms} e={latest} userSide={side} className="!border-0 !py-0.5 [&>span:last-child]:truncate" />
+              ) : (
+                <li className="px-2 py-0.5 text-[0.8125rem] font-bold text-text-3">まもなくキックオフ</li>
+              )}
+            </ul>
+          </button>
+        )}
+        {rail}
+        {tickerSheet}
+        {ordersPanel}
+      </main>
+    );
+  }
+
+  /** テキストだけ：上にスコアボード、左に速報、右に試合の流れ・状態・操作（今のまま） */
   const log = (
     <ul className="scroll-y min-h-0 flex-1 bg-panel">
       {events.map((e, i) => (
@@ -242,34 +336,20 @@ export function MatchScreen() {
   return (
     <main className="bg-pitch-stripes fixed inset-0 flex flex-col gap-1.5 pb-[max(0.5rem,var(--safe-b))] pl-[max(0.5rem,var(--safe-l))] pr-[max(0.5rem,var(--safe-r))] pt-[max(0.375rem,var(--safe-t))]">
       <Scoreboard ms={ms} display={display} label={label} />
-      {no3d && view === "3d" && (
-        <p className="flex items-center gap-1.5 bg-panel px-2 py-1 text-[0.75rem] font-bold text-warn">
-          <Icon name="warning" size={14} />
-          {no3d === "webgl" ? "この端末では 3D を表示できないため、2D で表示しています。" : "3D の表示が止まったため、2D に切り替えました。"}
-        </p>
-      )}
       <div className="flex min-h-0 flex-1 gap-1.5">
-        <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {view2d ? (
-            <div className="relative min-h-0 flex-1 bg-panel">
-              <Pitch2D ms={ms} display={Math.min(display, ms.minute)} userSide={side} />
-            </div>
-          ) : (
-            log
-          )}
-        </section>
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col">{log}</section>
         <aside className="flex min-h-0 w-[16rem] shrink-0 flex-col gap-1.5">
           <Momentum ms={ms} display={display} userSide={side} />
           <TeamStatus ms={ms} display={display} />
-          {view2d ? log : <div className="min-h-0 flex-1" />}
+          <div className="min-h-0 flex-1" />
           <div className="flex gap-1">
-            {tournament && view !== "3d" && (
+            {tournament && (
               <Button variant="ghost" small className="flex-1 !px-1" onClick={() => setView("3d")}>
                 3D で見る
               </Button>
             )}
-            <Button variant="ghost" small className="flex-1 !px-1" onClick={() => setView(view2d ? "text" : "2d")}>
-              {view2d ? "文章だけ" : "2D を出す"}
+            <Button variant="ghost" small className="flex-1 !px-1" onClick={() => setView("2d")}>
+              2D を出す
             </Button>
           </div>
           {ended ? (
@@ -311,6 +391,19 @@ export function MatchScreen() {
       {ordersPanel}
     </main>
   );
+}
+
+/** 広い画面（幅 760px 以上）か。2D の速報を左の列に出す（計画 2.5） */
+function useWide(): boolean {
+  const [wide, setWide] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 760px)");
+    const update = () => setWide(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return wide;
 }
 
 /** 3D の右の端の縦のボタン（アイコンと短い文字） */

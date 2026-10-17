@@ -1,13 +1,14 @@
 /**
- * モーションの台本（SPEC 10.8。P4）：試合のイベントと演出タイムラインから、3D で「誰が・いつ・どの動きをするか」と、
- * ボールの高さ・カメラ・観客の盛り上がりを決める。表示（src/view3d）はこれを再生するだけ。
- * 試合の結果には関わらず、乱数も使わない（イベントの番号から決まった値で散らす）。
+ * モーションの台本（SPEC 10.8・19章）：選手とボールの動き（sim.ts）が起こしたイベントと、蹴った・投げた記録から、
+ * 3D で「誰が・いつ・どの動きをするか」と、カメラ・観客の盛り上がりを決める。表示（src/view3d）はこれを再生するだけ。
+ * ボールの位置と高さは動き（sim.ts）が決める。試合の結果には関わらず、乱数も使わない（イベントの番号から決まった値で散らす）。
  */
 import { FORMATIONS } from "../config/formations";
-import { MOTION_TIMING, REPLAY } from "../config/replay";
+import { MOTION_TIMING } from "../config/replay";
 import type { DribbleMove } from "../types";
 import type { MatchEventType, MatchState, Side } from "../match/types";
-import { shapeAt, type ReplayKey, type ReplayTimeline } from ".";
+import { shapeAt } from ".";
+import type { Fired, Kick, Leg, LegKind, ReplaySim } from "./sim";
 
 /** モーションの種類（4a で姿勢を作るもの、4b で作るものを含めたすべて） */
 export type MotionId = keyof typeof MOTION_TIMING.dur;
@@ -64,7 +65,16 @@ export const EVENT_MOTIONS: Record<MatchEventType, EventMotion> = {
   throughBall: { holder: "main", out: { kick: "pass" }, camera: "follow", crowd: 0 },
   passBlocked: { holder: "other", receive: "tackle", camera: "follow", crowd: 0 },
   noOption: { holder: "main", cues: [{ who: "main", motion: "turnBack", delay: 0.3 }], camera: "follow", crowd: 0 },
-  dribble: { holder: "main", cues: [{ who: "main", motion: "dribbleMove" }, { who: "other", motion: "tackle", delay: 0.1 }], expr: "focus", camera: "follow", crowd: 0 },
+  dribble: {
+    holder: "main",
+    cues: [
+      { who: "main", motion: "dribbleMove" },
+      { who: "other", motion: "tackle", delay: 0.1 },
+    ],
+    expr: "focus",
+    camera: "follow",
+    crowd: 0,
+  },
   dribbleFail: { holder: "other", cues: [{ who: "main", motion: "dribbleMove" }], receive: "tackle", camera: "follow", crowd: 0 },
   counter: { holder: "main", expr: "focus", camera: "follow", crowd: 1 },
   oneOnOne: { holder: "main", cues: [{ who: "other", motion: "gkDive", delay: 99 }], expr: "focus", camera: "near", crowd: 1 },
@@ -90,9 +100,38 @@ export const EVENT_MOTIONS: Record<MatchEventType, EventMotion> = {
   catch: { holder: "main", in: "shot", receive: "gkCatch", out: { kick: "gkKick", arc: "air" }, camera: "near", crowd: 1 },
   parry: { holder: "none", in: "shot", cues: [{ who: "main", motion: "gkDive" }], camera: "near", crowd: 1 },
   rebound: { holder: "main", camera: "near", crowd: 1 },
-  goal: { holder: "none", in: "shot", cues: [{ who: "oppGk", motion: "gkDive" }, { who: "main", motion: "celebrate", delay: 0.3, expr: "joy" }], expr: "joy", camera: "goal", crowd: 2 },
-  pkAwarded: { holder: "main", cues: [{ who: "main", motion: "fall" }, { who: "other", motion: "handUp", delay: 0.5 }], expr: "pain", camera: "near", crowd: 1 },
-  pkGoal: { holder: "none", in: "shot", cues: [{ who: "oppGk", motion: "gkDive" }, { who: "main", motion: "celebrate", delay: 0.3, expr: "joy" }], expr: "joy", camera: "goal", crowd: 2 },
+  goal: {
+    holder: "none",
+    in: "shot",
+    cues: [
+      { who: "oppGk", motion: "gkDive" },
+      { who: "main", motion: "celebrate", delay: 0.3, expr: "joy" },
+    ],
+    expr: "joy",
+    camera: "goal",
+    crowd: 2,
+  },
+  pkAwarded: {
+    holder: "main",
+    cues: [
+      { who: "main", motion: "fall" },
+      { who: "other", motion: "handUp", delay: 0.5 },
+    ],
+    expr: "pain",
+    camera: "near",
+    crowd: 1,
+  },
+  pkGoal: {
+    holder: "none",
+    in: "shot",
+    cues: [
+      { who: "oppGk", motion: "gkDive" },
+      { who: "main", motion: "celebrate", delay: 0.3, expr: "joy" },
+    ],
+    expr: "joy",
+    camera: "goal",
+    crowd: 2,
+  },
   pkMiss: { holder: "none", in: "shot", cues: [{ who: "main", motion: "headInHands", delay: 0.2, expr: "sad" }], expr: "sad", camera: "near", crowd: 1 },
   pkSaved: { holder: "main", in: "shot", receive: "gkDive", cues: [{ who: "other", motion: "headInHands", delay: 0.4, expr: "sad" }], camera: "near", crowd: 1 },
   sub: none(),
@@ -101,10 +140,45 @@ export const EVENT_MOTIONS: Record<MatchEventType, EventMotion> = {
   position: none(),
   note: none(),
   shortHanded: none(),
-  foul: { holder: "none", cues: [{ who: "main", motion: "tackle" }, { who: "other", motion: "fall", delay: 0.1, expr: "pain" }], camera: "follow", crowd: 0 },
-  yellow: { holder: "none", cues: [{ who: "referee", motion: "cardShown" }, { who: "main", motion: "bowHead", delay: 0.2 }], expr: "sad", camera: "follow", crowd: 0 },
-  secondYellow: { holder: "none", cues: [{ who: "referee", motion: "cardShown" }, { who: "main", motion: "bowHead", delay: 0.2 }], expr: "sad", camera: "follow", crowd: 1 },
-  red: { holder: "none", cues: [{ who: "referee", motion: "cardShown" }, { who: "main", motion: "bowHead", delay: 0.2 }], expr: "sad", camera: "follow", crowd: 1 },
+  foul: {
+    holder: "none",
+    cues: [
+      { who: "main", motion: "tackle" },
+      { who: "other", motion: "fall", delay: 0.1, expr: "pain" },
+    ],
+    camera: "follow",
+    crowd: 0,
+  },
+  yellow: {
+    holder: "none",
+    cues: [
+      { who: "referee", motion: "cardShown" },
+      { who: "main", motion: "bowHead", delay: 0.2 },
+    ],
+    expr: "sad",
+    camera: "follow",
+    crowd: 0,
+  },
+  secondYellow: {
+    holder: "none",
+    cues: [
+      { who: "referee", motion: "cardShown" },
+      { who: "main", motion: "bowHead", delay: 0.2 },
+    ],
+    expr: "sad",
+    camera: "follow",
+    crowd: 1,
+  },
+  red: {
+    holder: "none",
+    cues: [
+      { who: "referee", motion: "cardShown" },
+      { who: "main", motion: "bowHead", delay: 0.2 },
+    ],
+    expr: "sad",
+    camera: "follow",
+    crowd: 1,
+  },
   injury: { holder: "none", cues: [{ who: "main", motion: "hurt" }], expr: "pain", camera: "follow", crowd: 0 },
 };
 
@@ -120,19 +194,8 @@ export interface Cue {
   /** ドリブルの技・横へ跳ぶ向き（-1 左・1 右）など */
   variant?: DribbleMove | "left" | "right" | "high";
   expr?: Expr;
-  /** 元のイベントの番号 */
+  /** 元のイベントの番号（つなぎのプレーは -1） */
   event: number;
-}
-
-/** ボールの 1 区間の運び方（区間の外は地面） */
-export interface Flight {
-  t0: number;
-  t1: number;
-  arc: BallArc;
-  /** 出たときの高さ・着いたときの高さ・頂点の高さ（m） */
-  h0: number;
-  h1: number;
-  peak: number;
 }
 
 /** カメラ・観客の切り替え（その時刻から次の切り替えまで） */
@@ -143,15 +206,7 @@ export interface Shot {
   event: number;
 }
 
-export interface MotionScript {
-  cues: Cue[];
-  flights: Flight[];
-  shots: Shot[];
-}
-
 export const REFEREE_ID = "@referee";
-const PITCH_LENGTH = 105;
-const PITCH_WIDTH = 68;
 
 /** 決まった散らばり（-1〜1。replay の jitter と同じ作り方で、別の系列） */
 function hash(i: number, k: number): number {
@@ -170,149 +225,166 @@ export function gkAt(ms: MatchState, side: Side, t: number): string | undefined 
   return i >= 0 ? shape.onPitch[i] : undefined;
 }
 
-/** ボールがキー a を出ていく時刻（frameAt と同じ決め方）。a の後にボールを回す時間があれば undefined */
-function departure(a: ReplayKey, b: ReplayKey): number | undefined {
-  const span = b.t - a.t;
-  if (span > REPLAY.idlePassMinutes) return undefined;
-  const travel = Math.min(span, b.air ? 0.3 : 0.2);
-  return Math.max(a.t, b.t - travel);
-}
+/** 蹴り方 → 蹴る動き */
+const KICK_OF: Record<LegKind, MotionId | null> = { pass: "pass", air: "longKick", lofted: "cross", shot: "shot", throw: "throwIn", dribble: null, hold: null, dead: null };
 
-const dist = (a: ReplayKey, b: ReplayKey) => Math.hypot((a.ball.x - b.ball.x) * PITCH_WIDTH, (a.ball.y - b.ball.y) * PITCH_LENGTH);
+/**
+ * 台本（1 試合分）。sync を呼ぶと、動きが進んだ分（起きたイベント・蹴った記録・着いたパス）を取り込む。
+ * 動きは同じ試合なら同じなので、台本も同じになる
+ */
+export class MotionScript {
+  readonly cues: Cue[] = [];
+  readonly shots: Shot[] = [];
+  private nf = 0;
+  private nk = 0;
+  private nl = 0;
+  /** イベントで受けた人の、次に出すときの動き（ヘディングの後は動きなし、GK はキック） */
+  private outOf = new Map<string, MotionId | null>();
+  /** イベントで受けた時刻（同じ時刻に着くつなぎのパスでは、トラップの動きを重ねない） */
+  private keyRecv = new Map<string, number>();
 
-/** 試合の全イベントから台本を作る（何度呼んでも同じものができる） */
-export function buildMotionScript(ms: MatchState, tl: ReplayTimeline): MotionScript {
-  const cues: Cue[] = [];
-  const flights: Flight[] = [];
-  const shots: Shot[] = [];
-  const keys = tl.keys;
-  const B = MOTION_TIMING.ball;
-  const sec = MOTION_TIMING.minutesPerSecond;
+  constructor(private sim: ReplaySim) {}
 
-  const roleId = (key: ReplayKey, who: Role): string | undefined => {
-    if (who === "main") return key.actors[0];
-    if (who === "other") return key.actors[1];
-    if (who === "referee") return REFEREE_ID;
-    return gkAt(ms, key.side === 0 ? 1 : 0, key.t);
-  };
-  const holderOf = (key: ReplayKey) => {
-    const h = EVENT_MOTIONS[key.type].holder;
-    return h === "none" ? undefined : key.actors[h === "main" ? 0 : 1];
-  };
-  /** 横へ跳ぶ向き（ボールが GK から見て左右どちらへ来るか。決まった値） */
-  const diveSide = (i: number): "left" | "right" => (hash(i, 5) < 0 ? "left" : "right");
-  const push = (cue: Omit<Cue, "dur">) => cues.push({ ...cue, dur: minutes(cue.motion) });
+  private push(cue: Omit<Cue, "dur">) {
+    const c = { ...cue, dur: minutes(cue.motion) };
+    const cues = this.cues;
+    let i = cues.length;
+    while (i > 0 && cues[i - 1].t > c.t) i--;
+    cues.splice(i, 0, c);
+  }
 
-  keys.forEach((key, k) => {
-    const em = EVENT_MOTIONS[key.type];
-    const e = ms.events[key.index];
-    shots.push({ t: key.t, camera: em.camera, crowd: em.crowd, event: key.index });
-
-    // ---- ボールが前のイベントからここへ来る区間 ----
-    const prev = keys[k - 1];
-    const dep = prev ? departure(prev, key) : undefined;
-    let arc: BallArc = "ground";
-    if (prev && dep !== undefined) {
-      const pm = EVENT_MOTIONS[prev.type];
-      arc = pm.out?.arc ?? em.in ?? "ground";
-      // 頭で触れる・GK が高い所で取るのは、来るボールが浮いているときの受け方
-      if (em.in === "head" || em.in === "gkHigh") arc = em.in;
-      const d = dist(prev, key);
-      const shotH = B.shot.min + ((hash(key.index, 7) + 1) / 2) * (B.shot.max - B.shot.min);
-      const h0 = prev.type === "header" ? B.head : pm.out?.kick === "throwIn" ? 2 : B.radius;
-      const peak = arc === "air" ? Math.min(B.air.max, B.air.base + B.air.perMeter * d) : arc === "lofted" ? B.cross : arc === "head" || arc === "gkHigh" ? Math.max(B.cross, (arc === "head" ? B.head : B.gkHigh) + 1.5) : 0;
-      const h1 = arc === "head" ? B.head : arc === "gkHigh" ? B.gkHigh : arc === "shot" ? (key.type === "miss" ? shotH + 0.6 : shotH) : B.radius;
-      if (arc !== "ground") flights.push({ t0: dep, t1: key.t, arc, h0, h1, peak });
-
-      // 出す人の動き（前のイベントでボールを持っていた人）
-      const kicker = holderOf(prev);
-      let kick = pm.out ? pm.out.kick : arc === "air" ? "longKick" : arc === "shot" ? "shot" : "pass";
-      if (kick === "shot" && ms.events[prev.index]?.note === "header") kick = "header";
-      if (kicker && kick) push({ t: dep - contactOf(kick) * minutes(kick), id: kicker, motion: kick, event: prev.index });
-    }
-
-    // ---- ボールを受ける動き ----
-    const holder = holderOf(key);
-    const recv = em.receive === undefined ? (arc === "air" || arc === "lofted" ? "chestTrap" : "trap") : em.receive;
-    if (holder && recv) {
-      const variant = recv === "gkDive" || recv === "gkCatch" ? (recv === "gkCatch" && hash(key.index, 6) > 0.2 ? undefined : diveSide(key.index)) : undefined;
-      push({ t: key.t - contactOf(recv) * minutes(recv), id: holder, motion: recv, variant, event: key.index });
-    }
-
-    // ---- そのほかの動き ----
-    for (const c of em.cues ?? []) {
-      const id = roleId(key, c.who);
-      if (!id) continue;
-      let motion = c.motion;
-      // 1 対 1・シュートの GK：ボールが来る直前に跳ぶ／取る（delay 99 は「次のイベントに合わせる」）
-      let t = key.t + (c.delay ?? 0) * sec;
-      if (c.delay === 99) {
-        const next = keys[k + 1];
-        if (!next) continue;
-        const nm = next.type;
-        if (nm === "goal") motion = "gkDive";
-        else if (nm === "catch" || nm === "parry" || nm === "save" || nm === "gkRush" || nm === "block" || nm === "miss" || nm === "shot") continue; // GK 自身のイベントで動く
-        t = next.t - contactOf(motion) * minutes(motion);
-      } else if (motion === "gkDive" || motion === "gkPunch") t = key.t - contactOf(motion) * minutes(motion);
-      const variant = c.motion === "dribbleMove" ? e?.move ?? "chopTouch" : motion === "gkDive" ? diveSide(key.index) : undefined;
-      push({ t, id, motion, variant, expr: c.expr, event: key.index });
-    }
-    // ドリブルで止められたとき：ゴール前・サイドの深い所ではスライディング（決まった値で 3 回に 1 回ほど）
-    if (key.type === "dribbleFail") {
-      const last = cues[cues.length - 1];
-      if (last?.motion === "tackle" && e?.lane !== "C" && hash(key.index, 8) > 0.33) {
-        last.motion = "slide";
-        last.dur = minutes("slide");
-        last.t = key.t - contactOf("slide") * last.dur;
+  sync() {
+    const sim = this.sim;
+    const done = sim.steps * sim.stepMinutes;
+    // 起きたイベント・蹴った記録・着いたパスを、時刻の順に取り込む（同じ時刻はイベントが先）
+    for (;;) {
+      const f = this.nf < sim.fired.length ? sim.fired[this.nf] : undefined;
+      const k = this.nk < sim.kicks.length ? sim.kicks[this.nk] : undefined;
+      const l = this.nl < sim.legs.length && sim.legs[this.nl].t1 < done ? sim.legs[this.nl] : undefined;
+      const tf = f ? f.t : Infinity,
+        tk = k ? k.t : Infinity,
+        tl = l ? l.t1 : Infinity;
+      if (tf === Infinity && tk === Infinity && tl === Infinity) break;
+      if (tf <= tk && tf <= tl) {
+        this.nf++;
+        this.onFired(f!);
+      } else if (tk <= tl) {
+        this.nk++;
+        this.onKick(k!);
+      } else {
+        this.nl++;
+        this.onLeg(l!);
       }
     }
-  });
-
-  cues.sort((a, b) => a.t - b.t);
-  flights.sort((a, b) => a.t0 - b.t0);
-  return { cues, flights, shots };
-}
-
-/** 時刻 t のボールの高さ（m）。浮いている区間は放物線、それ以外は地面 */
-export function ballHeightAt(script: MotionScript, t: number): number {
-  const f = flightAt(script, t);
-  if (!f) return MOTION_TIMING.ball.radius;
-  const u = Math.max(0, Math.min(1, (t - f.t0) / Math.max(1e-6, f.t1 - f.t0)));
-  if (f.arc === "shot") return f.h0 + (f.h1 - f.h0) * u + Math.sin(u * Math.PI) * 0.4;
-  // 頂点が peak になる放物線（出た高さ・着く高さが違っても滑らかにつなぐ）
-  const base = f.h0 + (f.h1 - f.h0) * u;
-  const lift = Math.max(0, f.peak - Math.max(f.h0, f.h1));
-  return base + 4 * lift * u * (1 - u);
-}
-
-/** 時刻 t を含むボールの区間 */
-export function flightAt(script: MotionScript, t: number): Flight | undefined {
-  const fl = script.flights;
-  let lo = 0;
-  let hi = fl.length - 1;
-  let k = -1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (fl[mid].t0 <= t) {
-      k = mid;
-      lo = mid + 1;
-    } else hi = mid - 1;
   }
-  const f = k >= 0 ? fl[k] : undefined;
-  return f && t <= f.t1 ? f : undefined;
+
+  /** イベントが起きた：受ける動き・そのほかの動き・カメラ */
+  private onFired(f: Fired) {
+    const sim = this.sim;
+    const ms = sim.ms;
+    const key = f.key;
+    const em = EVENT_MOTIONS[key.type];
+    const e = ms.events[key.index];
+    const t = f.t;
+    this.shots.push({ t, camera: em.camera, crowd: em.crowd, event: key.index });
+    const roleId = (who: Role): string | undefined => {
+      if (who === "main") return key.actors[0];
+      if (who === "other") return key.actors[1];
+      if (who === "referee") return REFEREE_ID;
+      return gkAt(ms, key.side === 0 ? 1 : 0, t);
+    };
+    const holder = em.holder === "none" ? undefined : key.actors[em.holder === "main" ? 0 : 1];
+    const diveSide = (): "left" | "right" => (hash(key.index, 5) < 0 ? "left" : "right");
+    // ボールを受ける動き（浮き球は胸、それ以外は足でトラップ）
+    const leg = sim.legAt(t - 1e-6, 0);
+    const high = leg && (leg.kind === "air" || leg.kind === "lofted");
+    const recv = em.receive === undefined ? (high ? "chestTrap" : "trap") : em.receive;
+    if (holder && recv && !key.start) {
+      const variant = recv === "gkDive" || recv === "gkCatch" ? (recv === "gkCatch" && hash(key.index, 6) > 0.2 ? undefined : diveSide()) : undefined;
+      this.push({ t: t - contactOf(recv) * minutes(recv), id: holder, motion: recv, variant, event: key.index });
+      this.keyRecv.set(holder, t);
+    }
+    this.outOf.clear();
+    if (holder && em.out) this.outOf.set(holder, em.out.kick);
+    // そのほかの動き（GK が跳ぶ・取るは、その GK のイベントで動く）
+    for (const c of em.cues ?? []) {
+      if (c.delay === 99) continue;
+      const id = roleId(c.who);
+      if (!id) continue;
+      const motion = c.motion;
+      let ct = t + (c.delay ?? 0) * MOTION_TIMING.minutesPerSecond;
+      if (motion === "gkDive" || motion === "gkPunch") ct = t - contactOf(motion) * minutes(motion);
+      const variant = motion === "dribbleMove" ? (e?.move ?? "chopTouch") : motion === "gkDive" ? diveSide() : undefined;
+      // ドリブルで止められたとき：ゴール前・サイドの深い所ではスライディング（決まった値で 3 回に 1 回ほど）
+      if (key.type === "dribbleFail" && motion === "tackle" && e?.lane !== "C" && hash(key.index, 8) > 0.33) {
+        this.push({ t: t - contactOf("slide") * minutes("slide"), id, motion: "slide", event: key.index });
+        continue;
+      }
+      this.push({ t: ct, id, motion, variant, expr: c.expr, event: key.index });
+    }
+    if (key.type === "dribbleFail" && holder && recv === "tackle" && e?.lane !== "C" && hash(key.index, 8) > 0.33) {
+      // 受ける動き（タックル）をスライディングに
+      const i = this.cues.findIndex((c) => c.id === holder && c.event === key.index && c.motion === "tackle");
+      if (i >= 0) {
+        const [c] = this.cues.splice(i, 1);
+        this.push({ ...c, motion: "slide", t: t - contactOf("slide") * minutes("slide") });
+      }
+    }
+  }
+
+  /** 蹴った・投げた */
+  private onKick(k: Kick) {
+    if (k.head) return;
+    let motion: MotionId | null = k.set ?? KICK_OF[k.kind];
+    if (this.outOf.has(k.id)) {
+      const o = this.outOf.get(k.id)!;
+      this.outOf.delete(k.id);
+      if (!k.set) motion = o === "pass" ? motion : o;
+    }
+    if (motion) this.push({ t: k.t - contactOf(motion) * minutes(motion), id: k.id, motion, event: -1 });
+  }
+
+  /** 着いたパス（つなぎのプレー）：受ける人のトラップ */
+  private onLeg(l: Leg) {
+    const sim = this.sim;
+    if (l.receiver < 0 || l.kind === "shot") return;
+    const id = sim.players[l.receiver].id;
+    const kt = this.keyRecv.get(id);
+    if (kt !== undefined && Math.abs(kt - l.t1) < 0.03) return;
+    const motion: MotionId = l.kind === "air" || l.kind === "lofted" ? "chestTrap" : "trap";
+    this.push({ t: l.t1 - contactOf(motion) * minutes(motion), id, motion, event: -1 });
+  }
+}
+
+/** 試合ごとに 1 つ */
+const scripts = new WeakMap<ReplaySim, MotionScript>();
+export function scriptFor(sim: ReplaySim): MotionScript {
+  let s = scripts.get(sim);
+  if (!s) {
+    s = new MotionScript(sim);
+    scripts.set(sim, s);
+  }
+  s.sync();
+  return s;
 }
 
 /** 時刻 t のカメラ・観客（直前の切り替え） */
 export function shotAt(script: MotionScript, t: number): Shot | undefined {
-  let s: Shot | undefined;
-  for (const x of script.shots) {
-    if (x.t > t) break;
-    s = x;
+  const sh = script.shots;
+  let lo = 0,
+    hi = sh.length - 1,
+    k = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (sh[mid].t <= t) {
+      k = mid;
+      lo = mid + 1;
+    } else hi = mid - 1;
   }
-  return s;
+  return k >= 0 ? sh[k] : undefined;
 }
 
-/** 時刻 t に動いている選手の動き（同じ選手に重なれば後から始まった方）。startIndex から探す */
+/** 時刻 t に動いている選手の動き（同じ選手に重なれば後から始まった方） */
 export function activeCues(script: MotionScript, t: number, out: Map<string, Cue>): Map<string, Cue> {
   out.clear();
   const cues = script.cues;

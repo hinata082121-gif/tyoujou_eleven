@@ -288,6 +288,11 @@ function applyPending(state: MatchState, side: Side) {
   recordShape(team, minute);
 }
 
+/** 区間の始めの戦術と体力を記録する（R3：演出の動き用。計算には使わず、乱数も使わない） */
+function recordTrace(team: MatchTeamState, minute: number) {
+  (team.trace ??= []).push({ minute, tactics: { ...team.tactics }, stamina: team.onPitch.map((id) => Math.round(team.players[id]?.stamina ?? 0)) });
+}
+
 /** 並びが変わっていれば記録する（2D の再生用。計算には使わない） */
 export function recordShape(team: MatchTeamState, minute: number) {
   const last = team.shapes?.at(-1);
@@ -1532,6 +1537,8 @@ export function playSegment(state: MatchState): MatchEvent[] {
   state.minute = segStart;
   applyPending(state, 0);
   applyPending(state, 1);
+  recordTrace(state.teams[0], segStart);
+  recordTrace(state.teams[1], segStart);
   const sim = new SegmentSim(state, rng, segStart);
   const delta = sim.run(segMinutes);
   state.events.push(...sim.events.sort((a, b) => a.minute - b.minute));
